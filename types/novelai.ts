@@ -96,6 +96,7 @@ export interface NovelAIParameters {
   add_original_image: boolean;
   cfg_rescale: number;
   noise_schedule: NovelAINoiseSchedule;
+  skip_cfg_above_sigma: number;
   seed: number;
   negative_prompt: string;
   reference_image_multiple: string[];

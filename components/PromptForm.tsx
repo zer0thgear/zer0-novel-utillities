@@ -140,6 +140,7 @@ export function PromptForm() {
         add_original_image: false,
         cfg_rescale: form.cfgRescale,
         noise_schedule: form.noiseSchedule,
+        skip_cfg_above_sigma: 59.04722600415217,
         seed,
         negative_prompt: baseNegPrompt,
         reference_image_multiple: [],
