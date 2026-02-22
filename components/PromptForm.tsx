@@ -40,6 +40,13 @@ const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
   { value: 'polyexponential', label: 'Polyexponential' },
 ];
 
+const BASE_NEGATIVE_TAGS = [
+  'nsfw', 'lowres', 'artistic error', 'film grain', 'scan artifacts',
+  'worst quality', 'bad quality', 'jpeg artifacts', 'very displeasing',
+  'chromatic aberration', 'dithering', 'halftone', 'screentone',
+  'multiple views', 'logo', 'too many watermarks', 'negative space', 'blank page',
+];
+
 const SIZE_PRESETS = [
   { width: 832, height: 1216, label: 'Portrait' },
   { width: 1216, height: 832, label: 'Landscape' },
@@ -94,6 +101,22 @@ export function PromptForm() {
         (hasTextToken ? '' : ', no text');
     }
 
+    // ── Base negative captions prefix ─────────────────────────────────────────
+    // Tags already present (case-insensitive) in any base or character positive
+    // prompt are omitted to avoid redundancy, mirroring the 'no text' pattern.
+    const baseNegPrompt = (() => {
+      if (!form.baseNegativeCaptions) return form.negativePrompt;
+      const searchText = [
+        ...form.basePrompts.map((p) => p.text),
+        ...form.characters.map((c) => c.prompt),
+      ].join(' ').toLowerCase();
+      const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
+      if (tags.length === 0) return form.negativePrompt;
+      return form.negativePrompt
+        ? `${tags.join(', ')}, ${form.negativePrompt}`
+        : tags.join(', ');
+    })();
+
     return {
       input: finalText,
       model: form.model,
@@ -116,7 +139,7 @@ export function PromptForm() {
         cfg_rescale: form.cfgRescale,
         noise_schedule: form.noiseSchedule,
         seed,
-        negative_prompt: form.negativePrompt,
+        negative_prompt: baseNegPrompt,
         reference_image_multiple: [],
         reference_information_extracted_multiple: [],
         reference_strength_multiple: [],
@@ -137,7 +160,7 @@ export function PromptForm() {
           },
           v4_negative_prompt: {
             caption: {
-              base_caption: form.negativePrompt,
+              base_caption: baseNegPrompt,
               char_captions: activeCharacters.map((c) => ({
                 char_caption: c.uc,
                 centers: [c.center],
@@ -272,6 +295,18 @@ export function PromptForm() {
             type="checkbox"
             checked={form.qualityTags}
             onChange={(e) => form.set('qualityTags', e.target.checked)}
+            className="h-4 w-4 accent-violet-500"
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+          <div>
+            <span className="text-xs font-semibold text-slate-400">Base Negative Captions</span>
+            <p className="text-xs text-slate-600">Prepends quality negative tags to base UC</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={form.baseNegativeCaptions}
+            onChange={(e) => form.set('baseNegativeCaptions', e.target.checked)}
             className="h-4 w-4 accent-violet-500"
           />
         </label>

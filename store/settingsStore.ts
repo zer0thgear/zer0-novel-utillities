@@ -17,6 +17,7 @@ export interface FormSettings {
   furMode: boolean;
   nsfwMode: boolean;
   qualityTags: boolean;
+  baseNegativeCaptions: boolean;
   negativePrompt: string;
   model: NovelAIModel;
   width: number;
@@ -50,6 +51,7 @@ const DEFAULTS: FormSettings = {
   furMode: false,
   nsfwMode: false,
   qualityTags: false,
+  baseNegativeCaptions: false,
   negativePrompt: DEFAULT_NEGATIVE,
   model: 'nai-diffusion-4-5-full',
   width: 832,
