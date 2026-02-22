@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NovelAI Image Frontend
 
-## Getting Started
+A custom Next.js frontend for [NovelAI](https://novelai.net)'s image generation API. Generates images via NAI's API using your own account key, with support for v4 character prompts, batch generation, and live streaming previews.
 
-First, run the development server:
+## Prerequisites
+
+- [Node.js](https://nodejs.org) 18+ (or Bun/pnpm/yarn)
+- A NovelAI account with an active subscription and API key
+
+## Getting Your API Key
+
+1. Log in to [novelai.net](https://novelai.net)
+2. Go to **Account Settings** → **API Key** and copy your persistent key (starts with `pst-...`)
+
+## Setup & Development
 
 ```bash
+# Install dependencies
+npm install
+
+# Start the development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser. Enter your API key in the sidebar to start generating.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Production Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# Build for production
+npm run build
 
-## Learn More
+# Start the production server
+npm start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+app/
+  api/
+    generate/          # Proxy route for standard image generation
+    generate-stream/   # Proxy route for SSE streaming generation
+  page.tsx             # Main layout (sidebar + gallery)
+  layout.tsx
+components/
+  PromptForm.tsx       # Prompt editor, settings, and generate button
+  BasePromptsEditor.tsx    # Single/Batch base prompt management
+  CharacterPromptsEditor.tsx  # Per-character v4 prompt editor (max 6)
+  ImageGrid.tsx        # Session gallery with streaming preview
+  ImageCard.tsx        # Individual image card with lightbox
+hooks/
+  useGenerate.ts       # Generation logic (standard + SSE streaming)
+store/
+  settingsStore.ts     # Persisted settings (Zustand + localStorage)
+  sessionStore.ts      # In-memory session state (images, loading, API key)
+lib/
+  imageUtils.ts        # ZIP extraction, download helpers
+types/
+  novelai.ts           # API request/response types
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Images are stored in memory only and are cleared on page refresh
+- The API key is stored in `localStorage` — do not use this on a shared or public machine
+- The proxy routes (`/api/generate*`) keep your API key server-side and avoid CORS issues
