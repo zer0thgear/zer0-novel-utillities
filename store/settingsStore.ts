@@ -32,6 +32,7 @@ export interface FormSettings {
   cfgRescale: number;
   characters: CharacterPromptEntry[];
   useCoords: boolean;
+  streamingMode: boolean;
 }
 
 interface SettingsState extends FormSettings {
@@ -64,6 +65,7 @@ const DEFAULTS: FormSettings = {
   cfgRescale: 0,
   characters: [],
   useCoords: false,
+  streamingMode: false,
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────

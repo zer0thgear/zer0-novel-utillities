@@ -11,6 +11,10 @@ interface SessionState {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  // Live preview frame shown during streaming generation (object URL or null)
+  streamPreview: string | null;
+  setStreamPreview: (url: string | null) => void;
+
   images: GeneratedImage[];
   addImages: (images: GeneratedImage[]) => void;
   removeImage: (id: string) => void;
@@ -30,6 +34,14 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  streamPreview: null,
+  setStreamPreview: (url) =>
+    set((state) => {
+      // Revoke previous preview URL to avoid memory leaks
+      if (state.streamPreview) URL.revokeObjectURL(state.streamPreview);
+      return { streamPreview: url };
+    }),
 
   images: [],
 

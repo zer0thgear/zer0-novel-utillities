@@ -5,7 +5,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { ImageCard } from './ImageCard';
 
 export function ImageGrid() {
-  const { images, isLoading, clearImages } = useSessionStore();
+  const { images, isLoading, streamPreview, clearImages } = useSessionStore();
 
   return (
     <div className="flex h-full flex-col">
@@ -45,30 +45,59 @@ export function ImageGrid() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
             {/* Loading placeholder — appears at the front of the grid */}
             {isLoading && (
-              <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
-                <div className="flex flex-col items-center gap-2 text-slate-500">
-                  <svg
-                    className="h-7 w-7 animate-spin text-violet-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  <span className="text-xs">Generating…</span>
+              streamPreview ? (
+                /* Streaming: show the live intermediate preview */
+                <div className="relative aspect-[2/3] overflow-hidden rounded-lg border border-violet-500/40 bg-slate-900">
+                  <img
+                    src={streamPreview}
+                    alt="Generating…"
+                    className="h-full w-full object-contain opacity-85"
+                  />
+                  {/* Subtle progress indicator at the bottom */}
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 pb-2 pt-4 text-xs text-slate-300">
+                    <svg
+                      className="h-3 w-3 animate-spin text-violet-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12" cy="12" r="10"
+                        stroke="currentColor" strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Generating…
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Non-streaming: plain spinner placeholder */
+                <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
+                  <div className="flex flex-col items-center gap-2 text-slate-500">
+                    <svg
+                      className="h-7 w-7 animate-spin text-violet-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12" cy="12" r="10"
+                        stroke="currentColor" strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    <span className="text-xs">Generating…</span>
+                  </div>
+                </div>
+              )
             )}
 
             {images.map((image) => (

@@ -537,6 +537,22 @@ export function PromptForm() {
               className="w-full accent-violet-500"
             />
           </div>
+
+          {/* Streaming Mode */}
+          <label className="flex cursor-pointer items-center justify-between border-t border-slate-700/40 pt-3">
+            <div>
+              <span className="text-xs text-slate-400">Streaming Mode</span>
+              <p className="text-xs text-slate-600">
+                Uses /generate-image-stream; shows intermediate preview frames
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={form.streamingMode}
+              onChange={(e) => form.set('streamingMode', e.target.checked)}
+              className="h-4 w-4 accent-violet-500"
+            />
+          </label>
         </div>
       )}
 
