@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { PromptForm } from '@/components/PromptForm';
 import { ImageGrid } from '@/components/ImageGrid';
@@ -9,12 +10,33 @@ export default function Home() {
   const apiKey = useSessionStore((s) => s.apiKey);
   const setApiKey = useSessionStore((s) => s.setApiKey);
 
+  const [panelWidth, setPanelWidth] = useState(380);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+
+    const onMove = (ev: MouseEvent) => {
+      setPanelWidth(Math.min(700, Math.max(260, startWidth + ev.clientX - startX)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [panelWidth]);
+
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <ApiKeyModal />
 
       {/* ── Left panel: generation form ── */}
-      <aside className="flex w-[380px] flex-shrink-0 flex-col border-r border-slate-800/80 bg-slate-900/40">
+      <aside
+        className="flex flex-shrink-0 flex-col bg-slate-900/40"
+        style={{ width: panelWidth }}
+      >
         <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 bg-slate-900/80 px-5 py-4 backdrop-blur-sm">
           <h1 className="text-base font-bold tracking-tight">
             <span className="text-violet-400">NAI</span> Image Generator
@@ -39,6 +61,12 @@ export default function Home() {
           )}
         </div>
       </aside>
+
+      {/* ── Resize handle ── */}
+      <div
+        onMouseDown={startResize}
+        className="w-1 flex-shrink-0 cursor-col-resize bg-slate-800/80 hover:bg-violet-500/50 transition-colors"
+      />
 
       {/* ── Right panel: image gallery ── */}
       <section className="flex flex-1 flex-col overflow-hidden p-5">

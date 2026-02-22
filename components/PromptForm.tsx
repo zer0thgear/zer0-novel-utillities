@@ -68,6 +68,8 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider te
 export function PromptForm() {
   const form = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showModifiers, setShowModifiers] = useState(false);
+  const [promptTab, setPromptTab] = useState<'prompts' | 'characters'>('prompts');
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading } = useSessionStore();
 
@@ -258,102 +260,155 @@ export function PromptForm() {
         </div>
       )}
 
-      {/* Prompt modifiers */}
-      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40 divide-y divide-slate-700/40">
-        <label className="flex cursor-pointer items-center justify-between px-3 py-2">
-          <div>
-            <span className="text-xs font-semibold text-slate-400">Fur Mode</span>
-            <p className="text-xs text-slate-600">Prepends "fur dataset"</p>
+      {/* Prompt modifiers — collapsible */}
+      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+        <button
+          type="button"
+          onClick={() => setShowModifiers((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-2 text-left"
+        >
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Prompt Modifiers
+            {(form.furMode || form.nsfwMode || form.qualityTags || form.baseNegativeCaptions) && (
+              <span className="ml-1.5 normal-case font-normal text-violet-400">
+                ({[form.furMode && 'Fur', form.nsfwMode && 'NSFW', form.qualityTags && 'Quality', form.baseNegativeCaptions && 'Neg'].filter(Boolean).join(', ')})
+              </span>
+            )}
+          </span>
+          <span className="text-slate-500 text-xs">{showModifiers ? '▾' : '▸'}</span>
+        </button>
+
+        {showModifiers && (
+          <div className="divide-y divide-slate-700/40 border-t border-slate-700/40">
+            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-slate-400">Fur Mode</span>
+                <p className="text-xs text-slate-600">Prepends "fur dataset"</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.furMode}
+                onChange={(e) => form.set('furMode', e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-slate-400">NSFW</span>
+                <p className="text-xs text-slate-600">Prepends "nsfw" (after fur dataset)</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.nsfwMode}
+                onChange={(e) => form.set('nsfwMode', e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
+                <p className="text-xs text-slate-600">
+                  Appends "very aesthetic, masterpiece, no text"
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.qualityTags}
+                onChange={(e) => form.set('qualityTags', e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-slate-400">Base Negative Captions</span>
+                <p className="text-xs text-slate-600">Prepends quality negative tags to base UC</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.baseNegativeCaptions}
+                onChange={(e) => form.set('baseNegativeCaptions', e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+            </label>
           </div>
-          <input
-            type="checkbox"
-            checked={form.furMode}
-            onChange={(e) => form.set('furMode', e.target.checked)}
-            className="h-4 w-4 accent-violet-500"
-          />
-        </label>
-        <label className="flex cursor-pointer items-center justify-between px-3 py-2">
-          <div>
-            <span className="text-xs font-semibold text-slate-400">NSFW</span>
-            <p className="text-xs text-slate-600">Prepends "nsfw" (after fur dataset)</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.nsfwMode}
-            onChange={(e) => form.set('nsfwMode', e.target.checked)}
-            className="h-4 w-4 accent-violet-500"
-          />
-        </label>
-        <label className="flex cursor-pointer items-center justify-between px-3 py-2">
-          <div>
-            <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
-            <p className="text-xs text-slate-600">
-              Appends "very aesthetic, masterpiece, no text"
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.qualityTags}
-            onChange={(e) => form.set('qualityTags', e.target.checked)}
-            className="h-4 w-4 accent-violet-500"
-          />
-        </label>
-        <label className="flex cursor-pointer items-center justify-between px-3 py-2">
-          <div>
-            <span className="text-xs font-semibold text-slate-400">Base Negative Captions</span>
-            <p className="text-xs text-slate-600">Prepends quality negative tags to base UC</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.baseNegativeCaptions}
-            onChange={(e) => form.set('baseNegativeCaptions', e.target.checked)}
-            className="h-4 w-4 accent-violet-500"
-          />
-        </label>
+        )}
       </div>
 
-      {/* Base Prompts */}
-      <BasePromptsEditor
-        basePrompts={form.basePrompts}
-        promptMode={form.promptMode}
-        onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
-        onModeChange={(promptMode) => form.set('promptMode', promptMode)}
-      />
+      {/* Prompt editor tabs */}
+      <div className="flex flex-col gap-3">
+        {/* Tab bar */}
+        <div className="flex overflow-hidden rounded-md border border-slate-700 text-xs">
+          <button
+            type="button"
+            onClick={() => setPromptTab('prompts')}
+            className={`flex-1 py-1.5 transition-colors ${
+              promptTab === 'prompts'
+                ? 'bg-violet-600 text-white'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Base Prompts
+          </button>
+          <button
+            type="button"
+            onClick={() => setPromptTab('characters')}
+            className={`flex-1 py-1.5 transition-colors ${
+              promptTab === 'characters'
+                ? 'bg-violet-600 text-white'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Characters
+            {form.characters.length > 0 && (
+              <span className="ml-1 opacity-70">({form.characters.length})</span>
+            )}
+          </button>
+        </div>
 
-      {/* Negative Prompt */}
+        {/* Tab content */}
+        {promptTab === 'prompts' ? (
+          <BasePromptsEditor
+            basePrompts={form.basePrompts}
+            promptMode={form.promptMode}
+            onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
+            onModeChange={(promptMode) => form.set('promptMode', promptMode)}
+          />
+        ) : (
+          <>
+            <CharacterPromptsEditor
+              characters={form.characters}
+              onChange={(characters) => form.set('characters', characters)}
+            />
+            {form.characters.length > 0 && (
+              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
+                <div>
+                  <span className="text-xs font-semibold text-slate-400">Use Coordinates</span>
+                  <p className="mt-0.5 text-xs text-slate-600">
+                    Place characters at their specified X/Y positions
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.useCoords}
+                  onChange={(e) => form.set('useCoords', e.target.checked)}
+                  className="h-4 w-4 accent-violet-500"
+                />
+              </label>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Negative Prompt — always visible */}
       <div>
         <label className={labelCls}>Negative Prompt</label>
         <textarea
           value={form.negativePrompt}
           onChange={(e) => form.set('negativePrompt', e.target.value)}
           rows={3}
-          className={`${inputCls} resize-none`}
+          className={`${inputCls} resize-y`}
         />
       </div>
-
-      {/* Character Prompts */}
-      <CharacterPromptsEditor
-        characters={form.characters}
-        onChange={(characters) => form.set('characters', characters)}
-      />
-
-      {/* Use Coordinates — only relevant when characters are present */}
-      {form.characters.length > 0 && (
-        <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
-          <div>
-            <span className="text-xs font-semibold text-slate-400">Use Coordinates</span>
-            <p className="mt-0.5 text-xs text-slate-600">
-              Place characters at their specified X/Y positions
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.useCoords}
-            onChange={(e) => form.set('useCoords', e.target.checked)}
-            className="h-4 w-4 accent-violet-500"
-          />
-        </label>
-      )}
 
       {/* Model */}
       <div>

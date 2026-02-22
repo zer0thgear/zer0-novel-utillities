@@ -5,7 +5,7 @@ import { BasePrompt, PromptMode } from '@/types/novelai';
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 const textareaCls =
-  'w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none border border-slate-700 focus:border-violet-500 transition-colors resize-none';
+  'w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none border border-slate-700 focus:border-violet-500 transition-colors resize-y';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
