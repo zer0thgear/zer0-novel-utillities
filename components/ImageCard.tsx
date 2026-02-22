@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { downloadImage } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
 import { GeneratedImage } from '@/types/novelai';
 
@@ -12,10 +13,12 @@ interface ImageCardProps {
 
 export function ImageCard({ image }: ImageCardProps) {
   const removeImage = useSessionStore((s) => s.removeImage);
+  const setSeed = useSettingsStore((s) => s.set);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showEnhance, setShowEnhance] = useState(false);
   const [enhanceLevel, setEnhanceLevel] = useState<EnhanceLevelNum>(3);
   const [enhanceUpscale, setEnhanceUpscale] = useState(false);
+  const [seedCopied, setSeedCopied] = useState(false);
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
 
   const handleLightboxClose = () => {
@@ -176,7 +179,18 @@ export function ImageCard({ image }: ImageCardProps) {
                 {image.prompt}
               </p>
               <div className="flex flex-shrink-0 items-center gap-2">
-                <span className="text-xs text-slate-600">Seed: {image.seed}</span>
+                <button
+                  type="button"
+                  title="Use this seed"
+                  onClick={() => {
+                    setSeed('seed', image.seed);
+                    setSeedCopied(true);
+                    setTimeout(() => setSeedCopied(false), 1200);
+                  }}
+                  className="text-xs transition-colors hover:text-violet-400 text-slate-500"
+                >
+                  {seedCopied ? 'Seed set!' : `Seed: ${image.seed}`}
+                </button>
                 <button
                   type="button"
                   onClick={() => { clearEnhanceError(); setShowEnhance((v) => !v); }}

@@ -550,13 +550,23 @@ export function PromptForm() {
             (0 = generate randomly)
           </span>
         </label>
-        <input
-          type="number"
-          value={form.seed}
-          onChange={(e) => form.set('seed', Number(e.target.value))}
-          min={0}
-          className={inputCls}
-        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={form.seed}
+            onChange={(e) => form.set('seed', Number(e.target.value))}
+            min={0}
+            className={`${inputCls} flex-1`}
+          />
+          <button
+            type="button"
+            onClick={() => form.set('seed', 0)}
+            title="Reset to random"
+            className="flex-shrink-0 rounded-lg bg-slate-800 border border-slate-700 px-2.5 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
+          >
+            ↺
+          </button>
+        </div>
       </div>
 
       {/* Advanced toggle */}
