@@ -108,12 +108,25 @@ export interface NovelAIParameters {
   v4_prompt?: V4Prompt;
   v4_negative_prompt?: V4NegativePrompt;
   characterPrompts?: CharacterPrompt[];
+  // img2img / enhance fields
+  strength?: number;
+  noise?: number;
+  autoSmea?: boolean;
+  image?: string;
+  extra_noise_seed?: number;
+  inpaintImg2ImgStrength?: number;
+  color_correct?: boolean;
+  deliberate_euler_ancestral_bug?: boolean;
+  prefer_brownian?: boolean;
+  legacy_v3_extend?: boolean;
+  normalize_reference_strength_multiple?: boolean;
+  legacy_uc?: boolean;
 }
 
 export interface NovelAIGenerateRequest {
   input: string;
   model: NovelAIModel;
-  action: 'generate';
+  action: 'generate' | 'img2img';
   parameters: NovelAIParameters;
 }
 

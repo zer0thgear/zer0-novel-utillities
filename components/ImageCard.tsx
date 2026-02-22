@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { downloadImage } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
+import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
 import { GeneratedImage } from '@/types/novelai';
 
 interface ImageCardProps {
@@ -12,16 +13,37 @@ interface ImageCardProps {
 export function ImageCard({ image }: ImageCardProps) {
   const removeImage = useSessionStore((s) => s.removeImage);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [showEnhance, setShowEnhance] = useState(false);
+  const [enhanceLevel, setEnhanceLevel] = useState<EnhanceLevelNum>(3);
+  const [enhanceUpscale, setEnhanceUpscale] = useState(false);
+  const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
+
+  const handleLightboxClose = () => {
+    setLightboxOpen(false);
+    setShowEnhance(false);
+    clearEnhanceError();
+  };
 
   // Close on Escape key
   useEffect(() => {
     if (!lightboxOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxOpen(false);
+      if (e.key === 'Escape') {
+        setLightboxOpen(false);
+        setShowEnhance(false);
+        clearEnhanceError();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxOpen]);
+  }, [lightboxOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleEnhance = async () => {
+    // Close the lightbox immediately so the user can see gallery progress
+    setLightboxOpen(false);
+    setShowEnhance(false);
+    await enhance(image, enhanceLevel, enhanceUpscale);
+  };
 
   return (
     <>
@@ -66,28 +88,106 @@ export function ImageCard({ image }: ImageCardProps) {
       {lightboxOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
-          onClick={() => setLightboxOpen(false)}
+          onClick={handleLightboxClose}
         >
           {/* Stop clicks on the inner panel from closing */}
           <div
             className="relative flex max-h-[95vh] max-w-[95vw] flex-col overflow-hidden rounded-xl shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Image */}
+            {/* Image — shrinks to leave room for panels below */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
               alt={image.prompt}
-              className="max-h-[85vh] max-w-[95vw] object-contain"
+              className="min-h-0 flex-1 max-h-[80vh] max-w-[95vw] object-contain"
             />
 
+            {/* ── Enhance panel (shown when toggled) ── */}
+            {showEnhance && (
+              <div className="border-t border-slate-700/60 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
+                {/* Level selector */}
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Level
+                  </span>
+                  <div className="flex gap-1.5">
+                    {ENHANCE_LEVELS.map((l) => (
+                      <button
+                        key={l.level}
+                        type="button"
+                        onClick={() => setEnhanceLevel(l.level)}
+                        title={`Strength ${l.strength}, Noise ${l.noise}`}
+                        className={`flex flex-col items-center rounded px-2.5 py-1 text-xs transition-colors ${
+                          enhanceLevel === l.level
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        <span className="font-semibold leading-tight">{l.level}</span>
+                        <span className="text-[10px] leading-tight opacity-70">{l.anlas}A</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Upscale + action row */}
+                <div className="flex items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={enhanceUpscale}
+                      onChange={(e) => setEnhanceUpscale(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-violet-500"
+                    />
+                    Upscale ×1.5
+                    <span className="text-slate-600">(extra Anlas)</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleEnhance}
+                    disabled={isEnhancing}
+                    className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isEnhancing ? 'Enhancing…' : 'Enhance Image'}
+                  </button>
+                </div>
+
+                {/* Enhance error */}
+                {enhanceError && (
+                  <div className="mt-2 flex items-start justify-between gap-2 rounded bg-red-900/30 border border-red-700/40 px-2.5 py-1.5 text-xs text-red-300">
+                    <span>{enhanceError}</span>
+                    <button
+                      type="button"
+                      onClick={clearEnhanceError}
+                      className="flex-shrink-0 text-red-500 hover:text-red-300 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Bottom bar */}
-            <div className="flex items-center justify-between gap-4 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-4 bg-slate-900/95 px-4 py-3 backdrop-blur-sm border-t border-slate-800/60">
               <p className="min-w-0 flex-1 truncate text-xs text-slate-400" title={image.prompt}>
                 {image.prompt}
               </p>
               <div className="flex flex-shrink-0 items-center gap-2">
                 <span className="text-xs text-slate-600">Seed: {image.seed}</span>
+                <button
+                  type="button"
+                  onClick={() => { clearEnhanceError(); setShowEnhance((v) => !v); }}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    showEnhance
+                      ? 'bg-violet-600 text-white hover:bg-violet-500'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  Enhance
+                </button>
                 <button
                   onClick={() => downloadImage(image)}
                   className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 transition-colors"
@@ -95,7 +195,7 @@ export function ImageCard({ image }: ImageCardProps) {
                   Download
                 </button>
                 <button
-                  onClick={() => setLightboxOpen(false)}
+                  onClick={handleLightboxClose}
                   className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-600 transition-colors"
                 >
                   Close
