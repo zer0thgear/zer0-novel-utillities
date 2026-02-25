@@ -3,7 +3,8 @@
 import { useCallback, useState } from 'react';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { PromptForm } from '@/components/PromptForm';
-import { ImageGrid } from '@/components/ImageGrid';
+import { ImageViewer } from '@/components/ImageViewer';
+import { HistoryStrip } from '@/components/ImageGrid';
 import { useSessionStore } from '@/store/sessionStore';
 
 export default function Home() {
@@ -68,10 +69,13 @@ export default function Home() {
         className="w-1 flex-shrink-0 cursor-col-resize bg-slate-800/80 hover:bg-violet-500/50 transition-colors"
       />
 
-      {/* ── Right panel: image gallery ── */}
-      <section className="flex flex-1 flex-col overflow-hidden p-5">
-        <ImageGrid />
+      {/* ── Center: image viewer ── */}
+      <section className="flex flex-1 flex-col overflow-hidden">
+        <ImageViewer />
       </section>
+
+      {/* ── Right: collapsible history strip ── */}
+      <HistoryStrip />
     </main>
   );
 }

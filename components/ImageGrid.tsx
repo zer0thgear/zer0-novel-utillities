@@ -1,110 +1,131 @@
 'use client';
 
+import { useState } from 'react';
 import { downloadSessionAsZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { ImageCard } from './ImageCard';
 
-export function ImageGrid() {
-  const { images, isLoading, streamPreview, clearImages } = useSessionStore();
+// ─── Spinner SVG ──────────────────────────────────────────────────────────────
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function HistoryStrip() {
+  const { images, focusedImageId, isLoading, streamPreview, clearImages } = useSessionStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  // ── Collapsed state ──────────────────────────────────────────────────────
+
+  if (collapsed) {
+    return (
+      <div className="flex w-8 flex-shrink-0 flex-col items-center border-l border-slate-800 bg-slate-900/40 py-3">
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          title="Show history"
+          className="text-slate-500 transition-colors hover:text-slate-300"
+        >
+          {/* Left-pointing chevron (expand) */}
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
+  // ── Expanded state ───────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex w-48 flex-shrink-0 flex-col border-l border-slate-800 bg-slate-900/40">
+      {/* Header */}
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-800 px-3 py-2">
+        <span className="text-xs font-semibold text-slate-400">
+          History
+          {images.length > 0 && (
+            <span className="ml-1 font-normal text-slate-600">({images.length})</span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          title="Collapse"
+          className="text-slate-500 transition-colors hover:text-slate-300"
+        >
+          {/* Right-pointing chevron (collapse) */}
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
       {/* Session controls */}
       {images.length > 0 && (
-        <div className="mb-4 flex items-center justify-between px-1 flex-shrink-0">
-          <span className="text-sm text-slate-400">
-            {images.length} image{images.length !== 1 ? 's' : ''} this session
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => downloadSessionAsZip(images)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-600 transition-colors"
-            >
-              Download All (.zip)
-            </button>
-            <button
-              onClick={clearImages}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-red-700 hover:text-white transition-colors"
-            >
-              Clear Session
-            </button>
-          </div>
+        <div className="flex flex-shrink-0 flex-col gap-1 border-b border-slate-800 px-2 py-2">
+          <button
+            type="button"
+            onClick={() => downloadSessionAsZip(images)}
+            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
+          >
+            Download ZIP
+          </button>
+          <button
+            type="button"
+            onClick={clearImages}
+            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white"
+          >
+            Clear Session
+          </button>
         </div>
       )}
 
-      {/* Grid area */}
-      <div className="flex-1 overflow-y-auto">
-        {images.length === 0 && !isLoading ? (
-          <div className="flex h-full min-h-64 items-center justify-center text-slate-600">
-            <div className="text-center">
-              <div className="text-5xl mb-3 opacity-30">🖼</div>
-              <p className="text-sm">Generated images will appear here</p>
+      {/* Thumbnail list */}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+        {/* Loading placeholder — newest item slot */}
+        {isLoading && (
+          streamPreview ? (
+            <div className="relative overflow-hidden rounded-lg border border-violet-500/50 bg-slate-900">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={streamPreview}
+                alt="Generating…"
+                className="w-full object-cover opacity-80"
+              />
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-gradient-to-t from-black/70 pb-1.5 pt-3 text-xs text-slate-300">
+                <Spinner className="h-2.5 w-2.5 animate-spin text-violet-400" />
+                Generating…
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-            {/* Loading placeholder — appears at the front of the grid */}
-            {isLoading && (
-              streamPreview ? (
-                /* Streaming: show the live intermediate preview */
-                <div className="relative aspect-[2/3] overflow-hidden rounded-lg border border-violet-500/40 bg-slate-900">
-                  <img
-                    src={streamPreview}
-                    alt="Generating…"
-                    className="h-full w-full object-contain opacity-85"
-                  />
-                  {/* Subtle progress indicator at the bottom */}
-                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 pb-2 pt-4 text-xs text-slate-300">
-                    <svg
-                      className="h-3 w-3 animate-spin text-violet-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12" cy="12" r="10"
-                        stroke="currentColor" strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Generating…
-                  </div>
-                </div>
-              ) : (
-                /* Non-streaming: plain spinner placeholder */
-                <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
-                  <div className="flex flex-col items-center gap-2 text-slate-500">
-                    <svg
-                      className="h-7 w-7 animate-spin text-violet-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12" cy="12" r="10"
-                        stroke="currentColor" strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    <span className="text-xs">Generating…</span>
-                  </div>
-                </div>
-              )
-            )}
+          ) : (
+            <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
+              <Spinner className="h-5 w-5 animate-spin text-violet-400" />
+            </div>
+          )
+        )}
 
-            {images.map((image) => (
-              <ImageCard key={image.id} image={image} />
-            ))}
+        {/* Empty state */}
+        {images.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-xs text-slate-700">No images yet</p>
           </div>
         )}
+
+        {/* Thumbnails — newest first */}
+        {images.map((image) => (
+          <ImageCard
+            key={image.id}
+            image={image}
+            focused={image.id === focusedImageId}
+          />
+        ))}
       </div>
     </div>
   );

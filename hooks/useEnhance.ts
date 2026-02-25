@@ -77,7 +77,6 @@ export function useEnhance(): UseEnhanceReturn {
         : baseText;
 
       const activeCharacters = form.characters.filter((c) => c.enabled);
-      const hasCharacters = activeCharacters.length > 0;
 
       let finalText = prefixedText;
       if (form.qualityTags) {
@@ -145,35 +144,33 @@ export function useEnhance(): UseEnhanceReturn {
           reference_image_multiple: [],
           reference_information_extracted_multiple: [],
           reference_strength_multiple: [],
-          ...(hasCharacters && {
-            v4_prompt: {
-              caption: {
-                base_caption: finalText,
-                char_captions: activeCharacters.map((c) => ({
-                  char_caption: c.prompt,
-                  centers: [c.center],
-                })),
-              },
-              use_coords: form.useCoords,
-              use_order: true,
+          v4_prompt: {
+            caption: {
+              base_caption: finalText,
+              char_captions: activeCharacters.map((c) => ({
+                char_caption: c.prompt,
+                centers: [c.center],
+              })),
             },
-            v4_negative_prompt: {
-              caption: {
-                base_caption: baseNegPrompt,
-                char_captions: activeCharacters.map((c) => ({
-                  char_caption: c.uc,
-                  centers: [c.center],
-                })),
-              },
-              legacy_uc: false,
+            use_coords: form.useCoords,
+            use_order: true,
+          },
+          v4_negative_prompt: {
+            caption: {
+              base_caption: baseNegPrompt,
+              char_captions: activeCharacters.map((c) => ({
+                char_caption: c.uc,
+                centers: [c.center],
+              })),
             },
-            characterPrompts: activeCharacters.map((c) => ({
-              prompt: c.prompt,
-              uc: c.uc,
-              center: c.center,
-              enabled: c.enabled,
-            })),
-          }),
+            legacy_uc: false,
+          },
+          characterPrompts: activeCharacters.map((c) => ({
+            prompt: c.prompt,
+            uc: c.uc,
+            center: c.center,
+            enabled: c.enabled,
+          })),
         },
       };
 

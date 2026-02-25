@@ -19,6 +19,10 @@ interface SessionState {
   addImages: (images: GeneratedImage[]) => void;
   removeImage: (id: string) => void;
   clearImages: () => void;
+
+  // The image currently displayed in the center viewer
+  focusedImageId: string | null;
+  setFocusedImageId: (id: string | null) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -46,18 +50,29 @@ export const useSessionStore = create<SessionState>((set) => ({
   images: [],
 
   addImages: (newImages) =>
-    set((state) => ({ images: [...newImages, ...state.images] })),
+    set((state) => ({
+      images: [...newImages, ...state.images],
+      // Auto-focus the newest image
+      focusedImageId: newImages[0]?.id ?? state.focusedImageId,
+    })),
 
   removeImage: (id) =>
     set((state) => {
       const target = state.images.find((img) => img.id === id);
       if (target) URL.revokeObjectURL(target.url);
-      return { images: state.images.filter((img) => img.id !== id) };
+      const newImages = state.images.filter((img) => img.id !== id);
+      // If we removed the focused image, focus the first remaining one
+      const focusedImageId =
+        state.focusedImageId === id ? (newImages[0]?.id ?? null) : state.focusedImageId;
+      return { images: newImages, focusedImageId };
     }),
 
   clearImages: () =>
     set((state) => {
       state.images.forEach((img) => URL.revokeObjectURL(img.url));
-      return { images: [] };
+      return { images: [], focusedImageId: null };
     }),
+
+  focusedImageId: null,
+  setFocusedImageId: (id) => set({ focusedImageId: id }),
 }));

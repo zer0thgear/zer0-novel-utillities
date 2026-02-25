@@ -80,7 +80,6 @@ export function PromptForm() {
 
   function buildRequest(promptText: string, seed: number): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
-    const hasCharacters = activeCharacters.length > 0;
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
     const prefixes: string[] = [];
@@ -124,6 +123,7 @@ export function PromptForm() {
       model: form.model,
       action: 'generate',
       parameters: {
+        params_version: 3,
         width: form.width,
         height: form.height,
         scale: form.scale,
@@ -141,43 +141,40 @@ export function PromptForm() {
         cfg_rescale: form.cfgRescale,
         noise_schedule: form.noiseSchedule,
         skip_cfg_above_sigma: 59.04722600415217,
+        use_coords: form.useCoords,
         seed,
         negative_prompt: baseNegPrompt,
         reference_image_multiple: [],
         reference_information_extracted_multiple: [],
         reference_strength_multiple: [],
-        // V4 fields — only included when at least one character is active
-        ...(hasCharacters && {
-          params_version: 3,
+        v4_prompt: {
+          caption: {
+            base_caption: finalText,
+            char_captions: activeCharacters.map((c) => ({
+              char_caption: c.prompt,
+              centers: [c.center],
+            })),
+          },
           use_coords: form.useCoords,
-          v4_prompt: {
-            caption: {
-              base_caption: finalText,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
-                centers: [c.center],
-              })),
-            },
-            use_coords: form.useCoords,
-            use_order: true,
+          use_order: true,
+        },
+        v4_negative_prompt: {
+          caption: {
+            base_caption: baseNegPrompt,
+            char_captions: activeCharacters.map((c) => ({
+              char_caption: c.uc,
+              centers: [c.center],
+            })),
           },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: baseNegPrompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.uc,
-                centers: [c.center],
-              })),
-            },
-            legacy_uc: false,
-          },
-          characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
-            uc: c.uc,
-            center: c.center,
-            enabled: c.enabled,
-          })),
-        }),
+          legacy_uc: false,
+        },
+        legacy_uc: false,
+        characterPrompts: activeCharacters.map((c) => ({
+          prompt: c.prompt,
+          uc: c.uc,
+          center: c.center,
+          enabled: c.enabled,
+        })),
       },
     };
   }
