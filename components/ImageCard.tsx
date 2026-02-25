@@ -27,6 +27,16 @@ export function ImageCard({ image, focused }: ImageCardProps) {
         className="w-full object-cover"
       />
 
+      {/* Enhanced badge — semi-transparent sparkle icon */}
+      {image.sourceImageId && (
+        <div
+          className="pointer-events-none absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-black/50 px-1 py-0.5 text-[9px] font-semibold text-violet-300/80"
+          title="Enhanced image"
+        >
+          ✦
+        </div>
+      )}
+
       {/* Remove button — visible on hover */}
       <button
         type="button"

@@ -59,7 +59,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   removeImage: (id) =>
     set((state) => {
       const target = state.images.find((img) => img.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target) {
+        URL.revokeObjectURL(target.url);
+        if (target.sourceImageUrl) URL.revokeObjectURL(target.sourceImageUrl);
+      }
       const newImages = state.images.filter((img) => img.id !== id);
       // If we removed the focused image, focus the first remaining one
       const focusedImageId =
@@ -69,7 +72,10 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   clearImages: () =>
     set((state) => {
-      state.images.forEach((img) => URL.revokeObjectURL(img.url));
+      state.images.forEach((img) => {
+        URL.revokeObjectURL(img.url);
+        if (img.sourceImageUrl) URL.revokeObjectURL(img.sourceImageUrl);
+      });
       return { images: [], focusedImageId: null };
     }),
 

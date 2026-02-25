@@ -4,8 +4,14 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
 
+interface GenerateOptions {
+  /** If this generation is an enhancement, the source image's ID and a fresh object URL. */
+  sourceImageId?: string;
+  sourceImageUrl?: string;
+}
+
 interface UseGenerateReturn {
-  generate: (request: NovelAIGenerateRequest) => Promise<boolean>;
+  generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<boolean>;
   error: string | null;
   clearError: () => void;
 }
@@ -25,7 +31,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
 
-  const generateStandard = async (request: NovelAIGenerateRequest): Promise<boolean> => {
+  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
     setError(null);
     try {
       const response = await fetch('/api/generate', {
@@ -56,6 +62,8 @@ export function useGenerate(): UseGenerateReturn {
         parameters: request.parameters,
         timestamp: now + i,
         seed: request.parameters.seed + i,
+        sourceImageId: opts?.sourceImageId,
+        sourceImageUrl: opts?.sourceImageUrl,
       }));
 
       addImages(images);
@@ -68,7 +76,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Streaming (SSE) generation ─────────────────────────────────────────────
 
-  const generateStreaming = async (request: NovelAIGenerateRequest): Promise<boolean> => {
+  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
     setError(null);
     try {
       const response = await fetch('/api/generate-stream', {
@@ -164,6 +172,8 @@ export function useGenerate(): UseGenerateReturn {
             parameters: request.parameters,
             timestamp: Date.now(),
             seed: request.parameters.seed,
+            sourceImageId: opts?.sourceImageId,
+            sourceImageUrl: opts?.sourceImageUrl,
           }]);
           finalImageAdded = true;
           setStreamPreview(null);
@@ -216,12 +226,12 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Public generate function ────────────────────────────────────────────────
 
-  const generate = async (request: NovelAIGenerateRequest): Promise<boolean> => {
+  const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
     if (!apiKey) {
       setError('No API key set. Please enter your NovelAI API key.');
       return false;
     }
-    return streamingMode ? generateStreaming(request) : generateStandard(request);
+    return streamingMode ? generateStreaming(request, opts) : generateStandard(request, opts);
   };
 
   return { generate, error, clearError: () => setError(null) };

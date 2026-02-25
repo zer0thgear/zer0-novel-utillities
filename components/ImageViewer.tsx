@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { downloadImage } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -29,14 +29,28 @@ export function ImageViewer() {
   const [enhanceLevel, setEnhanceLevel] = useState<EnhanceLevelNum>(3);
   const [enhanceUpscale, setEnhanceUpscale] = useState(false);
   const [seedCopied, setSeedCopied] = useState(false);
+  // True while the "view original" button is held down
+  const [viewingOriginal, setViewingOriginal] = useState(false);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
+
+  // Reset transient state whenever the focused image changes
+  useEffect(() => {
+    setViewingOriginal(false);
+    setShowEnhance(false);
+  }, [focusedImageId]);
 
   const handleEnhance = async () => {
     if (!focusedImage) return;
     setShowEnhance(false);
     await enhance(focusedImage, enhanceLevel, enhanceUpscale);
   };
+
+  // The URL to display — switches to source while "view original" is held
+  const displayUrl =
+    viewingOriginal && focusedImage?.sourceImageUrl
+      ? focusedImage.sourceImageUrl
+      : focusedImage?.url;
 
   return (
     <div className="flex h-full flex-col bg-slate-950">
@@ -58,10 +72,10 @@ export function ImageViewer() {
             <span className="text-sm">Generating…</span>
           </div>
         ) : focusedImage ? (
-          /* Focused image */
+          /* Focused image (or original when held) */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={focusedImage.url}
+            src={displayUrl}
             alt={focusedImage.prompt}
             className="max-h-full max-w-full object-contain"
           />
@@ -150,6 +164,25 @@ export function ImageViewer() {
             {focusedImage.prompt}
           </p>
           <div className="flex flex-shrink-0 items-center gap-2">
+            {/* "Hold to view original" — only shown for enhanced images */}
+            {focusedImage.sourceImageUrl && (
+              <button
+                type="button"
+                title="Hold to compare with original"
+                onMouseDown={() => setViewingOriginal(true)}
+                onMouseUp={() => setViewingOriginal(false)}
+                onMouseLeave={() => setViewingOriginal(false)}
+                onTouchStart={() => setViewingOriginal(true)}
+                onTouchEnd={() => setViewingOriginal(false)}
+                className={`select-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  viewingOriginal
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                {viewingOriginal ? 'Original' : 'Hold: Original'}
+              </button>
+            )}
             <button
               type="button"
               title="Use this seed"

@@ -140,4 +140,7 @@ export interface GeneratedImage {
   parameters: NovelAIParameters;
   timestamp: number;
   seed: number;
+  // Enhancement provenance — set when this image was produced by img2img/enhance
+  sourceImageId?: string;   // ID of the source image in the session
+  sourceImageUrl?: string;  // Separate object URL for the source (survives source deletion)
 }
