@@ -87,45 +87,48 @@ export function HistoryStrip() {
         </div>
       )}
 
-      {/* Thumbnail list */}
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {/* Loading placeholder — newest item slot */}
-        {isLoading && (
-          streamPreview ? (
-            <div className="relative overflow-hidden rounded-lg border border-violet-500/50 bg-slate-900">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={streamPreview}
-                alt="Generating…"
-                className="w-full object-cover opacity-80"
-              />
-              <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-gradient-to-t from-black/70 pb-1.5 pt-3 text-xs text-slate-300">
-                <Spinner className="h-2.5 w-2.5 animate-spin text-violet-400" />
-                Generating…
+      {/* Scroll container — constrained height, scrolls */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Layout container — unconstrained height, grows with content */}
+        <div className="flex flex-col gap-2 p-2">
+          {/* Loading placeholder — newest item slot */}
+          {isLoading && (
+            streamPreview ? (
+              <div className="relative overflow-hidden rounded-lg border border-violet-500/50 bg-slate-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={streamPreview}
+                  alt="Generating…"
+                  className="w-full opacity-80"
+                />
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-gradient-to-t from-black/70 pb-1.5 pt-3 text-xs text-slate-300">
+                  <Spinner className="h-2.5 w-2.5 animate-spin text-violet-400" />
+                  Generating…
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
-              <Spinner className="h-5 w-5 animate-spin text-violet-400" />
-            </div>
-          )
-        )}
+            ) : (
+              <div className="flex aspect-[2/3] animate-pulse items-center justify-center rounded-lg border border-violet-500/30 bg-slate-800/60">
+                <Spinner className="h-5 w-5 animate-spin text-violet-400" />
+              </div>
+            )
+          )}
 
-        {/* Empty state */}
-        {images.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-xs text-slate-700">No images yet</p>
-          </div>
-        )}
+          {/* Empty state */}
+          {images.length === 0 && !isLoading && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <p className="text-xs text-slate-700">No images yet</p>
+            </div>
+          )}
 
-        {/* Thumbnails — newest first */}
-        {images.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            focused={image.id === focusedImageId}
-          />
-        ))}
+          {/* Thumbnails — newest first */}
+          {images.map((image) => (
+            <ImageCard
+              key={image.id}
+              image={image}
+              focused={image.id === focusedImageId}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
