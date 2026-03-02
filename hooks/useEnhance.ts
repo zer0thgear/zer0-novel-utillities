@@ -85,6 +85,8 @@ export function useEnhance(): UseEnhanceReturn {
           activeCharacters.some((c) => c.prompt.includes('Text:'));
         finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
       }
+      // Always append enhance-specific negative weight tag
+      finalText = finalText + ', -2::upscaled, blurry::';
 
       // ── Negative prompt assembly ───────────────────────────────────────────
       const baseNegPrompt = (() => {
