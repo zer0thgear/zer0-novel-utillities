@@ -81,8 +81,8 @@ export function useEnhance(): UseEnhanceReturn {
       let finalText = prefixedText;
       if (form.qualityTags) {
         const hasTextToken =
-          form.basePrompts.some((p) => p.text.includes('Text:')) ||
-          form.characters.some((c) => c.prompt.includes('Text:'));
+          baseText.includes('Text:') ||
+          activeCharacters.some((c) => c.prompt.includes('Text:'));
         finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
       }
 

@@ -89,13 +89,13 @@ export function PromptForm() {
       prefixes.length > 0 ? `${prefixes.join(', ')}, ${promptText}` : promptText;
 
     // ── Quality tag suffix ─────────────────────────────────────────────────────
-    // 'no text' is only appended when 'Text:' is absent from ALL base prompts
-    // and ALL character prompts (case-sensitive per spec).
+    // 'no text' is only appended when 'Text:' is absent from the current prompt
+    // and all active character prompts (case-sensitive per spec).
     let finalText = prefixedText;
     if (form.qualityTags) {
       const hasTextToken =
-        form.basePrompts.some((p) => p.text.includes('Text:')) ||
-        form.characters.some((c) => c.prompt.includes('Text:'));
+        promptText.includes('Text:') ||
+        activeCharacters.some((c) => c.prompt.includes('Text:'));
       finalText =
         prefixedText +
         ', very aesthetic, masterpiece' +
