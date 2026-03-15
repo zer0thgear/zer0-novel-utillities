@@ -15,10 +15,15 @@ export type PromptMode = 'single' | 'batch';
 
 export type NovelAIModel =
   | 'nai-diffusion-4-5-full'
+  | 'nai-diffusion-4-5-full-inpainting'
   | 'nai-diffusion-4-curated-preview'
+  | 'nai-diffusion-4-curated-inpainting'
   | 'nai-diffusion-4-full-preview'
+  | 'nai-diffusion-4-full-inpainting'
   | 'nai-diffusion-3'
-  | 'nai-diffusion-furry-3';
+  | 'nai-diffusion-3-inpainting'
+  | 'nai-diffusion-furry-3'
+  | 'nai-diffusion-furry-3-inpainting';
 
 export type NovelAISampler =
   | 'k_euler'
@@ -121,12 +126,15 @@ export interface NovelAIParameters {
   legacy_v3_extend?: boolean;
   normalize_reference_strength_multiple?: boolean;
   legacy_uc?: boolean;
+  // inpainting fields
+  mask?: string;
+  img2img?: { strength: number; color_correct: boolean };
 }
 
 export interface NovelAIGenerateRequest {
   input: string;
   model: NovelAIModel;
-  action: 'generate' | 'img2img';
+  action: 'generate' | 'img2img' | 'infill';
   parameters: NovelAIParameters;
 }
 

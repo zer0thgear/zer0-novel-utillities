@@ -5,6 +5,8 @@ import { downloadImage } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
+import { InpaintModal } from './InpaintModal';
+import { EditModal } from './EditModal';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -31,6 +33,8 @@ export function ImageViewer() {
   const [seedCopied, setSeedCopied] = useState(false);
   // True while the "view original" button is held down
   const [viewingOriginal, setViewingOriginal] = useState(false);
+  const [showInpaint, setShowInpaint] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
 
@@ -38,6 +42,8 @@ export function ImageViewer() {
   useEffect(() => {
     setViewingOriginal(false);
     setShowEnhance(false);
+    setShowInpaint(false);
+    setShowEdit(false);
   }, [focusedImageId]);
 
   const handleEnhance = async () => {
@@ -54,6 +60,12 @@ export function ImageViewer() {
 
   return (
     <div className="flex h-full flex-col bg-slate-950">
+      {showInpaint && focusedImage && (
+        <InpaintModal image={focusedImage} onClose={() => setShowInpaint(false)} />
+      )}
+      {showEdit && focusedImage && (
+        <EditModal image={focusedImage} onClose={() => setShowEdit(false)} />
+      )}
 
       {/* ── Main image area ── */}
       <div className="flex flex-1 min-h-0 items-center justify-center">
@@ -183,6 +195,20 @@ export function ImageViewer() {
                 {viewingOriginal ? 'Original' : 'Hold: Original'}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowEdit(true)}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInpaint(true)}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Inpaint
+            </button>
             <button
               type="button"
               title="Use this seed"
