@@ -34,9 +34,9 @@ export function useGenerate(): UseGenerateReturn {
   const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
     setError(null);
     try {
-      const response = await fetch('/api/generate', {
+      const response = await fetch('https://image.novelai.net/ai/generate-image', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(request),
       });
 
@@ -79,9 +79,9 @@ export function useGenerate(): UseGenerateReturn {
   const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
     setError(null);
     try {
-      const response = await fetch('/api/generate-stream', {
+      const response = await fetch('https://image.novelai.net/ai/generate-image-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(request),
       });
 
@@ -144,7 +144,7 @@ export function useGenerate(): UseGenerateReturn {
             // Detect JPEG (FF D8) vs PNG (89 50) from magic bytes
             const mime =
               bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
-            setStreamPreview(URL.createObjectURL(new Blob([bytes], { type: mime })));
+            setStreamPreview(URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mime })));
           } catch { /* ignore malformed preview frames */ }
 
         } else if (isFinal) {
@@ -154,12 +154,12 @@ export function useGenerate(): UseGenerateReturn {
 
           if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
             // ZIP: extract the image inside
-            const blobs = await extractImagesFromZip(bytes.buffer);
+            const blobs = await extractImagesFromZip(bytes.buffer as ArrayBuffer);
             imageBlob = blobs[0];
           } else {
             const mime =
               bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
-            imageBlob = new Blob([bytes], { type: mime });
+            imageBlob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
           }
 
           addImages([{
