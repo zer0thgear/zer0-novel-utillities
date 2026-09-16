@@ -14,6 +14,10 @@ export type PromptMode = 'single' | 'batch';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type NovelAIModel =
+  | 'nai-diffusion-5-full'
+  | 'nai-diffusion-5-full-inpainting'
+  | 'nai-diffusion-5-curated'
+  | 'nai-diffusion-5-curated-inpainting'
   | 'nai-diffusion-4-5-full'
   | 'nai-diffusion-4-5-full-inpainting'
   | 'nai-diffusion-4-curated-preview'
@@ -136,6 +140,35 @@ export interface NovelAIGenerateRequest {
   model: NovelAIModel;
   action: 'generate' | 'img2img' | 'infill';
   parameters: NovelAIParameters;
+}
+
+// ─── Director Tools (augment-image) ──────────────────────────────────────────
+
+export type AugmentReqType =
+  | 'bg-removal'
+  | 'lineart'
+  | 'sketch'
+  | 'colorize'
+  | 'emotion'
+  | 'declutter';
+
+/** Body for the `request` part of a multipart POST to /ai/augment-image.
+ *  `image` is always the literal string "image" — it names the other form part. */
+export interface AugmentRequest {
+  req_type: AugmentReqType;
+  use_new_shared_trial: false; // always pay normally; avoids the recaptcha_token requirement
+  width: number;
+  height: number;
+  image: 'image';
+  prompt?: string;
+  defry?: number;
+}
+
+/** Body for the `request` part of a multipart POST to /ai/upscale. */
+export interface UpscaleRequest {
+  image: 'image';
+  model: 'nai-diffusion-5-curated'; // dedicated upscaler model, independent of the source model
+  declared_blur_sigma: number;
 }
 
 export interface GeneratedImage {

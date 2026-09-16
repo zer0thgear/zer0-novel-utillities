@@ -7,6 +7,9 @@ const API_KEY_KEY = 'novelai_api_key';
 interface SessionState {
   apiKey: string;
   setApiKey: (key: string) => void;
+  /** Loads a previously-saved key from localStorage. Must run client-side after mount
+   *  (not in the initial state) so server and client render the same HTML on hydration. */
+  hydrateApiKey: () => void;
 
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -23,17 +26,26 @@ interface SessionState {
   // The image currently displayed in the center viewer
   focusedImageId: string | null;
   setFocusedImageId: (id: string | null) => void;
+
+  // A past result loaded as the base image for the next img2img generation
+  // ("Use as Base Image"). Cleared after use or on explicit removal.
+  img2imgSource: { blob: Blob; url: string; width: number; height: number } | null;
+  setImg2imgSource: (source: { blob: Blob; url: string; width: number; height: number } | null) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
-  apiKey:
-    typeof window !== 'undefined' ? (localStorage.getItem(API_KEY_KEY) ?? '') : '',
+  apiKey: '',
 
   setApiKey: (key) => {
     if (typeof window !== 'undefined') {
       key ? localStorage.setItem(API_KEY_KEY, key) : localStorage.removeItem(API_KEY_KEY);
     }
     set({ apiKey: key });
+  },
+
+  hydrateApiKey: () => {
+    const stored = localStorage.getItem(API_KEY_KEY);
+    if (stored) set({ apiKey: stored });
   },
 
   isLoading: false,
@@ -81,4 +93,11 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   focusedImageId: null,
   setFocusedImageId: (id) => set({ focusedImageId: id }),
+
+  img2imgSource: null,
+  setImg2imgSource: (source) =>
+    set((state) => {
+      if (state.img2imgSource) URL.revokeObjectURL(state.img2imgSource.url);
+      return { img2imgSource: source };
+    }),
 }));

@@ -16,6 +16,7 @@ export interface FormSettings {
   promptMode: PromptMode;
   furMode: boolean;
   nsfwMode: boolean;
+  transparentBg: boolean;
   qualityTags: boolean;
   baseNegativeCaptions: boolean;
   negativePrompt: string;
@@ -50,6 +51,7 @@ const DEFAULTS: FormSettings = {
   promptMode: 'single',
   furMode: false,
   nsfwMode: false,
+  transparentBg: false,
   qualityTags: false,
   baseNegativeCaptions: false,
   negativePrompt: DEFAULT_NEGATIVE,

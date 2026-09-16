@@ -3,20 +3,20 @@
 import { useState } from 'react';
 import { CharacterPromptEntry } from '@/types/novelai';
 
-const MAX_ENABLED = 6;
-
 interface Props {
   characters: CharacterPromptEntry[];
   onChange: (characters: CharacterPromptEntry[]) => void;
+  /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
+  maxEnabled?: number;
 }
 
 type ActiveTab = 'prompt' | 'uc';
 
-export function CharacterPromptsEditor({ characters, onChange }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }: Props) {
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
 
   const enabledCount = characters.filter((c) => c.enabled).length;
-  const atCap = enabledCount >= MAX_ENABLED;
+  const atCap = enabledCount >= maxEnabled;
 
   const addCharacter = () => {
     const entry: CharacterPromptEntry = {
@@ -59,7 +59,7 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
                 atCap ? 'text-violet-400' : 'text-slate-600'
               }`}
             >
-              ({enabledCount}/{MAX_ENABLED} active)
+              ({enabledCount}/{maxEnabled} active)
             </span>
           )}
         </span>
@@ -112,7 +112,7 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
                   }`}
                   title={
                     !canEnable
-                      ? `Maximum ${MAX_ENABLED} characters can be active at once`
+                      ? `Maximum ${maxEnabled} characters can be active at once`
                       : char.enabled
                       ? 'Disable this character'
                       : 'Enable this character'

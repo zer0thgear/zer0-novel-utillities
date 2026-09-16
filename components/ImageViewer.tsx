@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { downloadImage } from '@/lib/imageUtils';
+import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
+import { useVariations } from '@/hooks/useVariations';
+import { useUpscale } from '@/hooks/useUpscale';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
+import { DirectorToolsModal } from './DirectorToolsModal';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -22,7 +25,7 @@ function Spinner({ className }: { className?: string }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ImageViewer() {
-  const { images, focusedImageId, isLoading, streamPreview } = useSessionStore();
+  const { images, focusedImageId, isLoading, streamPreview, setImg2imgSource } = useSessionStore();
   const setSeed = useSettingsStore((s) => s.set);
 
   const focusedImage = images.find((img) => img.id === focusedImageId) ?? null;
@@ -35,8 +38,12 @@ export function ImageViewer() {
   const [viewingOriginal, setViewingOriginal] = useState(false);
   const [showInpaint, setShowInpaint] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showDirectorTools, setShowDirectorTools] = useState(false);
+  const [baseImageSet, setBaseImageSet] = useState(false);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
+  const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
+  const { upscale, isUpscaling, error: upscaleError, clearError: clearUpscaleError } = useUpscale();
 
   // Reset transient state whenever the focused image changes
   useEffect(() => {
@@ -44,12 +51,25 @@ export function ImageViewer() {
     setShowEnhance(false);
     setShowInpaint(false);
     setShowEdit(false);
+    setShowDirectorTools(false);
+    setBaseImageSet(false);
   }, [focusedImageId]);
 
   const handleEnhance = async () => {
     if (!focusedImage) return;
     setShowEnhance(false);
     await enhance(focusedImage, enhanceLevel, enhanceUpscale);
+  };
+
+  const handleUseAsBase = async () => {
+    if (!focusedImage) return;
+    const { width, height } = await getImageDimensions(focusedImage.blob);
+    // A fresh object URL — the store revokes this one on removal, and must not
+    // share the URL already displaying focusedImage in the gallery/history.
+    const url = URL.createObjectURL(focusedImage.blob);
+    setImg2imgSource({ blob: focusedImage.blob, url, width, height });
+    setBaseImageSet(true);
+    setTimeout(() => setBaseImageSet(false), 1200);
   };
 
   // The URL to display — switches to source while "view original" is held
@@ -65,6 +85,9 @@ export function ImageViewer() {
       )}
       {showEdit && focusedImage && (
         <EditModal image={focusedImage} onClose={() => setShowEdit(false)} />
+      )}
+      {showDirectorTools && focusedImage && (
+        <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
       )}
 
       {/* ── Main image area ── */}
@@ -122,7 +145,7 @@ export function ImageViewer() {
                   }`}
                 >
                   <span className="font-semibold leading-tight">{l.level}</span>
-                  <span className="text-[10px] leading-tight opacity-70">{l.anlas}A</span>
+                  <span className="text-[10px] leading-tight opacity-70">{l.strength}</span>
                 </button>
               ))}
             </div>
@@ -163,6 +186,20 @@ export function ImageViewer() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Variations / Upscale errors ── */}
+      {(variationsError || upscaleError) && focusedImage && !isLoading && (
+        <div className="flex items-start justify-between gap-2 border-t border-red-700/40 bg-red-900/30 px-4 py-1.5 text-xs text-red-300">
+          <span>{variationsError ?? upscaleError}</span>
+          <button
+            type="button"
+            onClick={() => { clearVariationsError(); clearUpscaleError(); }}
+            className="flex-shrink-0 text-red-500 transition-colors hover:text-red-300"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -208,6 +245,37 @@ export function ImageViewer() {
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
             >
               Inpaint
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDirectorTools(true)}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Tools
+            </button>
+            <button
+              type="button"
+              onClick={() => { clearVariationsError(); generateVariations(focusedImage); }}
+              disabled={isGeneratingVariations}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isGeneratingVariations ? 'Generating…' : 'Variations'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { clearUpscaleError(); upscale(focusedImage); }}
+              disabled={isUpscaling}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isUpscaling ? 'Upscaling…' : 'Upscale'}
+            </button>
+            <button
+              type="button"
+              title="Use this image as the base for your next generation"
+              onClick={handleUseAsBase}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              {baseImageSet ? 'Base set!' : 'Use as Base'}
             </button>
             <button
               type="button"

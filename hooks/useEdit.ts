@@ -67,6 +67,7 @@ export function useEdit(): UseEditReturn {
           activeCharacters.some((c) => c.prompt.includes('Text:'));
         finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
       }
+      if (form.transparentBg) finalText += ', transparent background';
 
       // ── Negative prompt assembly ───────────────────────────────────────────
       const baseNegPrompt = (() => {
