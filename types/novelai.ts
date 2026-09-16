@@ -171,6 +171,30 @@ export interface UpscaleRequest {
   declared_blur_sigma: number;
 }
 
+// ─── Subscription / Opus usage (GET /user/subscription) ──────────────────────
+
+export interface NovelAISubscription {
+  tier: number; // 0=Paper, 1=Tablet, 2=Scroll, 3=Opus
+  active: boolean;
+  expiresAt: number; // unix seconds
+  perks: {
+    maxPriorityActions: number;
+    startPriority: number;
+    contextTokens: number;
+    unlimitedMaxPriority: boolean;
+    moduleTrainingSteps: number;
+  };
+  accountType: number;
+  isGracePeriod: boolean;
+  isPaypal: boolean;
+  /** Opus's free V5 generation allowance (normal resolution, <=28 steps). */
+  usage: {
+    percent: number; // 0-100+, clamped display-side; recovery pauses above 100
+    isNegative: boolean;
+    timeUntilNextPercent: number; // seconds until the next 1% tick
+  };
+}
+
 export interface GeneratedImage {
   id: string;
   url: string; // object URL - freed on session clear / image removal

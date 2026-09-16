@@ -13,6 +13,7 @@ import {
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
+import { OpusUsageMeter } from './OpusUsageMeter';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -262,6 +263,8 @@ export function PromptForm() {
           Change key
         </button>
       </div>
+
+      <OpusUsageMeter />
 
       {/* Error banner */}
       {error && (
