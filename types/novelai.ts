@@ -1,11 +1,24 @@
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
 
+/** A toggleable sub-prompt appended to its parent prompt's text when enabled —
+ *  e.g. splitting an artist tag or location/composition details out of a base
+ *  prompt, or appearance/clothing/actions out of a character prompt. UI-only;
+ *  never sent to the API directly, only as composed text (see lib/promptTidbits.ts). */
+export interface PromptTidbit {
+  id: string;
+  label: string;
+  text: string;
+  enabled: boolean;
+}
+
 /** A named base prompt entry in the prompt list. */
 export interface BasePrompt {
   id: string;
   label: string;
   text: string;
   selected: boolean;
+  /** Optional — absent on prompts persisted before this feature existed. */
+  tidbits?: PromptTidbit[];
 }
 
 /** Single: one prompt selected; Batch: each selected prompt generates one image. */
@@ -60,6 +73,8 @@ export interface CharacterPromptEntry extends CharacterPrompt {
   id: string;
   /** Display name shown in the editor header. Not sent to the API. */
   label?: string;
+  /** Optional — absent on characters persisted before this feature existed. */
+  tidbits?: PromptTidbit[];
 }
 
 // ─── V4 prompt structures ─────────────────────────────────────────────────────

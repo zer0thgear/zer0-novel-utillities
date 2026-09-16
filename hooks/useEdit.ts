@@ -3,6 +3,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,21 +51,23 @@ export function useEdit(): UseEditReturn {
       const imageB64 = await blobToBase64(editedBlob);
 
       // ── Prompt assembly ────────────────────────────────────────────────────
+      const activeCharacters = form.characters.filter((c) => c.enabled);
+      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+
       const prefixes: string[] = [];
       if (form.furMode)  prefixes.push('fur dataset');
       if (form.nsfwMode) prefixes.push('nsfw');
-      const baseText = form.basePrompts.find((p) => p.selected)?.text ?? '';
+      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
+      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
       const prefixedText = prefixes.length > 0
         ? `${prefixes.join(', ')}, ${baseText}`
         : baseText;
-
-      const activeCharacters = form.characters.filter((c) => c.enabled);
 
       let finalText = prefixedText;
       if (form.qualityTags) {
         const hasTextToken =
           baseText.includes('Text:') ||
-          activeCharacters.some((c) => c.prompt.includes('Text:'));
+          activeCharacters.some((c) => charPrompt(c).includes('Text:'));
         finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
       }
       if (form.transparentBg) finalText += ', transparent background';
@@ -73,8 +76,8 @@ export function useEdit(): UseEditReturn {
       const baseNegPrompt = (() => {
         if (!form.baseNegativeCaptions) return form.negativePrompt;
         const searchText = [
-          ...form.basePrompts.map((p) => p.text),
-          ...form.characters.map((c) => c.prompt),
+          ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+          ...form.characters.map((c) => charPrompt(c)),
         ].join(' ').toLowerCase();
         const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
         if (tags.length === 0) return form.negativePrompt;
@@ -131,7 +134,7 @@ export function useEdit(): UseEditReturn {
             caption: {
               base_caption: finalText,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
+                char_caption: charPrompt(c),
                 centers: [c.center],
               })),
             },
@@ -149,7 +152,7 @@ export function useEdit(): UseEditReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
+            prompt: charPrompt(c),
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,

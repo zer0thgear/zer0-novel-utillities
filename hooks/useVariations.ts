@@ -3,6 +3,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
@@ -39,6 +40,7 @@ export function useVariations(): UseVariationsReturn {
     try {
       const imageB64 = await blobToBase64(image.blob);
       const activeCharacters = form.characters.filter((c) => c.enabled);
+      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
 
@@ -88,7 +90,7 @@ export function useVariations(): UseVariationsReturn {
             caption: {
               base_caption: image.prompt,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
+                char_caption: charPrompt(c),
                 centers: [c.center],
               })),
             },
@@ -106,7 +108,7 @@ export function useVariations(): UseVariationsReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
+            prompt: charPrompt(c),
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,

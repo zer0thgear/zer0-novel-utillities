@@ -14,6 +14,7 @@ import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { OpusUsageMeter } from './OpusUsageMeter';
+import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export function PromptForm() {
 
   function buildRequest(promptText: string, seed: number, baseImageB64?: string): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
+    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
     const prefixes: string[] = [];
@@ -111,7 +113,7 @@ export function PromptForm() {
     if (form.qualityTags) {
       const hasTextToken =
         promptText.includes('Text:') ||
-        activeCharacters.some((c) => c.prompt.includes('Text:'));
+        activeCharacters.some((c) => charPrompt(c).includes('Text:'));
       finalText =
         prefixedText +
         ', very aesthetic, masterpiece' +
@@ -125,8 +127,8 @@ export function PromptForm() {
     const baseNegPrompt = (() => {
       if (!form.baseNegativeCaptions) return form.negativePrompt;
       const searchText = [
-        ...form.basePrompts.map((p) => p.text),
-        ...form.characters.map((c) => c.prompt),
+        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+        ...form.characters.map((c) => charPrompt(c)),
       ].join(' ').toLowerCase();
       const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
       if (tags.length === 0) return form.negativePrompt;
@@ -169,7 +171,7 @@ export function PromptForm() {
           caption: {
             base_caption: finalText,
             char_captions: activeCharacters.map((c) => ({
-              char_caption: c.prompt,
+              char_caption: charPrompt(c),
               centers: [c.center],
             })),
           },
@@ -188,7 +190,7 @@ export function PromptForm() {
         },
         legacy_uc: false,
         characterPrompts: activeCharacters.map((c) => ({
-          prompt: c.prompt,
+          prompt: charPrompt(c),
           uc: c.uc,
           center: c.center,
           enabled: c.enabled,
@@ -211,7 +213,7 @@ export function PromptForm() {
 
       const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
       setIsLoading(true);
-      await generate(buildRequest(selected.text, seed, baseImageB64));
+      await generate(buildRequest(composeWithTidbits(selected.text, selected.tidbits), seed, baseImageB64));
       setIsLoading(false);
     } else {
       // Batch mode — generate one image per selected prompt sequentially
@@ -224,7 +226,8 @@ export function PromptForm() {
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-        const ok = await generate(buildRequest(selectedPrompts[i].text, seed, baseImageB64));
+        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits);
+        const ok = await generate(buildRequest(promptText, seed, baseImageB64));
         if (!ok) break; // stop batch on error
       }
 
