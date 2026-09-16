@@ -17,6 +17,35 @@ export async function extractImagesFromZip(zipBuffer: ArrayBuffer): Promise<Blob
   return Promise.all(pngEntries.map((file) => file.async('blob')));
 }
 
+/** Unwrap a single-image API response that may come back either as a zip
+ *  (magic bytes 'PK') or as a raw image blob, e.g. /ai/upscale and
+ *  /ai/augment-image, which aren't guaranteed to use the same wrapping. */
+export async function extractSingleImageResponse(buffer: ArrayBuffer, contentType: string | null): Promise<Blob> {
+  const bytes = new Uint8Array(buffer.slice(0, 4));
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b; // 'PK'
+  if (isZip) {
+    const [blob] = await extractImagesFromZip(buffer);
+    return blob;
+  }
+  return new Blob([buffer], { type: contentType ?? 'image/png' });
+}
+
+/** Read the pixel dimensions of an image blob (e.g. an augment/upscale result,
+ *  whose output size isn't known ahead of the request). */
+export async function getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = reject;
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /** Download a single generated image as a PNG. */
 export function downloadImage(image: GeneratedImage) {
   const date = new Date(image.timestamp).toISOString().replace(/[:.]/g, '-').slice(0, 19);

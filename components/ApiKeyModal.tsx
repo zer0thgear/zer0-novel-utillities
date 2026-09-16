@@ -1,22 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/sessionStore';
 
 export function ApiKeyModal() {
-  const { apiKey, setApiKey } = useSessionStore();
+  const { apiKey, setApiKey, hydrateApiKey } = useSessionStore();
   const [input, setInput] = useState('');
-  const [isOpen, setIsOpen] = useState(!apiKey);
 
-  // Don't render once dismissed
-  if (!isOpen) return null;
+  // Load a previously-saved key after mount — see hydrateApiKey for why this
+  // can't happen in the store's initial state.
+  useEffect(() => {
+    hydrateApiKey();
+  }, [hydrateApiKey]);
+
+  // Don't render once a key is present
+  if (apiKey) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
     setApiKey(trimmed);
-    setIsOpen(false);
   };
 
   return (

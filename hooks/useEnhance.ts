@@ -3,15 +3,22 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // ─── Enhance level config ─────────────────────────────────────────────────────
 
+// Anlas cost depends only on resolution, steps, and sample count — never on
+// strength/noise (confirmed live: varying either on NovelAI's own img2img UI
+// left the displayed cost unchanged). All five levels use the same steps as
+// the main form, so they all cost the same; there's deliberately no per-level
+// anlas figure here anymore — a prior version showed five different fabricated
+// numbers, which was actively misleading. See memory/project_novelai_editing_tools_api.md.
 export const ENHANCE_LEVELS = [
-  { level: 1 as const, strength: 0.2, noise: 0,   anlas: 9  },
-  { level: 2 as const, strength: 0.4, noise: 0,   anlas: 18 },
-  { level: 3 as const, strength: 0.5, noise: 0,   anlas: 23 },
-  { level: 4 as const, strength: 0.6, noise: 0,   anlas: 27 },
-  { level: 5 as const, strength: 0.7, noise: 0.1, anlas: 32 },
+  { level: 1 as const, strength: 0.2, noise: 0 },
+  { level: 2 as const, strength: 0.4, noise: 0 },
+  { level: 3 as const, strength: 0.5, noise: 0 },
+  { level: 4 as const, strength: 0.6, noise: 0 },
+  { level: 5 as const, strength: 0.7, noise: 0.1 },
 ];
 
 export type EnhanceLevelNum = 1 | 2 | 3 | 4 | 5;
@@ -68,23 +75,26 @@ export function useEnhance(): UseEnhanceReturn {
       const height = upscale ? round64(image.parameters.height * 1.5) : image.parameters.height;
 
       // ── Prompt assembly (mirrors PromptForm.buildRequest) ──────────────────
+      const activeCharacters = form.characters.filter((c) => c.enabled);
+      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+
       const prefixes: string[] = [];
       if (form.furMode)  prefixes.push('fur dataset');
       if (form.nsfwMode) prefixes.push('nsfw');
-      const baseText = form.basePrompts.find((p) => p.selected)?.text ?? '';
+      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
+      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
       const prefixedText = prefixes.length > 0
         ? `${prefixes.join(', ')}, ${baseText}`
         : baseText;
-
-      const activeCharacters = form.characters.filter((c) => c.enabled);
 
       let finalText = prefixedText;
       if (form.qualityTags) {
         const hasTextToken =
           baseText.includes('Text:') ||
-          activeCharacters.some((c) => c.prompt.includes('Text:'));
+          activeCharacters.some((c) => charPrompt(c).includes('Text:'));
         finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
       }
+      if (form.transparentBg) finalText += ', transparent background';
       // Always append enhance-specific negative weight tag
       finalText = finalText + ', -2::upscaled, blurry::';
 
@@ -92,8 +102,8 @@ export function useEnhance(): UseEnhanceReturn {
       const baseNegPrompt = (() => {
         if (!form.baseNegativeCaptions) return form.negativePrompt;
         const searchText = [
-          ...form.basePrompts.map((p) => p.text),
-          ...form.characters.map((c) => c.prompt),
+          ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+          ...form.characters.map((c) => charPrompt(c)),
         ].join(' ').toLowerCase();
         const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
         if (tags.length === 0) return form.negativePrompt;
@@ -150,7 +160,7 @@ export function useEnhance(): UseEnhanceReturn {
             caption: {
               base_caption: finalText,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
+                char_caption: charPrompt(c),
                 centers: [c.center],
               })),
             },
@@ -168,7 +178,7 @@ export function useEnhance(): UseEnhanceReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
+            prompt: charPrompt(c),
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,

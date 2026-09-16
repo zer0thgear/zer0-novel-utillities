@@ -11,11 +11,16 @@ import {
   NovelAINoiseSchedule,
 } from '@/types/novelai';
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
+import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
+import { OpusUsageMeter } from './OpusUsageMeter';
+import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODELS: { value: NovelAIModel; label: string }[] = [
+  { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' },
+  { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
   { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
   { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
   { value: 'nai-diffusion-4-full-preview', label: 'NAI Diffusion V4 Full' },
@@ -65,21 +70,34 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider te
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function PromptForm() {
   const form = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showModifiers, setShowModifiers] = useState(false);
   const [promptTab, setPromptTab] = useState<'prompts' | 'characters'>('prompts');
+  const [showPositionCanvas, setShowPositionCanvas] = useState(false);
+  const [img2imgStrength, setImg2imgStrength] = useState(0.7);
+  const [img2imgNoise, setImg2imgNoise] = useState(0);
   const { generate, error, clearError } = useGenerate();
-  const { apiKey, setApiKey, isLoading, setIsLoading } = useSessionStore();
+  const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
 
   // ── Request builder ────────────────────────────────────────────────────
 
-  function buildRequest(promptText: string, seed: number): NovelAIGenerateRequest {
+  function buildRequest(promptText: string, seed: number, baseImageB64?: string): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
+    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
     const prefixes: string[] = [];
@@ -95,12 +113,13 @@ export function PromptForm() {
     if (form.qualityTags) {
       const hasTextToken =
         promptText.includes('Text:') ||
-        activeCharacters.some((c) => c.prompt.includes('Text:'));
+        activeCharacters.some((c) => charPrompt(c).includes('Text:'));
       finalText =
         prefixedText +
         ', very aesthetic, masterpiece' +
         (hasTextToken ? '' : ', no text');
     }
+    if (form.transparentBg) finalText += ', transparent background';
 
     // ── Base negative captions prefix ─────────────────────────────────────────
     // Tags already present (case-insensitive) in any base or character positive
@@ -108,8 +127,8 @@ export function PromptForm() {
     const baseNegPrompt = (() => {
       if (!form.baseNegativeCaptions) return form.negativePrompt;
       const searchText = [
-        ...form.basePrompts.map((p) => p.text),
-        ...form.characters.map((c) => c.prompt),
+        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+        ...form.characters.map((c) => charPrompt(c)),
       ].join(' ').toLowerCase();
       const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
       if (tags.length === 0) return form.negativePrompt;
@@ -121,11 +140,11 @@ export function PromptForm() {
     return {
       input: finalText,
       model: form.model,
-      action: 'generate',
+      action: baseImageB64 ? 'img2img' : 'generate',
       parameters: {
         params_version: 3,
-        width: form.width,
-        height: form.height,
+        width: baseImageB64 && img2imgSource ? img2imgSource.width : form.width,
+        height: baseImageB64 && img2imgSource ? img2imgSource.height : form.height,
         scale: form.scale,
         sampler: form.sampler,
         steps: form.steps,
@@ -137,12 +156,13 @@ export function PromptForm() {
         dynamic_thresholding: false,
         controlnet_strength: 1,
         legacy: false,
-        add_original_image: false,
+        add_original_image: !!baseImageB64,
         cfg_rescale: form.cfgRescale,
         noise_schedule: form.noiseSchedule,
         skip_cfg_above_sigma: 59.04722600415217,
         use_coords: form.useCoords,
         seed,
+        ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
         negative_prompt: baseNegPrompt,
         reference_image_multiple: [],
         reference_information_extracted_multiple: [],
@@ -151,7 +171,7 @@ export function PromptForm() {
           caption: {
             base_caption: finalText,
             char_captions: activeCharacters.map((c) => ({
-              char_caption: c.prompt,
+              char_caption: charPrompt(c),
               centers: [c.center],
             })),
           },
@@ -170,7 +190,7 @@ export function PromptForm() {
         },
         legacy_uc: false,
         characterPrompts: activeCharacters.map((c) => ({
-          prompt: c.prompt,
+          prompt: charPrompt(c),
           uc: c.uc,
           center: c.center,
           enabled: c.enabled,
@@ -185,13 +205,15 @@ export function PromptForm() {
     e.preventDefault();
     if (isLoading) return;
 
+    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
 
       const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
       setIsLoading(true);
-      await generate(buildRequest(selected.text, seed));
+      await generate(buildRequest(composeWithTidbits(selected.text, selected.tidbits), seed, baseImageB64));
       setIsLoading(false);
     } else {
       // Batch mode — generate one image per selected prompt sequentially
@@ -204,7 +226,8 @@ export function PromptForm() {
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-        const ok = await generate(buildRequest(selectedPrompts[i].text, seed));
+        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits);
+        const ok = await generate(buildRequest(promptText, seed, baseImageB64));
         if (!ok) break; // stop batch on error
       }
 
@@ -244,6 +267,8 @@ export function PromptForm() {
         </button>
       </div>
 
+      <OpusUsageMeter />
+
       {/* Error banner */}
       {error && (
         <div className="flex items-start justify-between gap-2 rounded-lg bg-red-900/30 border border-red-700/40 px-3 py-2 text-xs text-red-300">
@@ -258,6 +283,61 @@ export function PromptForm() {
         </div>
       )}
 
+      {/* Base image — set via "Use as Base" on a generated image */}
+      {img2imgSource && (
+        <div className="flex flex-col gap-2.5 rounded-lg border border-violet-700/40 bg-violet-950/20 px-3 py-2.5">
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={img2imgSource.url}
+              alt="Base image"
+              className="h-10 w-10 flex-shrink-0 rounded object-cover"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-violet-300">Img2Img base image</p>
+              <p className="text-xs text-slate-500">
+                {img2imgSource.width}×{img2imgSource.height} — output locked to this size
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImg2imgSource(null)}
+              className="flex-shrink-0 text-xs text-slate-500 hover:text-red-400 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
+              <span className="w-14 flex-shrink-0">Strength</span>
+              <input
+                type="range"
+                min={0.1}
+                max={0.99}
+                step={0.01}
+                value={img2imgStrength}
+                onChange={(e) => setImg2imgStrength(Number(e.target.value))}
+                className="w-full accent-violet-500"
+              />
+              <span className="w-8 flex-shrink-0 text-right">{img2imgStrength.toFixed(2)}</span>
+            </label>
+            <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
+              <span className="w-14 flex-shrink-0">Noise</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={img2imgNoise}
+                onChange={(e) => setImg2imgNoise(Number(e.target.value))}
+                className="w-full accent-violet-500"
+              />
+              <span className="w-8 flex-shrink-0 text-right">{img2imgNoise.toFixed(2)}</span>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Prompt modifiers — collapsible */}
       <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
         <button
@@ -267,9 +347,9 @@ export function PromptForm() {
         >
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Prompt Modifiers
-            {(form.furMode || form.nsfwMode || form.qualityTags || form.baseNegativeCaptions) && (
+            {(form.furMode || form.nsfwMode || form.transparentBg || form.qualityTags || form.baseNegativeCaptions) && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                ({[form.furMode && 'Fur', form.nsfwMode && 'NSFW', form.qualityTags && 'Quality', form.baseNegativeCaptions && 'Neg'].filter(Boolean).join(', ')})
+                ({[form.furMode && 'Fur', form.nsfwMode && 'NSFW', form.transparentBg && 'Alpha', form.qualityTags && 'Quality', form.baseNegativeCaptions && 'Neg'].filter(Boolean).join(', ')})
               </span>
             )}
           </span>
@@ -299,6 +379,18 @@ export function PromptForm() {
                 type="checkbox"
                 checked={form.nsfwMode}
                 onChange={(e) => form.set('nsfwMode', e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-slate-400">Transparent BG</span>
+                <p className="text-xs text-slate-600">Appends &quot;transparent background&quot; (V5 only)</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.transparentBg}
+                onChange={(e) => form.set('transparentBg', e.target.checked)}
                 className="h-4 w-4 accent-violet-500"
               />
             </label>
@@ -376,26 +468,47 @@ export function PromptForm() {
             <CharacterPromptsEditor
               characters={form.characters}
               onChange={(characters) => form.set('characters', characters)}
+              maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
             />
             {form.characters.length > 0 && (
-              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
-                <div>
-                  <span className="text-xs font-semibold text-slate-400">Use Coordinates</span>
-                  <p className="mt-0.5 text-xs text-slate-600">
-                    Place characters at their specified X/Y positions
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={form.useCoords}
-                  onChange={(e) => form.set('useCoords', e.target.checked)}
-                  className="h-4 w-4 accent-violet-500"
-                />
-              </label>
+              <>
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-400">Use Coordinates</span>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Place characters at their specified X/Y positions
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.useCoords}
+                    onChange={(e) => form.set('useCoords', e.target.checked)}
+                    className="h-4 w-4 accent-violet-500"
+                  />
+                </label>
+                {form.useCoords && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPositionCanvas(true)}
+                    className="rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5 text-xs font-semibold text-slate-400 transition-colors hover:border-violet-500/60 hover:text-violet-300"
+                  >
+                    Open Position Canvas
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
       </div>
+
+      {showPositionCanvas && (
+        <CharacterPositionCanvas
+          characters={form.characters}
+          onChange={(characters) => form.set('characters', characters)}
+          onClose={() => setShowPositionCanvas(false)}
+          aspectRatio={form.width / form.height}
+        />
+      )}
 
       {/* Negative Prompt — always visible */}
       <div>
@@ -424,10 +537,13 @@ export function PromptForm() {
         </select>
       </div>
 
-      {/* Size presets + manual inputs */}
+      {/* Size presets + manual inputs — locked to the base image's size when one is set */}
       <div>
-        <label className={labelCls}>Size</label>
-        <div className="flex flex-wrap gap-1.5 mb-2.5">
+        <label className={labelCls}>
+          Size
+          {img2imgSource && <span className="ml-1.5 normal-case font-normal text-violet-400">(locked to base image)</span>}
+        </label>
+        <div className={`flex flex-wrap gap-1.5 mb-2.5 ${img2imgSource ? 'opacity-40 pointer-events-none' : ''}`}>
           {SIZE_PRESETS.map((preset) => (
             <button
               key={`${preset.width}x${preset.height}`}
@@ -451,24 +567,26 @@ export function PromptForm() {
             <p className="mb-1 text-xs text-slate-600">Width</p>
             <input
               type="number"
-              value={form.width}
+              value={img2imgSource ? img2imgSource.width : form.width}
               onChange={(e) => form.set('width', Number(e.target.value))}
               step={64}
               min={64}
               max={2048}
-              className={inputCls}
+              disabled={!!img2imgSource}
+              className={`${inputCls} disabled:opacity-40`}
             />
           </div>
           <div>
             <p className="mb-1 text-xs text-slate-600">Height</p>
             <input
               type="number"
-              value={form.height}
+              value={img2imgSource ? img2imgSource.height : form.height}
               onChange={(e) => form.set('height', Number(e.target.value))}
               step={64}
               min={64}
               max={2048}
-              className={inputCls}
+              disabled={!!img2imgSource}
+              className={`${inputCls} disabled:opacity-40`}
             />
           </div>
         </div>

@@ -1,11 +1,24 @@
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
 
+/** A toggleable sub-prompt appended to its parent prompt's text when enabled —
+ *  e.g. splitting an artist tag or location/composition details out of a base
+ *  prompt, or appearance/clothing/actions out of a character prompt. UI-only;
+ *  never sent to the API directly, only as composed text (see lib/promptTidbits.ts). */
+export interface PromptTidbit {
+  id: string;
+  label: string;
+  text: string;
+  enabled: boolean;
+}
+
 /** A named base prompt entry in the prompt list. */
 export interface BasePrompt {
   id: string;
   label: string;
   text: string;
   selected: boolean;
+  /** Optional — absent on prompts persisted before this feature existed. */
+  tidbits?: PromptTidbit[];
 }
 
 /** Single: one prompt selected; Batch: each selected prompt generates one image. */
@@ -14,6 +27,10 @@ export type PromptMode = 'single' | 'batch';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type NovelAIModel =
+  | 'nai-diffusion-5-full'
+  | 'nai-diffusion-5-full-inpainting'
+  | 'nai-diffusion-5-curated'
+  | 'nai-diffusion-5-curated-inpainting'
   | 'nai-diffusion-4-5-full'
   | 'nai-diffusion-4-5-full-inpainting'
   | 'nai-diffusion-4-curated-preview'
@@ -56,6 +73,8 @@ export interface CharacterPromptEntry extends CharacterPrompt {
   id: string;
   /** Display name shown in the editor header. Not sent to the API. */
   label?: string;
+  /** Optional — absent on characters persisted before this feature existed. */
+  tidbits?: PromptTidbit[];
 }
 
 // ─── V4 prompt structures ─────────────────────────────────────────────────────
@@ -136,6 +155,59 @@ export interface NovelAIGenerateRequest {
   model: NovelAIModel;
   action: 'generate' | 'img2img' | 'infill';
   parameters: NovelAIParameters;
+}
+
+// ─── Director Tools (augment-image) ──────────────────────────────────────────
+
+export type AugmentReqType =
+  | 'bg-removal'
+  | 'lineart'
+  | 'sketch'
+  | 'colorize'
+  | 'emotion'
+  | 'declutter';
+
+/** Body for the `request` part of a multipart POST to /ai/augment-image.
+ *  `image` is always the literal string "image" — it names the other form part. */
+export interface AugmentRequest {
+  req_type: AugmentReqType;
+  use_new_shared_trial: false; // always pay normally; avoids the recaptcha_token requirement
+  width: number;
+  height: number;
+  image: 'image';
+  prompt?: string;
+  defry?: number;
+}
+
+/** Body for the `request` part of a multipart POST to /ai/upscale. */
+export interface UpscaleRequest {
+  image: 'image';
+  model: 'nai-diffusion-5-curated'; // dedicated upscaler model, independent of the source model
+  declared_blur_sigma: number;
+}
+
+// ─── Subscription / Opus usage (GET /user/subscription) ──────────────────────
+
+export interface NovelAISubscription {
+  tier: number; // 0=Paper, 1=Tablet, 2=Scroll, 3=Opus
+  active: boolean;
+  expiresAt: number; // unix seconds
+  perks: {
+    maxPriorityActions: number;
+    startPriority: number;
+    contextTokens: number;
+    unlimitedMaxPriority: boolean;
+    moduleTrainingSteps: number;
+  };
+  accountType: number;
+  isGracePeriod: boolean;
+  isPaypal: boolean;
+  /** Opus's free V5 generation allowance (normal resolution, <=28 steps). */
+  usage: {
+    percent: number; // 0-100+, clamped display-side; recovery pauses above 100
+    isNegative: boolean;
+    timeUntilNextPercent: number; // seconds until the next 1% tick
+  };
 }
 
 export interface GeneratedImage {

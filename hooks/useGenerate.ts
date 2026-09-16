@@ -8,6 +8,9 @@ interface GenerateOptions {
   /** If this generation is an enhancement, the source image's ID and a fresh object URL. */
   sourceImageId?: string;
   sourceImageUrl?: string;
+  /** Bypass the streaming-mode setting — required for multi-sample (n_samples > 1)
+   *  requests, since the streaming endpoint only ever delivers one final image. */
+  forceStandard?: boolean;
 }
 
 interface UseGenerateReturn {
@@ -231,7 +234,9 @@ export function useGenerate(): UseGenerateReturn {
       setError('No API key set. Please enter your NovelAI API key.');
       return false;
     }
-    return streamingMode ? generateStreaming(request, opts) : generateStandard(request, opts);
+    return streamingMode && !opts?.forceStandard
+      ? generateStreaming(request, opts)
+      : generateStandard(request, opts);
   };
 
   return { generate, error, clearError: () => setError(null) };

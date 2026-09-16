@@ -1,22 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { CharacterPromptEntry } from '@/types/novelai';
-
-const MAX_ENABLED = 6;
+import { CharacterPromptEntry, PromptTidbit } from '@/types/novelai';
+import { createTidbit } from '@/lib/promptTidbits';
 
 interface Props {
   characters: CharacterPromptEntry[];
   onChange: (characters: CharacterPromptEntry[]) => void;
+  /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
+  maxEnabled?: number;
 }
 
 type ActiveTab = 'prompt' | 'uc';
 
-export function CharacterPromptsEditor({ characters, onChange }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }: Props) {
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
 
   const enabledCount = characters.filter((c) => c.enabled).length;
-  const atCap = enabledCount >= MAX_ENABLED;
+  const atCap = enabledCount >= maxEnabled;
 
   const addCharacter = () => {
     const entry: CharacterPromptEntry = {
@@ -42,6 +43,27 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
   const update = (id: string, patch: Partial<CharacterPromptEntry>) =>
     onChange(characters.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
+  const addTidbit = (charId: string) => {
+    const char = characters.find((c) => c.id === charId);
+    if (!char) return;
+    const tidbits = char.tidbits ?? [];
+    update(charId, { tidbits: [...tidbits, createTidbit(`Tidbit ${tidbits.length + 1}`)] });
+  };
+
+  const updateTidbit = (charId: string, tidbitId: string, changes: Partial<PromptTidbit>) => {
+    const char = characters.find((c) => c.id === charId);
+    if (!char) return;
+    update(charId, {
+      tidbits: (char.tidbits ?? []).map((t) => (t.id === tidbitId ? { ...t, ...changes } : t)),
+    });
+  };
+
+  const removeTidbit = (charId: string, tidbitId: string) => {
+    const char = characters.find((c) => c.id === charId);
+    if (!char) return;
+    update(charId, { tidbits: (char.tidbits ?? []).filter((t) => t.id !== tidbitId) });
+  };
+
   const getTab = (id: string): ActiveTab => activeTabs[id] ?? 'prompt';
 
   const setTab = (id: string, tab: ActiveTab) =>
@@ -59,7 +81,7 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
                 atCap ? 'text-violet-400' : 'text-slate-600'
               }`}
             >
-              ({enabledCount}/{MAX_ENABLED} active)
+              ({enabledCount}/{maxEnabled} active)
             </span>
           )}
         </span>
@@ -112,7 +134,7 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
                   }`}
                   title={
                     !canEnable
-                      ? `Maximum ${MAX_ENABLED} characters can be active at once`
+                      ? `Maximum ${maxEnabled} characters can be active at once`
                       : char.enabled
                       ? 'Disable this character'
                       : 'Enable this character'
@@ -177,6 +199,51 @@ export function CharacterPromptsEditor({ characters, onChange }: Props) {
                   rows={3}
                   className="w-full resize-none rounded-lg bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
                 />
+
+                {/* Tidbits — toggleable sub-prompts appended to the prompt above when enabled */}
+                {tab === 'prompt' && (
+                  <div className="flex flex-col gap-1.5">
+                    {(char.tidbits ?? []).map((tidbit) => (
+                      <div key={tidbit.id} className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={tidbit.enabled}
+                          onChange={(e) => updateTidbit(char.id, tidbit.id, { enabled: e.target.checked })}
+                          className="h-3.5 w-3.5 flex-shrink-0 accent-violet-500"
+                        />
+                        <input
+                          type="text"
+                          value={tidbit.label}
+                          onChange={(e) => updateTidbit(char.id, tidbit.id, { label: e.target.value })}
+                          placeholder="Label"
+                          className="w-16 flex-shrink-0 rounded bg-slate-700/60 px-1.5 py-1 text-xs text-slate-300 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          value={tidbit.text}
+                          onChange={(e) => updateTidbit(char.id, tidbit.id, { text: e.target.value })}
+                          placeholder="red dress, ..."
+                          className="min-w-0 flex-1 rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeTidbit(char.id, tidbit.id)}
+                          title="Remove tidbit"
+                          className="flex-shrink-0 text-xs text-slate-600 hover:text-red-400 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addTidbit(char.id)}
+                      className="flex items-center gap-1 self-start text-xs text-slate-600 hover:text-violet-400 transition-colors"
+                    >
+                      <span>+</span> Add Tidbit
+                    </button>
+                  </div>
+                )}
 
                 {/* Position inputs */}
                 <div className="flex items-center gap-3 text-xs">
