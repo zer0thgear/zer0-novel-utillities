@@ -12,6 +12,7 @@ import { calculateAnlasCost } from '@/lib/anlasCost';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
+import { MetadataModal } from './MetadataModal';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export function ImageViewer() {
   const [showEdit, setShowEdit] = useState(false);
   const [showDirectorTools, setShowDirectorTools] = useState(false);
   const [baseImageSet, setBaseImageSet] = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
@@ -83,6 +85,7 @@ export function ImageViewer() {
     setShowEdit(false);
     setShowDirectorTools(false);
     setBaseImageSet(false);
+    setShowMetadata(false);
   }, [focusedImageId]);
 
   const handleEnhance = async () => {
@@ -118,6 +121,9 @@ export function ImageViewer() {
       )}
       {showDirectorTools && focusedImage && (
         <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
+      )}
+      {showMetadata && focusedImage && (
+        <MetadataModal image={focusedImage} onClose={() => setShowMetadata(false)} />
       )}
 
       {/* ── Main image area ── */}
@@ -285,6 +291,14 @@ export function ImageViewer() {
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
             >
               Tools
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMetadata(true)}
+              title="View this image's embedded generation metadata"
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Metadata
             </button>
             <button
               type="button"

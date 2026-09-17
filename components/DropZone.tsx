@@ -6,6 +6,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { extractNaiMetadata, ParsedNaiMetadata } from '@/lib/naiMetadata';
 import { getImageDimensions } from '@/lib/imageUtils';
 import { CharacterPromptEntry, NovelAISampler, NovelAINoiseSchedule } from '@/types/novelai';
+import { MetadataModal } from './MetadataModal';
 
 interface PendingDrop {
   file: File;
@@ -15,6 +16,7 @@ interface PendingDrop {
 export function DropZone() {
   const [dragDepth, setDragDepth] = useState(0);
   const [pending, setPending] = useState<PendingDrop | null>(null);
+  const [showFullMetadata, setShowFullMetadata] = useState(false);
   const form = useSettingsStore();
   const { setImg2imgSource } = useSessionStore();
 
@@ -149,6 +151,13 @@ export function DropZone() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowFullMetadata(true)}
+                className="rounded-lg bg-slate-700 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+              >
+                View Full Metadata
+              </button>
+              <button
+                type="button"
                 onClick={() => setPending(null)}
                 className="py-1 text-xs text-slate-500 transition-colors hover:text-slate-300"
               >
@@ -157,6 +166,10 @@ export function DropZone() {
             </div>
           </div>
         </div>
+      )}
+
+      {showFullMetadata && pending && (
+        <MetadataModal image={{ blob: pending.file }} onClose={() => setShowFullMetadata(false)} />
       )}
     </>
   );
