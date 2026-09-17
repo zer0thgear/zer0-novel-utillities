@@ -5,6 +5,7 @@ import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { PromptForm } from '@/components/PromptForm';
 import { ImageViewer } from '@/components/ImageViewer';
 import { HistoryStrip } from '@/components/ImageGrid';
+import { DropZone } from '@/components/DropZone';
 import { useSessionStore } from '@/store/sessionStore';
 
 export default function Home() {
@@ -32,6 +33,7 @@ export default function Home() {
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <ApiKeyModal />
+      {apiKey && <DropZone />}
 
       {/* ── Left panel: generation form ── */}
       <aside
