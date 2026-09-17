@@ -208,6 +208,13 @@ export interface NovelAISubscription {
     isNegative: boolean;
     timeUntilNextPercent: number; // seconds until the next 1% tick
   };
+  /** Despite the name, this is the Anlas balance — confirmed against NovelAI's own
+   *  "Purchase Anlas" modal, which labels these two fields "Your Subscription Anlas"
+   *  and "Your Paid Anlas" respectively. Total Anlas = the sum of both. */
+  trainingStepsLeft: {
+    fixedTrainingStepsLeft: number;
+    purchasedTrainingSteps: number;
+  };
 }
 
 export interface GeneratedImage {

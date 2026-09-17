@@ -13,7 +13,7 @@ import {
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
-import { OpusUsageMeter } from './OpusUsageMeter';
+import { AccountStatusBar } from './AccountStatusBar';
 import { composeWithTidbits } from '@/lib/promptTidbits';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ export function PromptForm() {
         </button>
       </div>
 
-      <OpusUsageMeter />
+      <AccountStatusBar />
 
       {/* Error banner */}
       {error && (
