@@ -525,6 +525,7 @@ export function PromptForm() {
           <BasePromptsEditor
             basePrompts={form.basePrompts}
             promptMode={form.promptMode}
+            model={form.model}
             onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
             onModeChange={(promptMode) => form.set('promptMode', promptMode)}
           />
