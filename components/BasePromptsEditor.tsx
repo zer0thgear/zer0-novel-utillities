@@ -4,6 +4,8 @@ import { BasePrompt, NovelAIModel, PromptMode, PromptTidbit } from '@/types/nove
 import { createTidbit } from '@/lib/promptTidbits';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { ReorderArrows } from '@/components/ReorderArrows';
+import { moveItem } from '@/lib/promptText';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -77,6 +79,16 @@ export function BasePromptsEditor({
     updatePrompt(promptId, { tidbits: (prompt.tidbits ?? []).filter((t) => t.id !== tidbitId) });
   }
 
+  function movePrompt(index: number, direction: 'up' | 'down') {
+    onChange(moveItem(basePrompts, index, direction));
+  }
+
+  function moveTidbit(promptId: string, index: number, direction: 'up' | 'down') {
+    const prompt = basePrompts.find((p) => p.id === promptId);
+    if (!prompt) return;
+    updatePrompt(promptId, { tidbits: moveItem(prompt.tidbits ?? [], index, direction) });
+  }
+
   function selectSingle(id: string) {
     onChange(basePrompts.map((p) => ({ ...p, selected: p.id === id })));
   }
@@ -141,7 +153,7 @@ export function BasePromptsEditor({
       </div>
 
       {/* Prompt cards */}
-      {basePrompts.map((prompt) => (
+      {basePrompts.map((prompt, promptIndex) => (
         <div
           key={prompt.id}
           className={`flex flex-col gap-2 rounded-lg border p-3 transition-colors ${
@@ -176,6 +188,13 @@ export function BasePromptsEditor({
               className="min-w-0 flex-1 rounded bg-slate-700/60 px-2 py-0.5 text-xs text-slate-200 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
             />
 
+            <ReorderArrows
+              index={promptIndex}
+              count={basePrompts.length}
+              onMove={(direction) => movePrompt(promptIndex, direction)}
+              label="prompt"
+            />
+
             {basePrompts.length > 1 && (
               <button
                 type="button"
@@ -205,7 +224,7 @@ export function BasePromptsEditor({
 
           {/* Tidbits — toggleable sub-prompts appended to the text above when enabled */}
           <div className="flex flex-col gap-1.5">
-            {(prompt.tidbits ?? []).map((tidbit) => (
+            {(prompt.tidbits ?? []).map((tidbit, tidbitIndex) => (
               <div key={tidbit.id} className="flex items-center gap-1.5">
                 <input
                   type="checkbox"
@@ -229,6 +248,12 @@ export function BasePromptsEditor({
                   placeholder="artist:name, ..."
                   wrapperClassName="relative min-w-0 flex-1"
                   className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
+                />
+                <ReorderArrows
+                  index={tidbitIndex}
+                  count={(prompt.tidbits ?? []).length}
+                  onMove={(direction) => moveTidbit(prompt.id, tidbitIndex, direction)}
+                  label="tidbit"
                 />
                 <button
                   type="button"

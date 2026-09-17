@@ -5,6 +5,8 @@ import { CharacterPromptEntry, NovelAIModel, PromptTidbit } from '@/types/novela
 import { createTidbit } from '@/lib/promptTidbits';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { ReorderArrows } from '@/components/ReorderArrows';
+import { moveItem } from '@/lib/promptText';
 
 interface Props {
   characters: CharacterPromptEntry[];
@@ -66,6 +68,15 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
     const char = characters.find((c) => c.id === charId);
     if (!char) return;
     update(charId, { tidbits: (char.tidbits ?? []).filter((t) => t.id !== tidbitId) });
+  };
+
+  const moveCharacter = (index: number, direction: 'up' | 'down') =>
+    onChange(moveItem(characters, index, direction));
+
+  const moveTidbit = (charId: string, index: number, direction: 'up' | 'down') => {
+    const char = characters.find((c) => c.id === charId);
+    if (!char) return;
+    update(charId, { tidbits: moveItem(char.tidbits ?? [], index, direction) });
   };
 
   const getTab = (id: string): ActiveTab => activeTabs[id] ?? 'prompt';
@@ -156,6 +167,13 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                   />
                 </label>
 
+                <ReorderArrows
+                  index={index}
+                  count={characters.length}
+                  onMove={(direction) => moveCharacter(index, direction)}
+                  label="character"
+                />
+
                 {/* Remove button */}
                 <button
                   type="button"
@@ -210,7 +228,7 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                 {/* Tidbits — toggleable sub-prompts appended to the prompt above when enabled */}
                 {tab === 'prompt' && (
                   <div className="flex flex-col gap-1.5">
-                    {(char.tidbits ?? []).map((tidbit) => (
+                    {(char.tidbits ?? []).map((tidbit, tidbitIndex) => (
                       <div key={tidbit.id} className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
@@ -234,6 +252,12 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                           placeholder="red dress, ..."
                           wrapperClassName="relative min-w-0 flex-1"
                           className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
+                        />
+                        <ReorderArrows
+                          index={tidbitIndex}
+                          count={(char.tidbits ?? []).length}
+                          onMove={(direction) => moveTidbit(char.id, tidbitIndex, direction)}
+                          label="tidbit"
                         />
                         <button
                           type="button"

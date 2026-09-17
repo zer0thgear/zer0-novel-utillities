@@ -4,6 +4,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
 import { composeWithTidbits } from '@/lib/promptTidbits';
+import { joinPromptParts } from '@/lib/promptText';
 import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
 
 // ─── Enhance level config ─────────────────────────────────────────────────────
@@ -77,14 +78,12 @@ export function useEnhance(): UseEnhanceReturn {
       if (form.nsfwMode) prefixes.push('nsfw');
       const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
       const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
-      const prefixedText = prefixes.length > 0
-        ? `${prefixes.join(', ')}, ${baseText}`
-        : baseText;
+      const prefixedText = joinPromptParts(...prefixes, baseText);
 
       let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-      if (form.transparentBg) finalText += ', transparent background';
+      if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
       // Always append enhance-specific negative weight tag
-      finalText = finalText + ', -2::upscaled, blurry::';
+      finalText = joinPromptParts(finalText, '-2::upscaled, blurry::');
 
       // ── Negative prompt assembly ───────────────────────────────────────────
       const positiveSearchText = [

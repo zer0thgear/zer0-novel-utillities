@@ -15,6 +15,7 @@ import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { composeWithTidbits } from '@/lib/promptTidbits';
+import { joinPromptParts } from '@/lib/promptText';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
@@ -119,12 +120,11 @@ export function PromptForm() {
     const prefixes: string[] = [];
     if (form.furMode) prefixes.push('fur dataset');
     if (form.nsfwMode) prefixes.push('nsfw');
-    const prefixedText =
-      prefixes.length > 0 ? `${prefixes.join(', ')}, ${promptText}` : promptText;
+    const prefixedText = joinPromptParts(...prefixes, promptText);
 
     // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
     let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-    if (form.transparentBg) finalText += ', transparent background';
+    if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
 
     // ── UC preset prefix — tags already present (case-insensitive) in any base
     // or character positive prompt are skipped to avoid contradicting the user.

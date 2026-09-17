@@ -1,4 +1,5 @@
 import { NovelAIModel } from '@/types/novelai';
+import { joinPromptParts } from '@/lib/promptText';
 
 // Quality Tags / UC Preset literal text, per NovelAI's own official documentation
 // (docs.novelai.net/en/image/qualitytags, docs.novelai.net/en/image/undesiredcontent —
@@ -137,9 +138,12 @@ export const UC_LEVEL_LABELS: Record<UcLevel, string> = {
 // Centralized since every request-building site (PromptForm, useEnhance,
 // useInpaint, useEdit) needs the same logic.
 
-/** Appends the model's quality preset text to a positive prompt, verbatim. */
+/** Appends the model's quality preset text to a positive prompt, verbatim.
+ *  The preset tables carry NovelAI's documented text including its leading
+ *  ", " — joinPromptParts normalizes that away and re-adds the delimiter, so
+ *  the tables stay verbatim-comparable against docs.novelai.net. */
 export function composeWithQuality(text: string, model: NovelAIModel, level: QualityLevel): string {
-  return text + getQualityText(model, level);
+  return joinPromptParts(text, getQualityText(model, level));
 }
 
 /**
@@ -160,5 +164,5 @@ export function composeNegativeWithUc(
     .map((t) => t.trim())
     .filter((t) => t && !positiveSearchText.includes(t.toLowerCase()));
   if (tags.length === 0) return negativePrompt;
-  return negativePrompt ? `${tags.join(', ')}, ${negativePrompt}` : tags.join(', ');
+  return joinPromptParts(tags.join(', '), negativePrompt);
 }
