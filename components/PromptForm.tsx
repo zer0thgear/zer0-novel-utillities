@@ -15,6 +15,8 @@ import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { composeWithTidbits } from '@/lib/promptTidbits';
+import { calculateAnlasCost } from '@/lib/anlasCost';
+import { useSubscription } from '@/hooks/useSubscription';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -89,6 +91,7 @@ export function PromptForm() {
   const [img2imgNoise, setImg2imgNoise] = useState(0);
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
+  const { subscription } = useSubscription();
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
@@ -246,11 +249,22 @@ export function PromptForm() {
       ? form.basePrompts.filter((p) => p.selected && p.text.trim()).length
       : 0;
 
+  const anlasCost = calculateAnlasCost({
+    width: img2imgSource ? img2imgSource.width : form.width,
+    height: img2imgSource ? img2imgSource.height : form.height,
+    steps: form.steps,
+    smea: form.smea,
+    smeaDyn: form.smeaDyn,
+    isOpus: subscription?.tier === 3,
+  });
+  const costPerImage = batchCount > 1 ? anlasCost * batchCount : anlasCost;
+
   function buttonLabel() {
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
     if (isLoading) return 'Generating…';
-    if (form.promptMode === 'batch' && batchCount > 1) return `Generate (${batchCount})`;
-    return 'Generate';
+    const base = form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` : 'Generate';
+    if (!subscription) return base; // cost estimate needs tier info to know about the Opus discount
+    return costPerImage > 0 ? `${base} — ~${costPerImage} Anlas` : `${base} — Free`;
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
