@@ -40,7 +40,7 @@ export function useVariations(): UseVariationsReturn {
     try {
       const imageB64 = await blobToBase64(image.blob);
       const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
 

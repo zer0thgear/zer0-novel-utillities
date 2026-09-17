@@ -1,9 +1,9 @@
 'use client';
 
-import { BasePrompt, NovelAIModel, PromptMode, PromptTidbit } from '@/types/novelai';
-import { createTidbit } from '@/lib/promptTidbits';
+import { BasePrompt, NovelAIModel, PromptMode } from '@/types/novelai';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { TidbitList } from '@/components/TidbitList';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { moveItem } from '@/lib/promptText';
 
@@ -58,35 +58,8 @@ export function BasePromptsEditor({
     onChange(basePrompts.map((p) => (p.id === id ? { ...p, ...changes } : p)));
   }
 
-  function addTidbit(promptId: string) {
-    const prompt = basePrompts.find((p) => p.id === promptId);
-    if (!prompt) return;
-    const tidbits = prompt.tidbits ?? [];
-    updatePrompt(promptId, { tidbits: [...tidbits, createTidbit(`Tidbit ${tidbits.length + 1}`)] });
-  }
-
-  function updateTidbit(promptId: string, tidbitId: string, changes: Partial<PromptTidbit>) {
-    const prompt = basePrompts.find((p) => p.id === promptId);
-    if (!prompt) return;
-    updatePrompt(promptId, {
-      tidbits: (prompt.tidbits ?? []).map((t) => (t.id === tidbitId ? { ...t, ...changes } : t)),
-    });
-  }
-
-  function removeTidbit(promptId: string, tidbitId: string) {
-    const prompt = basePrompts.find((p) => p.id === promptId);
-    if (!prompt) return;
-    updatePrompt(promptId, { tidbits: (prompt.tidbits ?? []).filter((t) => t.id !== tidbitId) });
-  }
-
   function movePrompt(index: number, direction: 'up' | 'down') {
     onChange(moveItem(basePrompts, index, direction));
-  }
-
-  function moveTidbit(promptId: string, index: number, direction: 'up' | 'down') {
-    const prompt = basePrompts.find((p) => p.id === promptId);
-    if (!prompt) return;
-    updatePrompt(promptId, { tidbits: moveItem(prompt.tidbits ?? [], index, direction) });
   }
 
   function selectSingle(id: string) {
@@ -223,56 +196,13 @@ export function BasePromptsEditor({
           />
 
           {/* Tidbits — toggleable sub-prompts appended to the text above when enabled */}
-          <div className="flex flex-col gap-1.5">
-            {(prompt.tidbits ?? []).map((tidbit, tidbitIndex) => (
-              <div key={tidbit.id} className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={tidbit.enabled}
-                  onChange={(e) => updateTidbit(prompt.id, tidbit.id, { enabled: e.target.checked })}
-                  className="h-3.5 w-3.5 flex-shrink-0 accent-violet-500"
-                />
-                <input
-                  type="text"
-                  value={tidbit.label}
-                  onChange={(e) => updateTidbit(prompt.id, tidbit.id, { label: e.target.value })}
-                  placeholder="Label"
-                  className="w-20 flex-shrink-0 rounded bg-slate-700/60 px-1.5 py-1 text-xs text-slate-300 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
-                />
-                <TagAutocompleteField
-                  as="input"
-                  value={tidbit.text}
-                  onChange={(text) => updateTidbit(prompt.id, tidbit.id, { text })}
-                  model={model}
-                  apiKey={apiKey}
-                  placeholder="artist:name, ..."
-                  wrapperClassName="relative min-w-0 flex-1"
-                  className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
-                />
-                <ReorderArrows
-                  index={tidbitIndex}
-                  count={(prompt.tidbits ?? []).length}
-                  onMove={(direction) => moveTidbit(prompt.id, tidbitIndex, direction)}
-                  label="tidbit"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeTidbit(prompt.id, tidbit.id)}
-                  title="Remove tidbit"
-                  className="flex-shrink-0 text-xs text-slate-600 hover:text-red-400 transition-colors"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => addTidbit(prompt.id)}
-              className="flex items-center gap-1 self-start text-xs text-slate-600 hover:text-violet-400 transition-colors"
-            >
-              <span>+</span> Add Tidbit
-            </button>
-          </div>
+          <TidbitList
+            tidbits={prompt.tidbits ?? []}
+            onChange={(tidbits) => updatePrompt(prompt.id, { tidbits })}
+            model={model}
+            apiKey={apiKey}
+            placeholder="artist:name, ..."
+          />
         </div>
       ))}
 

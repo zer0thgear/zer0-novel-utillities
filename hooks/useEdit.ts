@@ -47,13 +47,13 @@ export function useEdit(): UseEditReturn {
 
       // ── Prompt assembly ────────────────────────────────────────────────────
       const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
 
       const prefixes: string[] = [];
       if (form.furMode)  prefixes.push('fur dataset');
       if (form.nsfwMode) prefixes.push('nsfw');
       const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
+      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits, form.tidbitLibrary);
       const prefixedText = joinPromptParts(...prefixes, baseText);
 
       let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
@@ -61,7 +61,7 @@ export function useEdit(): UseEditReturn {
 
       // ── Negative prompt assembly ───────────────────────────────────────────
       const positiveSearchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits, form.tidbitLibrary)),
         ...form.characters.map((c) => charPrompt(c)),
       ].join(' ').toLowerCase();
       const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);

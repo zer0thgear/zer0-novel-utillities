@@ -9,6 +9,17 @@ export interface PromptTidbit {
   label: string;
   text: string;
   enabled: boolean;
+  /** Links this tidbit to a shared library entry, whose text wins at compose
+   *  time so editing the entry updates every prompt using it. `label`/`text`
+   *  stay as a snapshot and are used as a fallback if the entry is deleted. */
+  sourceId?: string;
+}
+
+/** A reusable tidbit saved once and linked into any number of prompts. */
+export interface LibraryTidbit {
+  id: string;
+  label: string;
+  text: string;
 }
 
 /** A named base prompt entry in the prompt list. */

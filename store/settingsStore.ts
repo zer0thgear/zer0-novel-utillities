@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   BasePrompt,
   CharacterPromptEntry,
+  LibraryTidbit,
   NovelAIModel,
   NovelAISampler,
   NovelAINoiseSchedule,
@@ -36,6 +37,10 @@ export interface FormSettings {
   characters: CharacterPromptEntry[];
   useCoords: boolean;
   streamingMode: boolean;
+  /** Reusable tidbits, linked into prompts by id. No persist migration needed —
+   *  zustand merges defaults under the persisted state, so older saves just
+   *  start with an empty library. */
+  tidbitLibrary: LibraryTidbit[];
 }
 
 interface SettingsState extends FormSettings {
@@ -71,6 +76,7 @@ const DEFAULTS: FormSettings = {
   characters: [],
   useCoords: false,
   streamingMode: false,
+  tidbitLibrary: [],
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────

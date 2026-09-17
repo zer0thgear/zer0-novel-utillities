@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { CharacterPromptEntry, NovelAIModel, PromptTidbit } from '@/types/novelai';
-import { createTidbit } from '@/lib/promptTidbits';
+import { CharacterPromptEntry, NovelAIModel } from '@/types/novelai';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { TidbitList } from '@/components/TidbitList';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { moveItem } from '@/lib/promptText';
 
@@ -49,35 +49,8 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
   const update = (id: string, patch: Partial<CharacterPromptEntry>) =>
     onChange(characters.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
-  const addTidbit = (charId: string) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    const tidbits = char.tidbits ?? [];
-    update(charId, { tidbits: [...tidbits, createTidbit(`Tidbit ${tidbits.length + 1}`)] });
-  };
-
-  const updateTidbit = (charId: string, tidbitId: string, changes: Partial<PromptTidbit>) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    update(charId, {
-      tidbits: (char.tidbits ?? []).map((t) => (t.id === tidbitId ? { ...t, ...changes } : t)),
-    });
-  };
-
-  const removeTidbit = (charId: string, tidbitId: string) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    update(charId, { tidbits: (char.tidbits ?? []).filter((t) => t.id !== tidbitId) });
-  };
-
   const moveCharacter = (index: number, direction: 'up' | 'down') =>
     onChange(moveItem(characters, index, direction));
-
-  const moveTidbit = (charId: string, index: number, direction: 'up' | 'down') => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    update(charId, { tidbits: moveItem(char.tidbits ?? [], index, direction) });
-  };
 
   const getTab = (id: string): ActiveTab => activeTabs[id] ?? 'prompt';
 
@@ -227,56 +200,14 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
 
                 {/* Tidbits — toggleable sub-prompts appended to the prompt above when enabled */}
                 {tab === 'prompt' && (
-                  <div className="flex flex-col gap-1.5">
-                    {(char.tidbits ?? []).map((tidbit, tidbitIndex) => (
-                      <div key={tidbit.id} className="flex items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          checked={tidbit.enabled}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { enabled: e.target.checked })}
-                          className="h-3.5 w-3.5 flex-shrink-0 accent-violet-500"
-                        />
-                        <input
-                          type="text"
-                          value={tidbit.label}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { label: e.target.value })}
-                          placeholder="Label"
-                          className="w-16 flex-shrink-0 rounded bg-slate-700/60 px-1.5 py-1 text-xs text-slate-300 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
-                        />
-                        <TagAutocompleteField
-                          as="input"
-                          value={tidbit.text}
-                          onChange={(text) => updateTidbit(char.id, tidbit.id, { text })}
-                          model={model}
-                          apiKey={apiKey}
-                          placeholder="red dress, ..."
-                          wrapperClassName="relative min-w-0 flex-1"
-                          className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
-                        />
-                        <ReorderArrows
-                          index={tidbitIndex}
-                          count={(char.tidbits ?? []).length}
-                          onMove={(direction) => moveTidbit(char.id, tidbitIndex, direction)}
-                          label="tidbit"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeTidbit(char.id, tidbit.id)}
-                          title="Remove tidbit"
-                          className="flex-shrink-0 text-xs text-slate-600 hover:text-red-400 transition-colors"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => addTidbit(char.id)}
-                      className="flex items-center gap-1 self-start text-xs text-slate-600 hover:text-violet-400 transition-colors"
-                    >
-                      <span>+</span> Add Tidbit
-                    </button>
-                  </div>
+                  <TidbitList
+                    tidbits={char.tidbits ?? []}
+                    onChange={(tidbits) => update(char.id, { tidbits })}
+                    model={model}
+                    apiKey={apiKey}
+                    placeholder="red dress, ..."
+                    labelWidthCls="w-16"
+                  />
                 )}
 
                 {/* Position inputs */}

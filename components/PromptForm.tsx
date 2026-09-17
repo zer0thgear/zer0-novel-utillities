@@ -14,6 +14,7 @@ import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
+import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { composeWithTidbits } from '@/lib/promptTidbits';
 import { joinPromptParts } from '@/lib/promptText';
 import { calculateAnlasCost } from '@/lib/anlasCost';
@@ -114,7 +115,7 @@ export function PromptForm() {
 
   function buildRequest(promptText: string, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
-    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
     const prefixes: string[] = [];
@@ -129,7 +130,7 @@ export function PromptForm() {
     // ── UC preset prefix — tags already present (case-insensitive) in any base
     // or character positive prompt are skipped to avoid contradicting the user.
     const positiveSearchText = [
-      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits, form.tidbitLibrary)),
       ...form.characters.map((c) => charPrompt(c)),
     ].join(' ').toLowerCase();
     const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
@@ -209,7 +210,7 @@ export function PromptForm() {
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
-      const promptText = composeWithTidbits(selected.text, selected.tidbits);
+      const promptText = composeWithTidbits(selected.text, selected.tidbits, form.tidbitLibrary);
 
       if (copies > 1 && copiesMode === 'batch') {
         // True batch — one request, n_samples > 1, real extra Anlas cost.
@@ -256,7 +257,7 @@ export function PromptForm() {
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits);
+        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits, form.tidbitLibrary);
         const ok = await generate(buildRequest(promptText, seed, baseImageB64));
         if (!ok) break; // stop batch on error
       }
@@ -630,6 +631,8 @@ export function PromptForm() {
           aspectRatio={form.width / form.height}
         />
       )}
+
+      <TidbitLibrarySection model={form.model} />
 
       {/* Negative Prompt — collapsible, shows a one-line preview when closed */}
       <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
