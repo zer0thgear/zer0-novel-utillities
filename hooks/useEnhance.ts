@@ -141,7 +141,7 @@ export function useEnhance(): UseEnhanceReturn {
           add_original_image: true,
           cfg_rescale: form.cfgRescale,
           noise_schedule: form.noiseSchedule,
-          skip_cfg_above_sigma: 59.04722600415217,
+          skip_cfg_above_sigma: null,
           use_coords: form.useCoords,
           normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0,

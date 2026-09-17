@@ -120,7 +120,10 @@ export interface NovelAIParameters {
   add_original_image: boolean;
   cfg_rescale: number;
   noise_schedule: NovelAINoiseSchedule;
-  skip_cfg_above_sigma: number;
+  /** NovelAI's "Variety+" boost. Must be `null` to match the API's own default
+   *  (off) — a nonzero value forces increased output variance and is resolution/
+   *  model-dependent, so never hardcode a constant here. */
+  skip_cfg_above_sigma: number | null;
   seed: number;
   negative_prompt: string;
   reference_image_multiple: string[];
