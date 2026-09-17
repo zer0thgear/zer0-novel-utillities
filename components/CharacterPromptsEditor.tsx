@@ -1,19 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { CharacterPromptEntry, PromptTidbit } from '@/types/novelai';
+import { CharacterPromptEntry, NovelAIModel, PromptTidbit } from '@/types/novelai';
 import { createTidbit } from '@/lib/promptTidbits';
+import { useSessionStore } from '@/store/sessionStore';
+import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 
 interface Props {
   characters: CharacterPromptEntry[];
   onChange: (characters: CharacterPromptEntry[]) => void;
   /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
   maxEnabled?: number;
+  model: NovelAIModel;
 }
 
 type ActiveTab = 'prompt' | 'uc';
 
-export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model }: Props) {
+  const apiKey = useSessionStore((s) => s.apiKey);
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
 
   const enabledCount = characters.filter((c) => c.enabled).length;
@@ -186,17 +190,20 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
 
               {/* Tab content */}
               <div className="flex flex-col gap-2.5 p-3">
-                <textarea
+                <TagAutocompleteField
+                  as="textarea"
+                  rows={3}
                   value={tab === 'prompt' ? char.prompt : char.uc}
-                  onChange={(e) =>
-                    update(char.id, { [tab === 'prompt' ? 'prompt' : 'uc']: e.target.value })
+                  onChange={(text) =>
+                    update(char.id, { [tab === 'prompt' ? 'prompt' : 'uc']: text })
                   }
+                  model={model}
+                  apiKey={apiKey}
                   placeholder={
                     tab === 'prompt'
                       ? 'girl, solo, anthro, …'
                       : 'negative tags for this character…'
                   }
-                  rows={3}
                   className="w-full resize-none rounded-lg bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
                 />
 
@@ -218,12 +225,15 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
                           placeholder="Label"
                           className="w-16 flex-shrink-0 rounded bg-slate-700/60 px-1.5 py-1 text-xs text-slate-300 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
                         />
-                        <input
-                          type="text"
+                        <TagAutocompleteField
+                          as="input"
                           value={tidbit.text}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { text: e.target.value })}
+                          onChange={(text) => updateTidbit(char.id, tidbit.id, { text })}
+                          model={model}
+                          apiKey={apiKey}
                           placeholder="red dress, ..."
-                          className="min-w-0 flex-1 rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
+                          wrapperClassName="relative min-w-0 flex-1"
+                          className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
                         />
                         <button
                           type="button"

@@ -535,6 +535,7 @@ export function PromptForm() {
               characters={form.characters}
               onChange={(characters) => form.set('characters', characters)}
               maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
+              model={form.model}
             />
             {form.characters.length > 0 && (
               <>
