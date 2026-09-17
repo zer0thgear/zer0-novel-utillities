@@ -11,6 +11,10 @@ interface GenerateOptions {
   /** Bypass the streaming-mode setting — required for multi-sample (n_samples > 1)
    *  requests, since the streaming endpoint only ever delivers one final image. */
   forceStandard?: boolean;
+  /** Shared across every image from one "Copies" request so the gallery can
+   *  clump them visually — a true batch's own samples, or one call in a
+   *  queued sequence of separate single-image calls. */
+  batchId?: string;
 }
 
 interface UseGenerateReturn {
@@ -67,6 +71,7 @@ export function useGenerate(): UseGenerateReturn {
         seed: request.parameters.seed + i,
         sourceImageId: opts?.sourceImageId,
         sourceImageUrl: opts?.sourceImageUrl,
+        batchId: opts?.batchId,
       }));
 
       addImages(images);
@@ -177,6 +182,7 @@ export function useGenerate(): UseGenerateReturn {
             seed: request.parameters.seed,
             sourceImageId: opts?.sourceImageId,
             sourceImageUrl: opts?.sourceImageUrl,
+            batchId: opts?.batchId,
           }]);
           finalImageAdded = true;
           setStreamPreview(null);

@@ -4,6 +4,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
 import { composeWithTidbits } from '@/lib/promptTidbits';
+import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
 
 // ─── Enhance level config ─────────────────────────────────────────────────────
 
@@ -33,13 +34,6 @@ async function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-
-const BASE_NEGATIVE_TAGS = [
-  'nsfw', 'lowres', 'artistic error', 'film grain', 'scan artifacts',
-  'worst quality', 'bad quality', 'jpeg artifacts', 'very displeasing',
-  'chromatic aberration', 'dithering', 'halftone', 'screentone',
-  'multiple views', 'logo', 'too many watermarks', 'negative space', 'blank page',
-];
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -87,30 +81,17 @@ export function useEnhance(): UseEnhanceReturn {
         ? `${prefixes.join(', ')}, ${baseText}`
         : baseText;
 
-      let finalText = prefixedText;
-      if (form.qualityTags) {
-        const hasTextToken =
-          baseText.includes('Text:') ||
-          activeCharacters.some((c) => charPrompt(c).includes('Text:'));
-        finalText = prefixedText + ', very aesthetic, masterpiece' + (hasTextToken ? '' : ', no text');
-      }
+      let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
       if (form.transparentBg) finalText += ', transparent background';
       // Always append enhance-specific negative weight tag
       finalText = finalText + ', -2::upscaled, blurry::';
 
       // ── Negative prompt assembly ───────────────────────────────────────────
-      const baseNegPrompt = (() => {
-        if (!form.baseNegativeCaptions) return form.negativePrompt;
-        const searchText = [
-          ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-          ...form.characters.map((c) => charPrompt(c)),
-        ].join(' ').toLowerCase();
-        const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
-        if (tags.length === 0) return form.negativePrompt;
-        return form.negativePrompt
-          ? `${tags.join(', ')}, ${form.negativePrompt}`
-          : tags.join(', ');
-      })();
+      const positiveSearchText = [
+        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+        ...form.characters.map((c) => charPrompt(c)),
+      ].join(' ').toLowerCase();
+      const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
@@ -141,7 +122,7 @@ export function useEnhance(): UseEnhanceReturn {
           add_original_image: true,
           cfg_rescale: form.cfgRescale,
           noise_schedule: form.noiseSchedule,
-          skip_cfg_above_sigma: 59.04722600415217,
+          skip_cfg_above_sigma: null,
           use_coords: form.useCoords,
           normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0,

@@ -13,8 +13,20 @@ import {
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
-import { OpusUsageMeter } from './OpusUsageMeter';
+import { AccountStatusBar } from './AccountStatusBar';
 import { composeWithTidbits } from '@/lib/promptTidbits';
+import { calculateAnlasCost } from '@/lib/anlasCost';
+import { useSubscription } from '@/hooks/useSubscription';
+import {
+  composeWithQuality,
+  composeNegativeWithUc,
+  getAvailableQualityLevels,
+  getAvailableUcLevels,
+  QUALITY_LEVEL_LABELS,
+  UC_LEVEL_LABELS,
+  QualityLevel,
+  UcLevel,
+} from '@/lib/naiPresets';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -43,13 +55,6 @@ const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
   { value: 'karras', label: 'Karras' },
   { value: 'exponential', label: 'Exponential' },
   { value: 'polyexponential', label: 'Polyexponential' },
-];
-
-const BASE_NEGATIVE_TAGS = [
-  'nsfw', 'lowres', 'artistic error', 'film grain', 'scan artifacts',
-  'worst quality', 'bad quality', 'jpeg artifacts', 'very displeasing',
-  'chromatic aberration', 'dithering', 'halftone', 'screentone',
-  'multiple views', 'logo', 'too many watermarks', 'negative space', 'blank page',
 ];
 
 const SIZE_PRESETS = [
@@ -83,19 +88,30 @@ export function PromptForm() {
   const form = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showModifiers, setShowModifiers] = useState(false);
+  const [showNegativePrompt, setShowNegativePrompt] = useState(false);
+  const [showGenSettings, setShowGenSettings] = useState(true);
   const [promptTab, setPromptTab] = useState<'prompts' | 'characters'>('prompts');
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
   const [img2imgNoise, setImg2imgNoise] = useState(0);
+  // "Copies" — generate 2-4 images from one prompt in a single shot (true
+  // batch, n_samples > 1, real extra Anlas cost) or queued back-to-back as
+  // separate single-image calls (each can independently land inside the free
+  // Opus allowance, unlike a batch which only gets one free sample). Only
+  // offered in single-prompt mode — combining with the existing multi-prompt
+  // "Batch" mode would multiply scope for little benefit.
+  const [copies, setCopies] = useState(1);
+  const [copiesMode, setCopiesMode] = useState<'batch' | 'queue'>('batch');
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
+  const { subscription } = useSubscription();
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
 
   // ── Request builder ────────────────────────────────────────────────────
 
-  function buildRequest(promptText: string, seed: number, baseImageB64?: string): NovelAIGenerateRequest {
+  function buildRequest(promptText: string, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
     const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
 
@@ -106,36 +122,17 @@ export function PromptForm() {
     const prefixedText =
       prefixes.length > 0 ? `${prefixes.join(', ')}, ${promptText}` : promptText;
 
-    // ── Quality tag suffix ─────────────────────────────────────────────────────
-    // 'no text' is only appended when 'Text:' is absent from the current prompt
-    // and all active character prompts (case-sensitive per spec).
-    let finalText = prefixedText;
-    if (form.qualityTags) {
-      const hasTextToken =
-        promptText.includes('Text:') ||
-        activeCharacters.some((c) => charPrompt(c).includes('Text:'));
-      finalText =
-        prefixedText +
-        ', very aesthetic, masterpiece' +
-        (hasTextToken ? '' : ', no text');
-    }
+    // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
+    let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
     if (form.transparentBg) finalText += ', transparent background';
 
-    // ── Base negative captions prefix ─────────────────────────────────────────
-    // Tags already present (case-insensitive) in any base or character positive
-    // prompt are omitted to avoid redundancy, mirroring the 'no text' pattern.
-    const baseNegPrompt = (() => {
-      if (!form.baseNegativeCaptions) return form.negativePrompt;
-      const searchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
-      if (tags.length === 0) return form.negativePrompt;
-      return form.negativePrompt
-        ? `${tags.join(', ')}, ${form.negativePrompt}`
-        : tags.join(', ');
-    })();
+    // ── UC preset prefix — tags already present (case-insensitive) in any base
+    // or character positive prompt are skipped to avoid contradicting the user.
+    const positiveSearchText = [
+      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+      ...form.characters.map((c) => charPrompt(c)),
+    ].join(' ').toLowerCase();
+    const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
     return {
       input: finalText,
@@ -148,7 +145,7 @@ export function PromptForm() {
         scale: form.scale,
         sampler: form.sampler,
         steps: form.steps,
-        n_samples: 1,
+        n_samples: nSamples,
         ucPreset: 0,
         qualityToggle: form.qualityToggle,
         sm: form.smea,
@@ -159,8 +156,10 @@ export function PromptForm() {
         add_original_image: !!baseImageB64,
         cfg_rescale: form.cfgRescale,
         noise_schedule: form.noiseSchedule,
-        skip_cfg_above_sigma: 59.04722600415217,
+        skip_cfg_above_sigma: null,
         use_coords: form.useCoords,
+        deliberate_euler_ancestral_bug: false,
+        prefer_brownian: true,
         seed,
         ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
         negative_prompt: baseNegPrompt,
@@ -210,11 +209,42 @@ export function PromptForm() {
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
+      const promptText = composeWithTidbits(selected.text, selected.tidbits);
 
-      const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-      setIsLoading(true);
-      await generate(buildRequest(composeWithTidbits(selected.text, selected.tidbits), seed, baseImageB64));
-      setIsLoading(false);
+      if (copies > 1 && copiesMode === 'batch') {
+        // True batch — one request, n_samples > 1, real extra Anlas cost.
+        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        setIsLoading(true);
+        await generate(
+          buildRequest(promptText, seed, baseImageB64, copies),
+          { batchId: crypto.randomUUID(), forceStandard: true },
+        );
+        setIsLoading(false);
+      } else if (copies > 1 && copiesMode === 'queue') {
+        // Queued — separate single-image calls in a row, each with its own
+        // fresh seed so they're not near-duplicates, each independently
+        // eligible for the free Opus allowance.
+        setIsLoading(true);
+        setBatchStatus({ current: 0, total: copies });
+        const batchId = crypto.randomUUID();
+
+        for (let i = 0; i < copies; i++) {
+          setBatchStatus({ current: i + 1, total: copies });
+          const seed =
+            form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed + i;
+          const ok = await generate(buildRequest(promptText, seed, baseImageB64), { batchId });
+          if (!ok) break;
+          if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        setIsLoading(false);
+        setBatchStatus(null);
+      } else {
+        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        setIsLoading(true);
+        await generate(buildRequest(promptText, seed, baseImageB64));
+        setIsLoading(false);
+      }
     } else {
       // Batch mode — generate one image per selected prompt sequentially
       const selectedPrompts = form.basePrompts.filter((p) => p.selected && p.text.trim());
@@ -244,11 +274,30 @@ export function PromptForm() {
       ? form.basePrompts.filter((p) => p.selected && p.text.trim()).length
       : 0;
 
+  const useCopies = form.promptMode === 'single' && copies > 1;
+  const anlasCost = calculateAnlasCost({
+    width: img2imgSource ? img2imgSource.width : form.width,
+    height: img2imgSource ? img2imgSource.height : form.height,
+    steps: form.steps,
+    smea: form.smea,
+    smeaDyn: form.smeaDyn,
+    nSamples: useCopies && copiesMode === 'batch' ? copies : 1,
+    isOpus: subscription?.tier === 3,
+  });
+  const costPerImage =
+    batchCount > 1 ? anlasCost * batchCount :
+    useCopies && copiesMode === 'queue' ? anlasCost * copies :
+    anlasCost;
+
   function buttonLabel() {
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
     if (isLoading) return 'Generating…';
-    if (form.promptMode === 'batch' && batchCount > 1) return `Generate (${batchCount})`;
-    return 'Generate';
+    const base =
+      form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` :
+      useCopies ? `Generate (${copies})` :
+      'Generate';
+    if (!subscription) return base; // cost estimate needs tier info to know about the Opus discount
+    return costPerImage > 0 ? `${base} — ~${costPerImage} Anlas` : `${base} — Free`;
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -267,7 +316,7 @@ export function PromptForm() {
         </button>
       </div>
 
-      <OpusUsageMeter />
+      <AccountStatusBar />
 
       {/* Error banner */}
       {error && (
@@ -347,9 +396,15 @@ export function PromptForm() {
         >
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Prompt Modifiers
-            {(form.furMode || form.nsfwMode || form.transparentBg || form.qualityTags || form.baseNegativeCaptions) && (
+            {(form.furMode || form.nsfwMode || form.transparentBg || form.qualityPreset !== 'none' || form.ucPreset !== 'none') && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                ({[form.furMode && 'Fur', form.nsfwMode && 'NSFW', form.transparentBg && 'Alpha', form.qualityTags && 'Quality', form.baseNegativeCaptions && 'Neg'].filter(Boolean).join(', ')})
+                ({[
+                  form.furMode && 'Fur',
+                  form.nsfwMode && 'NSFW',
+                  form.transparentBg && 'Alpha',
+                  form.qualityPreset !== 'none' && `Quality: ${QUALITY_LEVEL_LABELS[form.qualityPreset]}`,
+                  form.ucPreset !== 'none' && `UC: ${UC_LEVEL_LABELS[form.ucPreset]}`,
+                ].filter(Boolean).join(', ')})
               </span>
             )}
           </span>
@@ -394,32 +449,42 @@ export function PromptForm() {
                 className="h-4 w-4 accent-violet-500"
               />
             </label>
-            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+            <div className="flex items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
                 <p className="text-xs text-slate-600">
-                  Appends "very aesthetic, masterpiece, no text"
+                  NovelAI's own hidden quality preset for the selected model
                 </p>
               </div>
-              <input
-                type="checkbox"
-                checked={form.qualityTags}
-                onChange={(e) => form.set('qualityTags', e.target.checked)}
-                className="h-4 w-4 accent-violet-500"
-              />
-            </label>
-            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <select
+                value={form.qualityPreset}
+                onChange={(e) => form.set('qualityPreset', e.target.value as QualityLevel)}
+                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500"
+              >
+                {getAvailableQualityLevels(form.model).map((level) => (
+                  <option key={level} value={level}>
+                    {QUALITY_LEVEL_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
               <div>
-                <span className="text-xs font-semibold text-slate-400">Base Negative Captions</span>
-                <p className="text-xs text-slate-600">Prepends quality negative tags to base UC</p>
+                <span className="text-xs font-semibold text-slate-400">UC Preset</span>
+                <p className="text-xs text-slate-600">NovelAI's own hidden undesired-content preset</p>
               </div>
-              <input
-                type="checkbox"
-                checked={form.baseNegativeCaptions}
-                onChange={(e) => form.set('baseNegativeCaptions', e.target.checked)}
-                className="h-4 w-4 accent-violet-500"
-              />
-            </label>
+              <select
+                value={form.ucPreset}
+                onChange={(e) => form.set('ucPreset', e.target.value as UcLevel)}
+                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500"
+              >
+                {getAvailableUcLevels(form.model).map((level) => (
+                  <option key={level} value={level}>
+                    {UC_LEVEL_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -460,6 +525,7 @@ export function PromptForm() {
           <BasePromptsEditor
             basePrompts={form.basePrompts}
             promptMode={form.promptMode}
+            model={form.model}
             onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
             onModeChange={(promptMode) => form.set('promptMode', promptMode)}
           />
@@ -501,6 +567,60 @@ export function PromptForm() {
         )}
       </div>
 
+      {/* Copies — 2-4 images from one prompt, either a real batch (n_samples,
+          extra Anlas cost) or queued back-to-back single generations (each
+          independently eligible for the free Opus allowance). */}
+      {form.promptMode === 'single' && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
+          <div>
+            <span className="text-xs font-semibold text-slate-400">Copies</span>
+            <p className="text-xs text-slate-600">
+              {copiesMode === 'batch' ? 'One batch request, all at once' : 'Queued one at a time, ~1.5s apart'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-lg border border-slate-700 text-xs">
+              {[1, 2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setCopies(n)}
+                  className={`w-7 py-1.5 transition-colors ${
+                    copies === n ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            {copies > 1 && (
+              <div className="flex overflow-hidden rounded-lg border border-slate-700 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCopiesMode('batch')}
+                  title="One request, n_samples > 1 — real extra Anlas cost, generates simultaneously"
+                  className={`px-2 py-1.5 transition-colors ${
+                    copiesMode === 'batch' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Batch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCopiesMode('queue')}
+                  title="Separate single-image calls in a row — each can land inside the free Opus allowance"
+                  className={`px-2 py-1.5 transition-colors ${
+                    copiesMode === 'queue' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Queue
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showPositionCanvas && (
         <CharacterPositionCanvas
           characters={form.characters}
@@ -510,17 +630,61 @@ export function PromptForm() {
         />
       )}
 
-      {/* Negative Prompt — always visible */}
-      <div>
-        <label className={labelCls}>Negative Prompt</label>
-        <textarea
-          value={form.negativePrompt}
-          onChange={(e) => form.set('negativePrompt', e.target.value)}
-          rows={3}
-          className={`${inputCls} resize-y`}
-        />
+      {/* Negative Prompt — collapsible, shows a one-line preview when closed */}
+      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+        <button
+          type="button"
+          onClick={() => setShowNegativePrompt((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        >
+          <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Negative Prompt
+          </span>
+          {!showNegativePrompt && (
+            <span className="min-w-0 flex-1 truncate text-xs normal-case font-normal text-slate-600">
+              {form.negativePrompt || 'None'}
+            </span>
+          )}
+          <span className="flex-shrink-0 text-xs text-slate-500">{showNegativePrompt ? '▾' : '▸'}</span>
+        </button>
+
+        {showNegativePrompt && (
+          <div className="border-t border-slate-700/40 p-3">
+            <textarea
+              value={form.negativePrompt}
+              onChange={(e) => form.set('negativePrompt', e.target.value)}
+              rows={3}
+              className={`${inputCls} resize-y`}
+            />
+          </div>
+        )}
       </div>
 
+      {/* Generation settings — collapsible; open by default so nothing already
+          relied upon disappears, but collapsible to cut down sidebar scroll
+          once dialed in. */}
+      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+        <button
+          type="button"
+          onClick={() => setShowGenSettings((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-2 text-left"
+        >
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Generation Settings
+            {!showGenSettings && (
+              <span className="ml-1.5 normal-case font-normal text-violet-400">
+                {form.model.includes('5') ? 'V5' : form.model.includes('4-5') ? 'V4.5' : form.model.includes('4') ? 'V4' : 'V3'}
+                {' · '}
+                {img2imgSource ? img2imgSource.width : form.width}×{img2imgSource ? img2imgSource.height : form.height}
+                {' · '}{form.steps} steps
+              </span>
+            )}
+          </span>
+          <span className="text-slate-500 text-xs">{showGenSettings ? '▾' : '▸'}</span>
+        </button>
+
+        {showGenSettings && (
+      <div className="flex flex-col gap-4 border-t border-slate-700/40 p-3">
       {/* Model */}
       <div>
         <label className={labelCls}>Model</label>
@@ -682,6 +846,9 @@ export function PromptForm() {
             ↺
           </button>
         </div>
+      </div>
+      </div>
+        )}
       </div>
 
       {/* Advanced toggle */}

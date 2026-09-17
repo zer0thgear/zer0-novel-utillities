@@ -120,7 +120,10 @@ export interface NovelAIParameters {
   add_original_image: boolean;
   cfg_rescale: number;
   noise_schedule: NovelAINoiseSchedule;
-  skip_cfg_above_sigma: number;
+  /** NovelAI's "Variety+" boost. Must be `null` to match the API's own default
+   *  (off) — a nonzero value forces increased output variance and is resolution/
+   *  model-dependent, so never hardcode a constant here. */
+  skip_cfg_above_sigma: number | null;
   seed: number;
   negative_prompt: string;
   reference_image_multiple: string[];
@@ -208,6 +211,13 @@ export interface NovelAISubscription {
     isNegative: boolean;
     timeUntilNextPercent: number; // seconds until the next 1% tick
   };
+  /** Despite the name, this is the Anlas balance — confirmed against NovelAI's own
+   *  "Purchase Anlas" modal, which labels these two fields "Your Subscription Anlas"
+   *  and "Your Paid Anlas" respectively. Total Anlas = the sum of both. */
+  trainingStepsLeft: {
+    fixedTrainingStepsLeft: number;
+    purchasedTrainingSteps: number;
+  };
 }
 
 export interface GeneratedImage {
@@ -223,4 +233,7 @@ export interface GeneratedImage {
   // Enhancement provenance — set when this image was produced by img2img/enhance
   sourceImageId?: string;   // ID of the source image in the session
   sourceImageUrl?: string;  // Separate object URL for the source (survives source deletion)
+  // Shared across every image produced by one "Copies" request (true batch or
+  // queued) — lets the gallery clump them visually. Absent for single generations.
+  batchId?: string;
 }

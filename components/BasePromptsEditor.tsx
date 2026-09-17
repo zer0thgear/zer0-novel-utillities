@@ -1,7 +1,11 @@
 'use client';
 
-import { BasePrompt, PromptMode, PromptTidbit } from '@/types/novelai';
+import { useState } from 'react';
+import { BasePrompt, NovelAIModel, PromptMode, PromptTidbit } from '@/types/novelai';
 import { createTidbit } from '@/lib/promptTidbits';
+import { useTagSuggestions } from '@/hooks/useTagSuggestions';
+import { useSessionStore } from '@/store/sessionStore';
+import { currentSegment, applySegment } from '@/lib/tagAutocomplete';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -13,6 +17,7 @@ const textareaCls =
 interface BasePromptsEditorProps {
   basePrompts: BasePrompt[];
   promptMode: PromptMode;
+  model: NovelAIModel;
   onChange: (basePrompts: BasePrompt[]) => void;
   onModeChange: (mode: PromptMode) => void;
 }
@@ -22,9 +27,43 @@ interface BasePromptsEditorProps {
 export function BasePromptsEditor({
   basePrompts,
   promptMode,
+  model,
   onChange,
   onModeChange,
 }: BasePromptsEditorProps) {
+  const apiKey = useSessionStore((s) => s.apiKey);
+
+  // Tag autocomplete — only one textarea can be focused at a time, so a
+  // single active { promptId, cursor } drives one suggest-tags query for
+  // whichever prompt card is currently being typed in.
+  const [active, setActive] = useState<{ promptId: string; cursor: number } | null>(null);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  // Explicit dismiss flag, decoupled from `active`/`suggestions` — Escape
+  // sets this without touching the query state, so a stray cursor/selection
+  // event right after doesn't silently reopen the dropdown.
+  const [dismissed, setDismissed] = useState(false);
+  const activePrompt = active ? basePrompts.find((p) => p.id === active.promptId) : undefined;
+  const query = active && activePrompt ? currentSegment(activePrompt.text, active.cursor) : '';
+  const { suggestions: rawSuggestions } = useTagSuggestions(query, model, apiKey);
+  const suggestions = dismissed ? [] : rawSuggestions;
+
+  function selectSuggestion(promptId: string, cursor: number, tag: string) {
+    const prompt = basePrompts.find((p) => p.id === promptId);
+    if (!prompt) return;
+    const { text, cursor: newCursor } = applySegment(prompt.text, cursor, tag);
+    updatePrompt(promptId, { text });
+    setActive({ promptId, cursor: newCursor });
+    setHighlightIndex(0);
+    // Restore focus + caret after the re-render. setTimeout rather than
+    // requestAnimationFrame, which the browser pauses entirely while the tab
+    // is hidden/backgrounded — this still needs to run then.
+    setTimeout(() => {
+      const el = document.querySelector<HTMLTextAreaElement>(`textarea[data-prompt-id="${promptId}"]`);
+      el?.focus();
+      el?.setSelectionRange(newCursor, newCursor);
+    }, 0);
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   function addPrompt() {
@@ -182,14 +221,77 @@ export function BasePromptsEditor({
             )}
           </div>
 
-          {/* Prompt text */}
-          <textarea
-            value={prompt.text}
-            onChange={(e) => updatePrompt(prompt.id, { text: e.target.value })}
-            placeholder="masterpiece, 1girl, solo, ..."
-            rows={3}
-            className={textareaCls}
-          />
+          {/* Prompt text — Enter generates (matching NovelAI's own prompt box),
+              Shift+Enter inserts a newline as usual. Tag autocomplete shows
+              suggestions for whichever comma-segment the caret is in. */}
+          <div className="relative">
+            <textarea
+              data-prompt-id={prompt.id}
+              value={prompt.text}
+              onChange={(e) => {
+                updatePrompt(prompt.id, { text: e.target.value });
+                setActive({ promptId: prompt.id, cursor: e.target.selectionStart });
+                setHighlightIndex(0);
+                setDismissed(false);
+              }}
+              onSelect={(e) => {
+                const el = e.currentTarget;
+                setActive({ promptId: prompt.id, cursor: el.selectionStart });
+              }}
+              onBlur={() => setTimeout(() => setActive((a) => (a?.promptId === prompt.id ? null : a)), 150)}
+              onKeyDown={(e) => {
+                const dropdownOpen = active?.promptId === prompt.id && suggestions.length > 0;
+                if (dropdownOpen && e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightIndex((i) => (i + 1) % suggestions.length);
+                  return;
+                }
+                if (dropdownOpen && e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
+                  return;
+                }
+                if (dropdownOpen && e.key === 'Escape') {
+                  e.preventDefault();
+                  setDismissed(true);
+                  return;
+                }
+                if (dropdownOpen && (e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  selectSuggestion(prompt.id, active!.cursor, suggestions[highlightIndex].tag);
+                  return;
+                }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="masterpiece, 1girl, solo, ..."
+              rows={3}
+              className={textareaCls}
+            />
+            {active?.promptId === prompt.id && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-slate-700 bg-slate-800 shadow-xl">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={s.tag}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // keep textarea focus so blur doesn't fire first
+                      selectSuggestion(prompt.id, active!.cursor, s.tag);
+                    }}
+                    onMouseEnter={() => setHighlightIndex(i)}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors ${
+                      i === highlightIndex ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>{s.tag}</span>
+                    <span className="text-[10px] opacity-60">{s.count >= 10000 ? '' : s.count.toLocaleString()}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Tidbits — toggleable sub-prompts appended to the text above when enabled */}
           <div className="flex flex-col gap-1.5">
