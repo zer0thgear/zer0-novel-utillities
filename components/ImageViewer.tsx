@@ -5,8 +5,10 @@ import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
-import { useVariations } from '@/hooks/useVariations';
+import { useVariations, VARIATION_COUNT } from '@/hooks/useVariations';
 import { useUpscale } from '@/hooks/useUpscale';
+import { useSubscription } from '@/hooks/useSubscription';
+import { calculateAnlasCost } from '@/lib/anlasCost';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
@@ -27,6 +29,9 @@ function Spinner({ className }: { className?: string }) {
 export function ImageViewer() {
   const { images, focusedImageId, isLoading, streamPreview, setImg2imgSource } = useSessionStore();
   const setSeed = useSettingsStore((s) => s.set);
+  const form = useSettingsStore();
+  const { subscription } = useSubscription();
+  const isOpus = subscription?.tier === 3;
 
   const focusedImage = images.find((img) => img.id === focusedImageId) ?? null;
 
@@ -44,6 +49,31 @@ export function ImageViewer() {
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
   const { upscale, isUpscaling, error: upscaleError, clearError: clearUpscaleError } = useUpscale();
+
+  // Mirrors useEnhance.ts's own dimension math so the displayed cost matches
+  // what it will actually request.
+  const round64 = (n: number) => Math.round(n / 64) * 64;
+  const enhanceCost = focusedImage
+    ? calculateAnlasCost({
+        width: enhanceUpscale ? round64(focusedImage.parameters.width * 1.5) : focusedImage.parameters.width,
+        height: enhanceUpscale ? round64(focusedImage.parameters.height * 1.5) : focusedImage.parameters.height,
+        steps: form.steps,
+        smea: false,
+        smeaDyn: false,
+        isOpus,
+      })
+    : 0;
+  const variationsCost = focusedImage
+    ? calculateAnlasCost({
+        width: focusedImage.parameters.width,
+        height: focusedImage.parameters.height,
+        steps: focusedImage.parameters.steps,
+        smea: false,
+        smeaDyn: false,
+        nSamples: VARIATION_COUNT,
+        isOpus,
+      })
+    : 0;
 
   // Reset transient state whenever the focused image changes
   useEffect(() => {
@@ -161,7 +191,6 @@ export function ImageViewer() {
                 className="h-3.5 w-3.5 accent-violet-500"
               />
               Upscale ×1.5
-              <span className="text-slate-600">(extra Anlas)</span>
             </label>
             <button
               type="button"
@@ -169,7 +198,11 @@ export function ImageViewer() {
               disabled={isEnhancing}
               className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isEnhancing ? 'Enhancing…' : 'Enhance Image'}
+              {isEnhancing
+                ? 'Enhancing…'
+                : subscription
+                  ? enhanceCost > 0 ? `Enhance — ~${enhanceCost} Anlas` : 'Enhance — Free'
+                  : 'Enhance Image'}
             </button>
           </div>
 
@@ -257,9 +290,14 @@ export function ImageViewer() {
               type="button"
               onClick={() => { clearVariationsError(); generateVariations(focusedImage); }}
               disabled={isGeneratingVariations}
+              title={subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isGeneratingVariations ? 'Generating…' : 'Variations'}
+              {isGeneratingVariations
+                ? 'Generating…'
+                : subscription
+                  ? variationsCost > 0 ? `Variations — ~${variationsCost} Anlas` : 'Variations — Free'
+                  : 'Variations'}
             </button>
             <button
               type="button"
