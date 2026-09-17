@@ -85,6 +85,8 @@ export function PromptForm() {
   const form = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showModifiers, setShowModifiers] = useState(false);
+  const [showNegativePrompt, setShowNegativePrompt] = useState(false);
+  const [showGenSettings, setShowGenSettings] = useState(true);
   const [promptTab, setPromptTab] = useState<'prompts' | 'characters'>('prompts');
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
@@ -526,17 +528,61 @@ export function PromptForm() {
         />
       )}
 
-      {/* Negative Prompt — always visible */}
-      <div>
-        <label className={labelCls}>Negative Prompt</label>
-        <textarea
-          value={form.negativePrompt}
-          onChange={(e) => form.set('negativePrompt', e.target.value)}
-          rows={3}
-          className={`${inputCls} resize-y`}
-        />
+      {/* Negative Prompt — collapsible, shows a one-line preview when closed */}
+      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+        <button
+          type="button"
+          onClick={() => setShowNegativePrompt((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        >
+          <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Negative Prompt
+          </span>
+          {!showNegativePrompt && (
+            <span className="min-w-0 flex-1 truncate text-xs normal-case font-normal text-slate-600">
+              {form.negativePrompt || 'None'}
+            </span>
+          )}
+          <span className="flex-shrink-0 text-xs text-slate-500">{showNegativePrompt ? '▾' : '▸'}</span>
+        </button>
+
+        {showNegativePrompt && (
+          <div className="border-t border-slate-700/40 p-3">
+            <textarea
+              value={form.negativePrompt}
+              onChange={(e) => form.set('negativePrompt', e.target.value)}
+              rows={3}
+              className={`${inputCls} resize-y`}
+            />
+          </div>
+        )}
       </div>
 
+      {/* Generation settings — collapsible; open by default so nothing already
+          relied upon disappears, but collapsible to cut down sidebar scroll
+          once dialed in. */}
+      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+        <button
+          type="button"
+          onClick={() => setShowGenSettings((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-2 text-left"
+        >
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Generation Settings
+            {!showGenSettings && (
+              <span className="ml-1.5 normal-case font-normal text-violet-400">
+                {form.model.includes('5') ? 'V5' : form.model.includes('4-5') ? 'V4.5' : form.model.includes('4') ? 'V4' : 'V3'}
+                {' · '}
+                {img2imgSource ? img2imgSource.width : form.width}×{img2imgSource ? img2imgSource.height : form.height}
+                {' · '}{form.steps} steps
+              </span>
+            )}
+          </span>
+          <span className="text-slate-500 text-xs">{showGenSettings ? '▾' : '▸'}</span>
+        </button>
+
+        {showGenSettings && (
+      <div className="flex flex-col gap-4 border-t border-slate-700/40 p-3">
       {/* Model */}
       <div>
         <label className={labelCls}>Model</label>
@@ -698,6 +744,9 @@ export function PromptForm() {
             ↺
           </button>
         </div>
+      </div>
+      </div>
+        )}
       </div>
 
       {/* Advanced toggle */}
