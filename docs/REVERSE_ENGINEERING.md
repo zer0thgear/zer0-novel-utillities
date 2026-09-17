@@ -29,6 +29,18 @@ None of these were caught by code review or by "this looks right." They were cau
 - Use `https://image.novelai.net` for all `/ai/*` and `/user/*` endpoints. `https://api.novelai.net` is stale for these — it returns `400 {"message":"Please refresh NovelAI.net. If using a third-party tool, update to the image URL."}`, a real, explicit signal from NovelAI's backend.
 - `Authorization: Bearer <persistent API key>` (the `pst-...` key from Account Settings) works for image generation and most `/user/*` endpoints. A few endpoints are session-token-only and reject the persistent key with `401 {"message":"Usage of persistent access tokens is not allowed for this endpoint"}` (e.g. `/user/clientsettings`) — don't assume every endpoint behaves like `/user/subscription`.
 
+### Account info and the Anlas balance
+
+`GET /user/subscription` (bearer auth, works with the persistent key) returns account/subscription info, including `tier` (0=Paper, 1=Tablet, 2=Scroll, 3=Opus), `usage: { percent, isNegative, timeUntilNextPercent }` (Opus's free-generation allowance — the "X% of Opus Generations remaining" bar on novelai.net), and:
+
+```json
+"trainingStepsLeft": { "fixedTrainingStepsLeft": 9245, "purchasedTrainingSteps": 15 }
+```
+
+**Despite the name, this is the Anlas balance**, not anything related to module/LoRA training. `fixedTrainingStepsLeft + purchasedTrainingSteps` is the exact number novelai.net's header shows. This was confirmed by opening NovelAI's own "Purchase Anlas" modal, which literally labels these same two numbers "Your Subscription Anlas" and "Your Paid Anlas" — there's no other field anywhere in `/user/subscription`, `/user/data`, or `/user/information` that holds this figure, and the field name actively points away from the right answer (there's also an unrelated `perks.moduleTrainingSteps` nearby that genuinely is about module training — don't confuse the two).
+
+One practical gotcha: this endpoint is only fetched once per page load in most implementations (this one included) — it does not update itself after a generation. If you need to confirm an actual charge happened, fetch it fresh rather than trusting a cached/displayed value that predates the generation.
+
 ### Generation
 
 - `POST /ai/generate-image` (single response) and `POST /ai/generate-image-stream` (SSE, delivers intermediate preview frames then a final image) take an identical request body: `{ input, model, action, parameters }`. This envelope has been stable across V3 → V4 → V4.5 → V5; don't assume a new model generation means a new request shape.
