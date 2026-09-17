@@ -233,4 +233,7 @@ export interface GeneratedImage {
   // Enhancement provenance — set when this image was produced by img2img/enhance
   sourceImageId?: string;   // ID of the source image in the session
   sourceImageUrl?: string;  // Separate object URL for the source (survives source deletion)
+  // Shared across every image produced by one "Copies" request (true batch or
+  // queued) — lets the gallery clump them visually. Absent for single generations.
+  batchId?: string;
 }

@@ -94,6 +94,14 @@ export function PromptForm() {
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
   const [img2imgNoise, setImg2imgNoise] = useState(0);
+  // "Copies" — generate 2-4 images from one prompt in a single shot (true
+  // batch, n_samples > 1, real extra Anlas cost) or queued back-to-back as
+  // separate single-image calls (each can independently land inside the free
+  // Opus allowance, unlike a batch which only gets one free sample). Only
+  // offered in single-prompt mode — combining with the existing multi-prompt
+  // "Batch" mode would multiply scope for little benefit.
+  const [copies, setCopies] = useState(1);
+  const [copiesMode, setCopiesMode] = useState<'batch' | 'queue'>('batch');
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
   const { subscription } = useSubscription();
@@ -103,7 +111,7 @@ export function PromptForm() {
 
   // ── Request builder ────────────────────────────────────────────────────
 
-  function buildRequest(promptText: string, seed: number, baseImageB64?: string): NovelAIGenerateRequest {
+  function buildRequest(promptText: string, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
     const activeCharacters = form.characters.filter((c) => c.enabled);
     const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
 
@@ -137,7 +145,7 @@ export function PromptForm() {
         scale: form.scale,
         sampler: form.sampler,
         steps: form.steps,
-        n_samples: 1,
+        n_samples: nSamples,
         ucPreset: 0,
         qualityToggle: form.qualityToggle,
         sm: form.smea,
@@ -201,11 +209,42 @@ export function PromptForm() {
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
+      const promptText = composeWithTidbits(selected.text, selected.tidbits);
 
-      const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-      setIsLoading(true);
-      await generate(buildRequest(composeWithTidbits(selected.text, selected.tidbits), seed, baseImageB64));
-      setIsLoading(false);
+      if (copies > 1 && copiesMode === 'batch') {
+        // True batch — one request, n_samples > 1, real extra Anlas cost.
+        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        setIsLoading(true);
+        await generate(
+          buildRequest(promptText, seed, baseImageB64, copies),
+          { batchId: crypto.randomUUID(), forceStandard: true },
+        );
+        setIsLoading(false);
+      } else if (copies > 1 && copiesMode === 'queue') {
+        // Queued — separate single-image calls in a row, each with its own
+        // fresh seed so they're not near-duplicates, each independently
+        // eligible for the free Opus allowance.
+        setIsLoading(true);
+        setBatchStatus({ current: 0, total: copies });
+        const batchId = crypto.randomUUID();
+
+        for (let i = 0; i < copies; i++) {
+          setBatchStatus({ current: i + 1, total: copies });
+          const seed =
+            form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed + i;
+          const ok = await generate(buildRequest(promptText, seed, baseImageB64), { batchId });
+          if (!ok) break;
+          if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        setIsLoading(false);
+        setBatchStatus(null);
+      } else {
+        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        setIsLoading(true);
+        await generate(buildRequest(promptText, seed, baseImageB64));
+        setIsLoading(false);
+      }
     } else {
       // Batch mode — generate one image per selected prompt sequentially
       const selectedPrompts = form.basePrompts.filter((p) => p.selected && p.text.trim());
@@ -235,20 +274,28 @@ export function PromptForm() {
       ? form.basePrompts.filter((p) => p.selected && p.text.trim()).length
       : 0;
 
+  const useCopies = form.promptMode === 'single' && copies > 1;
   const anlasCost = calculateAnlasCost({
     width: img2imgSource ? img2imgSource.width : form.width,
     height: img2imgSource ? img2imgSource.height : form.height,
     steps: form.steps,
     smea: form.smea,
     smeaDyn: form.smeaDyn,
+    nSamples: useCopies && copiesMode === 'batch' ? copies : 1,
     isOpus: subscription?.tier === 3,
   });
-  const costPerImage = batchCount > 1 ? anlasCost * batchCount : anlasCost;
+  const costPerImage =
+    batchCount > 1 ? anlasCost * batchCount :
+    useCopies && copiesMode === 'queue' ? anlasCost * copies :
+    anlasCost;
 
   function buttonLabel() {
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
     if (isLoading) return 'Generating…';
-    const base = form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` : 'Generate';
+    const base =
+      form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` :
+      useCopies ? `Generate (${copies})` :
+      'Generate';
     if (!subscription) return base; // cost estimate needs tier info to know about the Opus discount
     return costPerImage > 0 ? `${base} — ~${costPerImage} Anlas` : `${base} — Free`;
   }
@@ -518,6 +565,60 @@ export function PromptForm() {
           </>
         )}
       </div>
+
+      {/* Copies — 2-4 images from one prompt, either a real batch (n_samples,
+          extra Anlas cost) or queued back-to-back single generations (each
+          independently eligible for the free Opus allowance). */}
+      {form.promptMode === 'single' && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
+          <div>
+            <span className="text-xs font-semibold text-slate-400">Copies</span>
+            <p className="text-xs text-slate-600">
+              {copiesMode === 'batch' ? 'One batch request, all at once' : 'Queued one at a time, ~1.5s apart'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-lg border border-slate-700 text-xs">
+              {[1, 2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setCopies(n)}
+                  className={`w-7 py-1.5 transition-colors ${
+                    copies === n ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            {copies > 1 && (
+              <div className="flex overflow-hidden rounded-lg border border-slate-700 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCopiesMode('batch')}
+                  title="One request, n_samples > 1 — real extra Anlas cost, generates simultaneously"
+                  className={`px-2 py-1.5 transition-colors ${
+                    copiesMode === 'batch' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Batch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCopiesMode('queue')}
+                  title="Separate single-image calls in a row — each can land inside the free Opus allowance"
+                  className={`px-2 py-1.5 transition-colors ${
+                    copiesMode === 'queue' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Queue
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showPositionCanvas && (
         <CharacterPositionCanvas

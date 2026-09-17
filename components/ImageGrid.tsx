@@ -3,7 +3,23 @@
 import { useState } from 'react';
 import { downloadSessionAsZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
+import { GeneratedImage } from '@/types/novelai';
 import { ImageCard } from './ImageCard';
+
+// Groups consecutive images sharing a batchId — a Copies batch/queue run
+// always lands adjacent in the array since nothing else generates mid-run.
+function groupConsecutiveByBatch(images: GeneratedImage[]): GeneratedImage[][] {
+  const groups: GeneratedImage[][] = [];
+  for (const image of images) {
+    const last = groups[groups.length - 1];
+    if (image.batchId && last?.[0]?.batchId === image.batchId) {
+      last.push(image);
+    } else {
+      groups.push([image]);
+    }
+  }
+  return groups;
+}
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -120,14 +136,26 @@ export function HistoryStrip() {
             </div>
           )}
 
-          {/* Thumbnails — newest first */}
-          {images.map((image) => (
-            <ImageCard
-              key={image.id}
-              image={image}
-              focused={image.id === focusedImageId}
-            />
-          ))}
+          {/* Thumbnails — newest first, consecutive images sharing a batchId
+              (a "Copies" batch or queue run) are clumped into one 2-col grid
+              so they read as one generation while staying individually
+              clickable/removable. */}
+          {groupConsecutiveByBatch(images).map((group) =>
+            group.length === 1 ? (
+              <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
+            ) : (
+              <div key={group[0].batchId} className="rounded-lg border border-violet-700/30 bg-violet-950/10 p-1.5">
+                <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
+                  Batch of {group.length}
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {group.map((image) => (
+                    <ImageCard key={image.id} image={image} focused={image.id === focusedImageId} />
+                  ))}
+                </div>
+              </div>
+            )
+          )}
         </div>
       </div>
     </div>
