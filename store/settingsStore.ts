@@ -8,6 +8,7 @@ import {
   NovelAINoiseSchedule,
   PromptMode,
 } from '@/types/novelai';
+import { QualityLevel, UcLevel } from '@/lib/naiPresets';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,8 +18,8 @@ export interface FormSettings {
   furMode: boolean;
   nsfwMode: boolean;
   transparentBg: boolean;
-  qualityTags: boolean;
-  baseNegativeCaptions: boolean;
+  qualityPreset: QualityLevel;
+  ucPreset: UcLevel;
   negativePrompt: string;
   model: NovelAIModel;
   width: number;
@@ -52,8 +53,8 @@ const DEFAULTS: FormSettings = {
   furMode: false,
   nsfwMode: false,
   transparentBg: false,
-  qualityTags: false,
-  baseNegativeCaptions: false,
+  qualityPreset: 'none',
+  ucPreset: 'none',
   negativePrompt: DEFAULT_NEGATIVE,
   model: 'nai-diffusion-4-5-full',
   width: 832,
@@ -82,18 +83,31 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'novelai-settings',
-      version: 2,
-      // Migrate from v1 (single prompt: string) → v2 (basePrompts: BasePrompt[])
+      version: 3,
       migrate(persistedState: unknown, version: number) {
-        const s = persistedState as Record<string, unknown>;
+        let s = persistedState as Record<string, unknown>;
+        // v1 -> v2: single prompt: string -> basePrompts: BasePrompt[]
         if (version < 2) {
           const oldPrompt = typeof s.prompt === 'string' ? s.prompt : '';
-          return {
+          s = {
             ...s,
             basePrompts: [{ id: 'migrated', label: 'Prompt 1', text: oldPrompt, selected: true }],
             promptMode: 'single' as PromptMode,
             furMode: false,
             prompt: undefined,
+          };
+        }
+        // v2 -> v3: qualityTags/baseNegativeCaptions booleans -> real per-model
+        // qualityPreset/ucPreset levels (see lib/naiPresets.ts). A prior "on"
+        // boolean maps to each model's single documented "standard"/"heavy"
+        // level rather than being silently dropped.
+        if (version < 3) {
+          s = {
+            ...s,
+            qualityPreset: s.qualityTags ? 'standard' : 'none',
+            ucPreset: s.baseNegativeCaptions ? 'heavy' : 'none',
+            qualityTags: undefined,
+            baseNegativeCaptions: undefined,
           };
         }
         return s as unknown as FormSettings;

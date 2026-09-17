@@ -17,6 +17,16 @@ import { AccountStatusBar } from './AccountStatusBar';
 import { composeWithTidbits } from '@/lib/promptTidbits';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
+import {
+  composeWithQuality,
+  composeNegativeWithUc,
+  getAvailableQualityLevels,
+  getAvailableUcLevels,
+  QUALITY_LEVEL_LABELS,
+  UC_LEVEL_LABELS,
+  QualityLevel,
+  UcLevel,
+} from '@/lib/naiPresets';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -45,13 +55,6 @@ const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
   { value: 'karras', label: 'Karras' },
   { value: 'exponential', label: 'Exponential' },
   { value: 'polyexponential', label: 'Polyexponential' },
-];
-
-const BASE_NEGATIVE_TAGS = [
-  'nsfw', 'lowres', 'artistic error', 'film grain', 'scan artifacts',
-  'worst quality', 'bad quality', 'jpeg artifacts', 'very displeasing',
-  'chromatic aberration', 'dithering', 'halftone', 'screentone',
-  'multiple views', 'logo', 'too many watermarks', 'negative space', 'blank page',
 ];
 
 const SIZE_PRESETS = [
@@ -111,36 +114,17 @@ export function PromptForm() {
     const prefixedText =
       prefixes.length > 0 ? `${prefixes.join(', ')}, ${promptText}` : promptText;
 
-    // ── Quality tag suffix ─────────────────────────────────────────────────────
-    // 'no text' is only appended when 'Text:' is absent from the current prompt
-    // and all active character prompts (case-sensitive per spec).
-    let finalText = prefixedText;
-    if (form.qualityTags) {
-      const hasTextToken =
-        promptText.includes('Text:') ||
-        activeCharacters.some((c) => charPrompt(c).includes('Text:'));
-      finalText =
-        prefixedText +
-        ', very aesthetic, masterpiece' +
-        (hasTextToken ? '' : ', no text');
-    }
+    // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
+    let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
     if (form.transparentBg) finalText += ', transparent background';
 
-    // ── Base negative captions prefix ─────────────────────────────────────────
-    // Tags already present (case-insensitive) in any base or character positive
-    // prompt are omitted to avoid redundancy, mirroring the 'no text' pattern.
-    const baseNegPrompt = (() => {
-      if (!form.baseNegativeCaptions) return form.negativePrompt;
-      const searchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const tags = BASE_NEGATIVE_TAGS.filter((t) => !searchText.includes(t.toLowerCase()));
-      if (tags.length === 0) return form.negativePrompt;
-      return form.negativePrompt
-        ? `${tags.join(', ')}, ${form.negativePrompt}`
-        : tags.join(', ');
-    })();
+    // ── UC preset prefix — tags already present (case-insensitive) in any base
+    // or character positive prompt are skipped to avoid contradicting the user.
+    const positiveSearchText = [
+      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
+      ...form.characters.map((c) => charPrompt(c)),
+    ].join(' ').toLowerCase();
+    const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
     return {
       input: finalText,
@@ -365,9 +349,15 @@ export function PromptForm() {
         >
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Prompt Modifiers
-            {(form.furMode || form.nsfwMode || form.transparentBg || form.qualityTags || form.baseNegativeCaptions) && (
+            {(form.furMode || form.nsfwMode || form.transparentBg || form.qualityPreset !== 'none' || form.ucPreset !== 'none') && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                ({[form.furMode && 'Fur', form.nsfwMode && 'NSFW', form.transparentBg && 'Alpha', form.qualityTags && 'Quality', form.baseNegativeCaptions && 'Neg'].filter(Boolean).join(', ')})
+                ({[
+                  form.furMode && 'Fur',
+                  form.nsfwMode && 'NSFW',
+                  form.transparentBg && 'Alpha',
+                  form.qualityPreset !== 'none' && `Quality: ${QUALITY_LEVEL_LABELS[form.qualityPreset]}`,
+                  form.ucPreset !== 'none' && `UC: ${UC_LEVEL_LABELS[form.ucPreset]}`,
+                ].filter(Boolean).join(', ')})
               </span>
             )}
           </span>
@@ -412,32 +402,42 @@ export function PromptForm() {
                 className="h-4 w-4 accent-violet-500"
               />
             </label>
-            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+            <div className="flex items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
                 <p className="text-xs text-slate-600">
-                  Appends "very aesthetic, masterpiece, no text"
+                  NovelAI's own hidden quality preset for the selected model
                 </p>
               </div>
-              <input
-                type="checkbox"
-                checked={form.qualityTags}
-                onChange={(e) => form.set('qualityTags', e.target.checked)}
-                className="h-4 w-4 accent-violet-500"
-              />
-            </label>
-            <label className="flex cursor-pointer items-center justify-between px-3 py-2">
+              <select
+                value={form.qualityPreset}
+                onChange={(e) => form.set('qualityPreset', e.target.value as QualityLevel)}
+                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500"
+              >
+                {getAvailableQualityLevels(form.model).map((level) => (
+                  <option key={level} value={level}>
+                    {QUALITY_LEVEL_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
               <div>
-                <span className="text-xs font-semibold text-slate-400">Base Negative Captions</span>
-                <p className="text-xs text-slate-600">Prepends quality negative tags to base UC</p>
+                <span className="text-xs font-semibold text-slate-400">UC Preset</span>
+                <p className="text-xs text-slate-600">NovelAI's own hidden undesired-content preset</p>
               </div>
-              <input
-                type="checkbox"
-                checked={form.baseNegativeCaptions}
-                onChange={(e) => form.set('baseNegativeCaptions', e.target.checked)}
-                className="h-4 w-4 accent-violet-500"
-              />
-            </label>
+              <select
+                value={form.ucPreset}
+                onChange={(e) => form.set('ucPreset', e.target.value as UcLevel)}
+                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500"
+              >
+                {getAvailableUcLevels(form.model).map((level) => (
+                  <option key={level} value={level}>
+                    {UC_LEVEL_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
