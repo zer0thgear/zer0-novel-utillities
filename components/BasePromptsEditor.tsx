@@ -182,10 +182,17 @@ export function BasePromptsEditor({
             )}
           </div>
 
-          {/* Prompt text */}
+          {/* Prompt text — Enter generates (matching NovelAI's own prompt box),
+              Shift+Enter inserts a newline as usual. */}
           <textarea
             value={prompt.text}
             onChange={(e) => updatePrompt(prompt.id, { text: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder="masterpiece, 1girl, solo, ..."
             rows={3}
             className={textareaCls}
