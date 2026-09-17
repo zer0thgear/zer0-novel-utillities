@@ -48,8 +48,9 @@ app/
   layout.tsx
 components/
   PromptForm.tsx             # Prompt editor, generation settings, Generate button
-  BasePromptsEditor.tsx       # Single/Batch base prompts, tidbits, tag autocomplete
+  BasePromptsEditor.tsx       # Single/Batch base prompts, tidbits
   CharacterPromptsEditor.tsx  # Per-character V4/V5 prompt editor
+  TagAutocompleteField.tsx    # Shared suggest-tags autocomplete (textarea/input)
   CharacterPositionCanvas.tsx # Freeform character position picker (V5)
   ImageViewer.tsx             # Focused image + Edit/Inpaint/Tools/Variations/Upscale/Enhance/Metadata
   ImageGrid.tsx                # Session history strip, groups batch/queue runs visually
