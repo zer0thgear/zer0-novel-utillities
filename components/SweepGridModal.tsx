@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { saveAs } from 'file-saver';
 import { useSessionStore } from '@/store/sessionStore';
+import { renderSweepGrid } from '@/lib/sweepGridImage';
 
 interface Props {
   sweepId: string;
@@ -15,12 +17,29 @@ export function SweepGridModal({ sweepId, onClose }: Props) {
   const { images, focusedImageId, setFocusedImageId } = useSessionStore();
   const cells = images.filter((img) => img.sweep?.id === sweepId);
   const info = cells[0]?.sweep;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  async function saveImage() {
+    if (!info) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const blob = await renderSweepGrid(info, cells);
+      const axes = [info.x.name, info.y?.name].filter(Boolean).join('-x-').replace(/[^\w-]+/g, '_');
+      saveAs(blob, `sweep-${axes}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save the grid.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!info) return null;
   const cols = info.x.values.length;
@@ -42,10 +61,22 @@ export function SweepGridModal({ sweepId, onClose }: Props) {
               {cells.length} of {cols * rows} images · click one to open it
             </span>
           </h2>
-          <button type="button" onClick={onClose} title="Close" className="text-slate-500 hover:text-slate-200">
-            ✕
-          </button>
+          <div className="flex flex-shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={saveImage}
+              disabled={saving}
+              title="Save the grid, with its labels, as one PNG"
+              className="rounded bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save image'}
+            </button>
+            <button type="button" onClick={onClose} title="Close" className="text-slate-500 hover:text-slate-200">
+              ✕
+            </button>
+          </div>
         </div>
+        {saveError && <p className="text-xs text-amber-400">{saveError}</p>}
 
         <div className="overflow-auto">
           <div

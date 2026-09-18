@@ -83,6 +83,7 @@ lib/
   promptText.ts                 # Prompt fragment joining (comma/whitespace rules)
   wildcards.ts                  # __Label__ references + random wildcards, resolved once per request
   sweeps.ts                     # X/Y sweep axes → per-image cells
+  sweepGridImage.ts             # Renders a sweep grid as one labelled PNG
   samplers.ts / models.ts       # Sampler and model lists shared across the UI
   presets.ts                    # Saved presets: which settings they capture
   transfer.ts                   # Import/export file format, validation, re-linking
