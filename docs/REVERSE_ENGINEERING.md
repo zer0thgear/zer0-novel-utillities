@@ -84,16 +84,23 @@ The V5 and V4.5 Full UC lists and the V5, V4 Full and V3 quality texts already m
 
 ### Anlas pricing
 
-Not published anywhere by NovelAI. The formula (for all "modern" models — V3 through V5):
+Not published by NovelAI, but its web client computes every price locally. The formulas below were read from novelai.net's bundle on 2026-09-18 and checked against prices its UI displays, for example 832×1216 at 30 steps: V5 Curated 32, V4.5 Full 21.
 
 ```
-r = max(width * height, 65536)
-per_sample = max(ceil((A*r + B*r*steps) * smea_factor), 2)
-opus_discount = isOpus && steps <= 28 && r <= 1024*1024   // subtracts exactly 1 sample's cost
-cost = per_sample * (n_samples - (opus_discount ? 1 : 0))
+pixels     = width * height
+perSample  = ceil(2.951823174884865e-6 * pixels + 5.753298233447344e-7 * pixels * steps)
+             * (sm && sm_dyn ? 1.4 : sm ? 1.2 : 1)
+if V5:       perSample *= 1.5
+perSample  = max(ceil(perSample * strength), 2)      // strength = img2img/enhance strength, else 1
+free       = Opus && pixels <= 1048576 && steps <= 28 && !(V5 && usage.isNegative)
+cost       = perSample * (n_samples - (free ? 1 : 0))
 ```
 
-As of 2026-09-17, `A = 4.9e-6`, `B = 8.55e-7` fit 4 real (resolution, steps) → cost data points read directly off novelai.net's own live cost preview (adjust the Settings panel, no generation needed to see the number) exactly. **These constants will drift.** If they look wrong, re-derive them the same way: pick two resolutions and two step counts, read the 4 resulting costs off NovelAI's own UI, solve the two linear equations. A community-sourced formula predicted 42 Anlas where the real cost was 63 — don't trust a copied formula without at least one live cross-check against a non-free (non-Opus-discounted) data point. `sm`/`sm_dyn` (SMEA) multipliers (1.2x / 1.4x) are carried over from that same community formula and were **not** independently re-verified — NovelAI's current web UI has no SMEA toggle at all to test against. Strength/noise (img2img) do **not** affect cost at all, confirmed live by dragging those sliders on NovelAI's own UI at a fixed resolution/step count and watching the displayed cost stay fixed.
+- **V3, V4, V4.5 and V5 share the curve, and V5 costs 1.5× more.** An earlier empirical fit used one curve for every model. It happened to match V5 but overstated V3/V4/V4.5 by about 1.5×.
+- **img2img strength scales the price.** An earlier "confirmed live" note said it didn't. That check almost certainly happened at a size where the Opus allowance made everything read 0.
+- **Only V5 has an Opus usage limit** (`usage.isNegative` on `/user/subscription`). Once it's used up, V5 stops being free; other models don't.
+- **Upscale** (`/ai/upscale`) is a flat price by input size, with no Opus discount: ≤1 MP 1, ≤1.75 MP 2, ≤2.45 MP 3, ≤3.1 MP 4. NovelAI's own UI doesn't offer Upscale above 1 MP.
+- **Director Tools** are priced as a 28-step V3 generation at the image's size clamped to 1–3.1 MP, so Opus gets them free at ≤1 MP. Background removal is 3× that plus 5, and never discounted. Pixel Snap is free.
 
 ### Tag autocomplete
 

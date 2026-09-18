@@ -24,9 +24,9 @@ import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
 import { MODELS, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
-import { buildImageRequest, composeFinalPrompts, formSampling, promptSource, randomSeed } from '@/lib/imageRequest';
+import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
-import { calculateAnlasCost } from '@/lib/anlasCost';
+import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
 import { TokenMeter } from './TokenMeter';
@@ -290,17 +290,23 @@ export function PromptForm() {
     setSweepStopping(false);
   }
 
+  // What a request with the form's settings costs (SMEA is only sent on V3;
+  // an img2img base prices by its own size and the strength used).
+  const costInput = (steps: number, nSamples: number) => ({
+    model: form.model,
+    width: img2imgSource ? img2imgSource.width : form.width,
+    height: img2imgSource ? img2imgSource.height : form.height,
+    steps,
+    smea: isV3Model(form.model) && form.smea,
+    smeaDyn: isV3Model(form.model) && form.smeaDyn,
+    nSamples,
+    strength: img2imgSource ? img2imgStrength : undefined,
+    ...opusStatus(subscription),
+  });
+
   function sweepCostFor(steps: number): number | null {
     if (!subscription) return null;
-    return calculateAnlasCost({
-      width: img2imgSource ? img2imgSource.width : form.width,
-      height: img2imgSource ? img2imgSource.height : form.height,
-      steps,
-      smea: form.smea,
-      smeaDyn: form.smeaDyn,
-      nSamples: 1,
-      isOpus: subscription.tier === 3,
-    });
+    return calculateAnlasCost(costInput(steps, 1));
   }
 
   // ── Derived button state ───────────────────────────────────────────────
@@ -312,15 +318,7 @@ export function PromptForm() {
       : 0;
 
   const useCopies = form.promptMode === 'single' && copies > 1;
-  const anlasCost = calculateAnlasCost({
-    width: img2imgSource ? img2imgSource.width : form.width,
-    height: img2imgSource ? img2imgSource.height : form.height,
-    steps: form.steps,
-    smea: form.smea,
-    smeaDyn: form.smeaDyn,
-    nSamples: useCopies && copiesMode === 'batch' ? copies : 1,
-    isOpus: subscription?.tier === 3,
-  });
+  const anlasCost = calculateAnlasCost(costInput(form.steps, useCopies && copiesMode === 'batch' ? copies : 1));
   const costPerImage =
     batchCount > 1 ? anlasCost * batchCount :
     useCopies && copiesMode === 'queue' ? anlasCost * copies :

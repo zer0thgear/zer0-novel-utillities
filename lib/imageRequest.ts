@@ -29,7 +29,7 @@ import {
 
 export const randomSeed = () => Math.floor(Math.random() * 4294967295);
 
-const isV3Model = (model: NovelAIModel) =>
+export const isV3Model = (model: NovelAIModel) =>
   model.startsWith('nai-diffusion-3') || model.startsWith('nai-diffusion-furry-3');
 
 type PromptModifiers = Pick<

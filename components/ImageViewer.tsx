@@ -5,10 +5,10 @@ import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
-import { useVariations, VARIATION_COUNT } from '@/hooks/useVariations';
+import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useVariations';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
-import { calculateAnlasCost } from '@/lib/anlasCost';
+import { calculateAnlasCost, opusStatus, upscaleCost } from '@/lib/anlasCost';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
@@ -34,7 +34,7 @@ export function ImageViewer() {
   const setSeed = useSettingsStore((s) => s.set);
   const form = useSettingsStore();
   const { subscription } = useSubscription();
-  const isOpus = subscription?.tier === 3;
+  const opus = opusStatus(subscription);
 
   const focusedImage = images.find((img) => img.id === focusedImageId) ?? null;
 
@@ -60,25 +60,30 @@ export function ImageViewer() {
   const round64 = (n: number) => Math.round(n / 64) * 64;
   const enhanceCost = focusedImage
     ? calculateAnlasCost({
+        model: form.model,
         width: enhanceUpscale ? round64(focusedImage.parameters.width * 1.5) : focusedImage.parameters.width,
         height: enhanceUpscale ? round64(focusedImage.parameters.height * 1.5) : focusedImage.parameters.height,
         steps: form.steps,
         smea: false,
         smeaDyn: false,
-        isOpus,
+        strength: ENHANCE_LEVELS[enhanceLevel - 1].strength,
+        ...opus,
       })
     : 0;
   const variationsCost = focusedImage
     ? calculateAnlasCost({
+        model: focusedImage.model,
         width: focusedImage.parameters.width,
         height: focusedImage.parameters.height,
         steps: focusedImage.parameters.steps,
         smea: false,
         smeaDyn: false,
         nSamples: VARIATION_COUNT,
-        isOpus,
+        strength: VARIATION_STRENGTH,
+        ...opus,
       })
     : 0;
+  const upscalePrice = focusedImage ? upscaleCost(focusedImage.parameters.width, focusedImage.parameters.height) : null;
 
   // Reset transient state whenever the focused image changes. Done during
   // render (React's pattern for state derived from a prop change) rather than
@@ -348,7 +353,7 @@ export function ImageViewer() {
               disabled={isUpscaling}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isUpscaling ? 'Upscaling…' : 'Upscale'}
+              {isUpscaling ? 'Upscaling…' : upscalePrice ? `Upscale — ~${upscalePrice} Anlas` : 'Upscale'}
             </button>
             <button
               type="button"

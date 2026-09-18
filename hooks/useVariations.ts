@@ -10,7 +10,7 @@ import { blobToBase64 } from '@/lib/imageUtils';
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
 export const VARIATION_COUNT = 3;
-const VARIATION_STRENGTH = 0.8;
+export const VARIATION_STRENGTH = 0.8;
 const VARIATION_NOISE = 0.1;
 
 interface UseVariationsReturn {
