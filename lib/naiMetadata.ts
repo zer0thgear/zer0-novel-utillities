@@ -11,6 +11,7 @@ import { NovelAIModel } from '@/types/novelai';
 
 export interface ParsedCharacter {
   prompt: string;
+  uc: string;
   center: { x: number; y: number };
 }
 
@@ -95,15 +96,23 @@ export function extractNaiMetadata(buffer: ArrayBuffer): ParsedNaiMetadata | nul
   const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback);
   const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
 
-  const v4Prompt = data.v4_prompt as { caption?: { base_caption?: string; char_captions?: { char_caption: string; centers: { x: number; y: number }[] }[] } } | undefined;
+  type Captions = { caption?: { base_caption?: string; char_captions?: { char_caption: string; centers: { x: number; y: number }[] }[] } };
+  const v4Prompt = data.v4_prompt as Captions | undefined;
   const charCaptions = v4Prompt?.caption?.char_captions ?? [];
+  // Per-character negatives live in a parallel array, paired by index, so
+  // pair them up before filtering out empty characters.
+  const charNegatives = (data.v4_negative_prompt as Captions | undefined)?.caption?.char_captions ?? [];
 
   return {
     prompt: str(data.prompt, str(v4Prompt?.caption?.base_caption, '')),
     negativePrompt: str(data.uc, ''),
     characters: charCaptions
-      .filter((c) => c.char_caption?.trim())
-      .map((c) => ({ prompt: c.char_caption, center: c.centers?.[0] ?? { x: 0.5, y: 0.5 } })),
+      .map((c, i) => ({
+        prompt: c.char_caption,
+        uc: str(charNegatives[i]?.char_caption, ''),
+        center: c.centers?.[0] ?? { x: 0.5, y: 0.5 },
+      }))
+      .filter((c) => c.prompt?.trim()),
     seed: num(data.seed, 0),
     steps: num(data.steps, 28),
     scale: num(data.scale, 6),
