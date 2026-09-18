@@ -197,9 +197,18 @@ export function InpaintModal({ image, onClose }: InpaintModalProps) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const canvasScaleX = drawCanvasRef.current
-    ? drawCanvasRef.current.getBoundingClientRect().width / image.parameters.width
-    : 1;
+  // The brush preview is drawn in screen pixels, so it needs the canvas's
+  // displayed size, which changes as the image loads and the window resizes.
+  const [canvasScaleX, setCanvasScaleX] = useState(1);
+  useEffect(() => {
+    const canvas = drawCanvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() =>
+      setCanvasScaleX(canvas.getBoundingClientRect().width / image.parameters.width),
+    );
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [image.parameters.width]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">

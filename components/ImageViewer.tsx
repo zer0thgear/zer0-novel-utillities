@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -80,8 +80,12 @@ export function ImageViewer() {
       })
     : 0;
 
-  // Reset transient state whenever the focused image changes
-  useEffect(() => {
+  // Reset transient state whenever the focused image changes. Done during
+  // render (React's pattern for state derived from a prop change) rather than
+  // in an effect, so the new image never renders with the old image's panels.
+  const [stateFor, setStateFor] = useState(focusedImageId);
+  if (stateFor !== focusedImageId) {
+    setStateFor(focusedImageId);
     setViewingOriginal(false);
     setShowEnhance(false);
     setShowInpaint(false);
@@ -89,7 +93,7 @@ export function ImageViewer() {
     setShowDirectorTools(false);
     setBaseImageSet(false);
     setShowMetadata(false);
-  }, [focusedImageId]);
+  }
 
   const handleEnhance = async () => {
     if (!focusedImage) return;

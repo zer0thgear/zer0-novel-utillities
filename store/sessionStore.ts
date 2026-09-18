@@ -38,7 +38,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setApiKey: (key) => {
     if (typeof window !== 'undefined') {
-      key ? localStorage.setItem(API_KEY_KEY, key) : localStorage.removeItem(API_KEY_KEY);
+      if (key) localStorage.setItem(API_KEY_KEY, key);
+      else localStorage.removeItem(API_KEY_KEY);
     }
     set({ apiKey: key });
   },

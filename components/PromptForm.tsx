@@ -447,7 +447,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Fur Mode</span>
-                <p className="text-xs text-slate-600">Prepends "fur dataset"</p>
+                <p className="text-xs text-slate-600">Prepends &quot;fur dataset&quot;</p>
               </div>
               <input
                 type="checkbox"
@@ -459,7 +459,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">NSFW</span>
-                <p className="text-xs text-slate-600">Prepends "nsfw" (after fur dataset)</p>
+                <p className="text-xs text-slate-600">Prepends &quot;nsfw&quot; (after fur dataset)</p>
               </div>
               <input
                 type="checkbox"
@@ -484,7 +484,7 @@ export function PromptForm() {
               <div>
                 <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
                 <p className="text-xs text-slate-600">
-                  NovelAI's own hidden quality preset for the selected model
+                  NovelAI&apos;s own hidden quality preset for the selected model
                 </p>
               </div>
               <select
@@ -502,7 +502,7 @@ export function PromptForm() {
             <div className="flex items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">UC Preset</span>
-                <p className="text-xs text-slate-600">NovelAI's own hidden undesired-content preset</p>
+                <p className="text-xs text-slate-600">NovelAI&apos;s own hidden undesired-content preset</p>
               </div>
               <select
                 value={form.ucPreset}
