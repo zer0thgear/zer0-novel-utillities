@@ -59,6 +59,8 @@ components/
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
   SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
   PresetsSection.tsx          # Save/load named setting presets
+  ChainsSection.tsx / ChainEditorModal.tsx  # Saved chained actions (Enhance → Upscale → …)
+  ChainRunner.tsx             # Runs chains one step at a time; progress, errors, cost confirm
   TransferModal.tsx / TransferSection.tsx  # Selective import/export to a JSON file
   ImportModal.tsx             # Image import/reuse window (drop, paste, Reuse)
   WeightBar.tsx               # Emphasis weight slider (Ctrl+↑/↓)
@@ -73,11 +75,13 @@ hooks/
   useSubscription.ts            # Account/Anlas/Opus usage
   useTagSuggestions.ts          # Live tag autocomplete
   useTokenCounts.ts             # Live prompt token counts for the editor
+  useChainLauncher.ts           # Prices a chain for some images and queues it
 store/
   settingsStore.ts              # Persisted generation settings (Zustand + localStorage)
   sessionStore.ts               # In-memory session state (images, loading, API key)
+  chainStore.ts                 # Chain queue, progress and pending confirmation
 lib/
-  anlasCost.ts                  # Empirically-derived Anlas cost estimate
+  anlasCost.ts                  # NovelAI's own Anlas price formulas (generate, upscale, tools)
   naiPresets.ts                 # Quality Tags / UC Preset literal text, per model
   naiMetadata.ts                # PNG metadata (tEXt chunk) parsing
   tagAutocomplete.ts            # Prompt-segment extraction for autocomplete
@@ -88,6 +92,7 @@ lib/
   sweepGridImage.ts             # Renders a sweep grid as one labelled PNG
   samplers.ts / models.ts       # Sampler and model lists shared across the UI
   presets.ts                    # Saved presets: which settings they capture
+  chains.ts                     # Chain steps, validation, per-step price plan, import parsing
   transfer.ts                   # Import/export file format, validation, re-linking
   emphasis.ts                   # {}/[]/w::text:: emphasis parsing and stepping
   imageRequest.ts               # Builds every /ai/generate-image request

@@ -1,19 +1,20 @@
 import type { FormSettings } from '@/store/settingsStore';
-import { BasePrompt, CharacterPromptEntry, LibraryTidbit, PromptTidbit } from '@/types/novelai';
+import { BasePrompt, Chain, CharacterPromptEntry, LibraryTidbit, PromptTidbit } from '@/types/novelai';
 import { Preset, PRESET_SETTINGS_KEYS } from '@/lib/presets';
 import { referencedEntries } from '@/lib/wildcards';
 import { MODELS } from '@/lib/models';
+import { parseChain } from '@/lib/chains';
 import { SAMPLERS } from '@/lib/samplers';
 
-// Import/export of prompts, characters, library entries, presets and settings
+// Import/export of prompts, characters, library entries, presets, chains and settings
 // as a JSON file. The file comes from outside, so everything read from it is
 // validated field by field, and malformed items are dropped rather than loaded.
 
 const APP = 'zer0-novel-frontend';
 const VERSION = 1;
 
-export type ListKey = 'basePrompts' | 'characters' | 'tidbitLibrary' | 'presets';
-export const LIST_KEYS: ListKey[] = ['basePrompts', 'characters', 'tidbitLibrary', 'presets'];
+export type ListKey = 'basePrompts' | 'characters' | 'tidbitLibrary' | 'presets' | 'chains';
+export const LIST_KEYS: ListKey[] = ['basePrompts', 'characters', 'tidbitLibrary', 'presets', 'chains'];
 
 type SettingsValues = Partial<Pick<FormSettings, (typeof PRESET_SETTINGS_KEYS)[number]>>;
 
@@ -25,6 +26,7 @@ export interface TransferFile {
   characters?: CharacterPromptEntry[];
   tidbitLibrary?: LibraryTidbit[];
   presets?: Preset[];
+  chains?: Chain[];
   settings?: SettingsValues;
   negativePrompt?: string;
 }
@@ -47,6 +49,7 @@ export function buildExport(form: FormSettings, sel: TransferSelection): Transfe
   if (sel.lists.characters.size) file.characters = pick(form.characters, 'characters');
   if (sel.lists.tidbitLibrary.size) file.tidbitLibrary = pick(form.tidbitLibrary, 'tidbitLibrary');
   if (sel.lists.presets.size) file.presets = pick(form.presets, 'presets');
+  if (sel.lists.chains.size) file.chains = pick(form.chains, 'chains');
   if (sel.settings) {
     file.settings = Object.fromEntries(PRESET_SETTINGS_KEYS.map((k) => [k, form[k]])) as SettingsValues;
   }
@@ -186,6 +189,7 @@ export function parseTransferFile(text: string): { file?: TransferFile; error?: 
       characters: list(raw.characters, parseCharacter),
       tidbitLibrary: list(raw.tidbitLibrary, parseLibraryEntry),
       presets: list(raw.presets, parsePreset),
+      chains: list(raw.chains, parseChain),
       settings: parseSettings(raw.settings),
       negativePrompt: str(raw.negativePrompt) ? raw.negativePrompt : undefined,
     },
@@ -301,6 +305,26 @@ export function applyImport(
       changes.presets = [...form.presets, ...renamed];
     }
     summary.push(`${presets.length} preset${presets.length === 1 ? '' : 's'}`);
+  }
+
+  const chains = picked(file.chains, 'chains').map((c): Chain => ({ ...c, id: fresh() }));
+  if (chains.length) {
+    if (modes.chains === 'replace') {
+      changes.chains = chains;
+      // The auto-run chain was replaced away.
+      if (form.autoChainId) changes.autoChainId = null;
+    } else {
+      // Keep names unique, like presets.
+      const names = new Set(form.chains.map((c) => c.name.trim().toLowerCase()));
+      const renamed = chains.map((c) => {
+        let name = c.name;
+        for (let n = 2; names.has(name.trim().toLowerCase()); n++) name = `${c.name} (${n})`;
+        names.add(name.trim().toLowerCase());
+        return { ...c, name };
+      });
+      changes.chains = [...form.chains, ...renamed];
+    }
+    summary.push(`${chains.length} chain${chains.length === 1 ? '' : 's'}`);
   }
 
   if (sel.settings && file.settings) {

@@ -286,6 +286,47 @@ export interface GeneratedImage {
    *  "Reuse" can restore it without doubling up quality tags, prefixes, etc.
    *  `prompt` / `negativePrompt` above are the final text actually sent. */
   source?: PromptSource;
+  /** Set on every image a chain produced: which run and step made it. */
+  chain?: ChainStepInfo;
+}
+
+// ─── Chained actions ─────────────────────────────────────────────────────────
+
+export type ChainDirectorTool = 'bg-removal' | 'lineart' | 'sketch' | 'declutter' | 'colorize' | 'emotion';
+
+/** One step of a chain. Each takes the previous step's image. */
+export type ChainStep =
+  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; upscale: boolean }
+  | { kind: 'upscale' }
+  | { kind: 'variations' }
+  | {
+      kind: 'director';
+      tool: ChainDirectorTool;
+      /** colorize: guidance prompt; emotion: extra prompt. */
+      prompt?: string;
+      /** colorize / emotion: 0–5. */
+      defry?: number;
+      /** emotion only, e.g. "happy". */
+      emotion?: string;
+    }
+  | { kind: 'pixelSnap'; palettize: 'off' | 'auto' | 'custom'; colors?: number; avoidOverRefining?: boolean; upscale?: boolean }
+  | { kind: 'download' };
+
+export interface Chain {
+  id: string;
+  name: string;
+  steps: ChainStep[];
+}
+
+export interface ChainStepInfo {
+  /** One run of a chain on one source image; results share it as batchId. */
+  runId: string;
+  chainId: string;
+  name: string;
+  /** 1-based. */
+  step: number;
+  total: number;
+  label: string;
 }
 
 export interface PromptSource {

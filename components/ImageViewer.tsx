@@ -6,6 +6,9 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
 import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useVariations';
+import { useChainLauncher } from '@/hooks/useChainLauncher';
+import { useChainBusy } from '@/store/chainStore';
+import { chainSummary } from '@/lib/chains';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
 import { calculateAnlasCost, opusStatus, upscaleCost } from '@/lib/anlasCost';
@@ -50,6 +53,11 @@ export function ImageViewer() {
   const [baseImageSet, setBaseImageSet] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showReuse, setShowReuse] = useState(false);
+  const [showChains, setShowChains] = useState(false);
+  const chains = useSettingsStore((s) => s.chains);
+  const launchChain = useChainLauncher();
+  // While a chain runs, other image actions wait so requests never overlap.
+  const chainBusy = useChainBusy();
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
@@ -98,6 +106,7 @@ export function ImageViewer() {
     setShowDirectorTools(false);
     setBaseImageSet(false);
     setShowMetadata(false);
+    setShowChains(false);
   }
 
   const handleEnhance = async () => {
@@ -227,7 +236,7 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={handleEnhance}
-              disabled={isEnhancing}
+              disabled={isEnhancing || chainBusy}
               className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isEnhancing
@@ -300,21 +309,24 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => setShowEdit(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Edit
             </button>
             <button
               type="button"
               onClick={() => setShowInpaint(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Inpaint
             </button>
             <button
               type="button"
               onClick={() => setShowDirectorTools(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Tools
             </button>
@@ -337,7 +349,7 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => { clearVariationsError(); generateVariations(focusedImage); }}
-              disabled={isGeneratingVariations}
+              disabled={isGeneratingVariations || chainBusy}
               title={subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -350,7 +362,7 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => { clearUpscaleError(); upscale(focusedImage); }}
-              disabled={isUpscaling}
+              disabled={isUpscaling || chainBusy}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isUpscaling ? 'Upscaling…' : upscalePrice ? `Upscale — ~${upscalePrice} Anlas` : 'Upscale'}
@@ -386,6 +398,42 @@ export function ImageViewer() {
             >
               Enhance
             </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowChains((v) => !v)}
+                disabled={chainBusy}
+                title="Run a saved chain of actions on this image"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  showChains ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                Chain
+              </button>
+              {showChains && (
+                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                  {chains.map((chain) => (
+                    <button
+                      key={chain.id}
+                      type="button"
+                      onClick={() => {
+                        setShowChains(false);
+                        launchChain(chain, [focusedImage]);
+                      }}
+                      className="flex flex-col items-start rounded px-2 py-1.5 text-left transition-colors hover:bg-slate-800"
+                    >
+                      <span className="text-xs font-semibold text-slate-200">{chain.name}</span>
+                      <span className="w-full truncate text-[10px] text-slate-500">{chainSummary(chain)}</span>
+                    </button>
+                  ))}
+                  {chains.length === 0 && (
+                    <p className="px-2 py-1.5 text-xs text-slate-500">
+                      No chains yet. Make one under Chains in the sidebar.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => downloadImage(focusedImage)}

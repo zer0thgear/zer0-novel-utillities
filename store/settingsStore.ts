@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   BasePrompt,
+  Chain,
   CharacterPromptEntry,
   LibraryTidbit,
   NovelAIModel,
@@ -44,6 +45,10 @@ export interface FormSettings {
   /** Saved snapshots of the settings above (see lib/presets.ts). Same as the
    *  library: absent from older saves, so it just defaults to empty. */
   presets: Preset[];
+  /** Saved chained actions (see lib/chains.ts). Absent from older saves. */
+  chains: Chain[];
+  /** Chain to offer on every new generation's results, or null. */
+  autoChainId: string | null;
 }
 
 interface SettingsState extends FormSettings {
@@ -80,6 +85,8 @@ const DEFAULTS: FormSettings = {
   streamingMode: false,
   tidbitLibrary: [],
   presets: [],
+  chains: [],
+  autoChainId: null,
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────

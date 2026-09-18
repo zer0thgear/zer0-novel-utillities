@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import { useSettingsStore } from '@/store/settingsStore';
 import { isRandomEntry, randomOptions } from '@/lib/wildcards';
 import { presetSummary } from '@/lib/presets';
+import { chainSummary } from '@/lib/chains';
 import {
   applyImport,
   buildExport,
@@ -35,6 +36,7 @@ const LIST_TITLES: Record<ListKey, string> = {
   characters: 'Characters',
   tidbitLibrary: 'Tidbit Library',
   presets: 'Presets',
+  chains: 'Chains',
 };
 
 function itemsOf(source: Pick<TransferFile, ListKey>): Record<ListKey, Item[]> {
@@ -51,6 +53,7 @@ function itemsOf(source: Pick<TransferFile, ListKey>): Record<ListKey, Item[]> {
       title: p.includesPrompts ? `${p.name} (+ prompts)` : p.name,
       subtitle: presetSummary(p),
     })),
+    chains: (source.chains ?? []).map((c) => ({ id: c.id, title: c.name, subtitle: chainSummary(c) })),
   };
 }
 
@@ -69,12 +72,12 @@ export function TransferModal({ mode, onClose, onImported }: Props) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<ListKey>>(new Set());
   const [modes, setModes] = useState<Record<ListKey, ImportMode>>({
-    basePrompts: 'add', characters: 'add', tidbitLibrary: 'add', presets: 'add',
+    basePrompts: 'add', characters: 'add', tidbitLibrary: 'add', presets: 'add', chains: 'add',
   });
 
   // What's on offer: the current sidebar when exporting, the file when importing.
   const source: TransferFile | null = mode === 'export'
-    ? { app: 'zer0-novel-frontend', version: 1, exportedAt: '', basePrompts: form.basePrompts, characters: form.characters, tidbitLibrary: form.tidbitLibrary, presets: form.presets }
+    ? { app: 'zer0-novel-frontend', version: 1, exportedAt: '', basePrompts: form.basePrompts, characters: form.characters, tidbitLibrary: form.tidbitLibrary, presets: form.presets, chains: form.chains }
     : file;
   const items = source ? itemsOf(source) : null;
   const hasSettings = mode === 'export' || !!file?.settings;

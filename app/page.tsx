@@ -6,6 +6,7 @@ import { PromptForm } from '@/components/PromptForm';
 import { ImageViewer } from '@/components/ImageViewer';
 import { HistoryStrip } from '@/components/ImageGrid';
 import { DropZone } from '@/components/DropZone';
+import { ChainRunner } from '@/components/ChainRunner';
 import { useSessionStore } from '@/store/sessionStore';
 
 export default function Home() {
@@ -49,6 +50,7 @@ export default function Home() {
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <ApiKeyModal />
       {apiKey && <DropZone />}
+      {apiKey && <ChainRunner />}
 
       {/* ── Left panel: generation form ── */}
       <aside

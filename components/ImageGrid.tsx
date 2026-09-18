@@ -143,9 +143,9 @@ export function HistoryStrip() {
               so they read as one generation while staying individually
               clickable/removable. */}
           {groupConsecutiveByBatch(images).map((group) =>
-            // A sweep keeps its header (and Grid button) even if it was
-            // stopped after one image; other one-image groups are just cards.
-            group.length === 1 && !group[0].sweep ? (
+            // A sweep or chain keeps its header even with one image (stopped
+            // early, or a one-step chain); other one-image groups are cards.
+            group.length === 1 && !group[0].sweep && !group[0].chain ? (
               <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
             ) : (
               <div key={group[0].batchId} className="rounded-lg border border-violet-700/30 bg-violet-950/10 p-1.5">
@@ -167,6 +167,13 @@ export function HistoryStrip() {
                       Grid
                     </button>
                   </div>
+                ) : group[0].chain ? (
+                  <p
+                    className="mb-1.5 truncate px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
+                    title={`Chain "${group[0].chain.name}": each image is one step, oldest last`}
+                  >
+                    Chain · {group[0].chain.name}
+                  </p>
                 ) : (
                   <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
                     Batch of {group.length}

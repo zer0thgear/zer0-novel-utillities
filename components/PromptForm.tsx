@@ -6,6 +6,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   BasePrompt,
+  GeneratedImage,
   NovelAIGenerateRequest,
   NovelAIModel,
   NovelAISampler,
@@ -17,6 +18,9 @@ import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
+import { ChainsSection } from './ChainsSection';
+import { useChainLauncher } from '@/hooks/useChainLauncher';
+import { useChainBusy } from '@/store/chainStore';
 import { TransferSection } from './TransferSection';
 import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
@@ -101,6 +105,26 @@ export function PromptForm() {
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
   const { subscription } = useSubscription();
   const tokens = useTokenCounts(form);
+  const launchChain = useChainLauncher();
+  // A running chain has an image request in flight; Generate waits for it.
+  const chainBusy = useChainBusy();
+
+  /** Wraps generate() to collect every image a run makes, for the auto chain. */
+  function collectingGenerate() {
+    const made: GeneratedImage[] = [];
+    const gen = async (...args: Parameters<typeof generate>) => {
+      const result = await generate(...args);
+      if (result) made.push(...result);
+      return result;
+    };
+    return { made, gen };
+  }
+
+  /** Offers the "after each Generate" chain on a run's new images. */
+  function offerAutoChain(made: GeneratedImage[]) {
+    const chain = form.chains.find((c) => c.id === form.autoChainId);
+    if (chain && made.length > 0) launchChain(chain, made, true);
+  }
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
@@ -159,7 +183,7 @@ export function PromptForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (isLoading || chainBusy) return;
     // Unknown __refs__ are warned about rather than blocked: a tag may
     // legitimately look like one, and it's then sent as literal text.
     if (wildcards.unknown.length > 0) {
@@ -171,6 +195,12 @@ export function PromptForm() {
 
   async function runGeneration() {
     setUnknownRefs(null);
+    const { made, gen } = collectingGenerate();
+    await generateAll(gen);
+    offerAutoChain(made);
+  }
+
+  async function generateAll(gen: typeof generate) {
     const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
 
     if (form.promptMode === 'single') {
@@ -183,7 +213,7 @@ export function PromptForm() {
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(
+        await gen(
           buildRequest(resolved, seed, baseImageB64, copies),
           { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks, source: promptSource(form, resolved) },
         );
@@ -201,7 +231,7 @@ export function PromptForm() {
           const seed =
             form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
-          const ok = await generate(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+          const ok = await gen(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
           if (!ok) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
@@ -212,7 +242,7 @@ export function PromptForm() {
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+        await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         setIsLoading(false);
       }
     } else {
@@ -227,7 +257,7 @@ export function PromptForm() {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
-        const ok = await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+        const ok = await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         if (!ok) break; // stop batch on error
       }
 
@@ -259,6 +289,7 @@ export function PromptForm() {
     const baseline = resolveFor(selected);
     const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
 
+    const { made, gen } = collectingGenerate();
     sweepStopRef.current = false;
     setSweepRunning(true);
     setIsLoading(true);
@@ -269,7 +300,7 @@ export function PromptForm() {
       const resolved = resolveRequestPrompts(
         selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
       );
-      const ok = await generate(
+      const ok = await gen(
         buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
           scale: cell.scale,
           steps: cell.steps,
@@ -288,6 +319,7 @@ export function PromptForm() {
     setBatchStatus(null);
     setSweepRunning(false);
     setSweepStopping(false);
+    offerAutoChain(made);
   }
 
   // What a request with the form's settings costs (SMEA is only sent on V3;
@@ -326,6 +358,7 @@ export function PromptForm() {
 
   function buttonLabel() {
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
+    if (chainBusy) return 'Chain running…';
     if (isLoading) return 'Generating…';
     const base =
       form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` :
@@ -729,6 +762,8 @@ export function PromptForm() {
 
       <PresetsSection />
 
+      <ChainsSection />
+
       <TransferSection />
 
       {/* Generation settings — collapsible; open by default so nothing already
@@ -1011,7 +1046,7 @@ export function PromptForm() {
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={isLoading || !hasValidPrompt}
+            disabled={isLoading || chainBusy || !hasValidPrompt}
             className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {buttonLabel()}
@@ -1034,7 +1069,7 @@ export function PromptForm() {
               <button
                 type="button"
                 onClick={() => setShowSweep(true)}
-                disabled={isLoading || !hasValidPrompt}
+                disabled={isLoading || chainBusy || !hasValidPrompt}
                 title="X/Y sweep: compare settings or wildcard options side by side"
                 className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
