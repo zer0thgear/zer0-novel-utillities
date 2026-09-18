@@ -966,8 +966,10 @@ export function PromptForm() {
         </div>
       )}
 
-      {/* Generate button — sticky at the bottom of the scroll container */}
-      <div className="sticky bottom-0 -mx-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
+      {/* Generate button — sticky at the bottom of the scroll container.
+          -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so
+          it sits flush against the bottom edge with nothing peeking under it. */}
+      <div className="sticky -bottom-5 -mx-5 -mb-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
         <button
           type="submit"
           disabled={isLoading || !hasValidPrompt}
