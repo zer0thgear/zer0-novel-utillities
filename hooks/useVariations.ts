@@ -80,6 +80,7 @@ export function useVariations(): UseVariationsReturn {
         // Keep the source's base-prompt rolls alongside the characters' so a
         // variation can itself be enhanced without re-rolling.
         wildcardPicks: { ...image.wildcardPicks, ...resolved.picks },
+        source: image.source,
       });
     } catch (err) {
       console.error('Variations setup error:', err);

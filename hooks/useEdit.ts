@@ -8,6 +8,7 @@ import {
   composeFinalPrompts,
   EDIT_REQUEST_FLAGS,
   formSampling,
+  promptSource,
   randomSeed,
   resolveSelectedPrompt,
 } from '@/lib/imageRequest';
@@ -71,7 +72,7 @@ export function useEdit(): UseEditReturn {
       });
 
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       console.error('Edit setup error:', err);
       return false;

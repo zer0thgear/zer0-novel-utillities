@@ -36,6 +36,8 @@ export function usePixelSnap(): UsePixelSnapReturn {
         negativePrompt: image.negativePrompt,
         model: image.model,
         parameters: { ...image.parameters, width, height },
+        source: image.source,
+        wildcardPicks: image.wildcardPicks,
         timestamp: Date.now(),
         seed: image.seed,
         sourceImageId: image.id,

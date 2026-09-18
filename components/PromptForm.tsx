@@ -22,7 +22,7 @@ import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
 import { MODELS } from '@/lib/models';
 import { SweepModal } from './SweepModal';
-import { buildImageRequest, composeFinalPrompts, formSampling, randomSeed } from '@/lib/imageRequest';
+import { buildImageRequest, composeFinalPrompts, formSampling, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -174,7 +174,7 @@ export function PromptForm() {
         setIsLoading(true);
         await generate(
           buildRequest(resolved, seed, baseImageB64, copies),
-          { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks },
+          { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks, source: promptSource(form, resolved) },
         );
         setIsLoading(false);
       } else if (copies > 1 && copiesMode === 'queue') {
@@ -190,7 +190,7 @@ export function PromptForm() {
           const seed =
             form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
-          const ok = await generate(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks });
+          const ok = await generate(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
           if (!ok) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
@@ -201,7 +201,7 @@ export function PromptForm() {
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
+        await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         setIsLoading(false);
       }
     } else {
@@ -216,7 +216,7 @@ export function PromptForm() {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
-        const ok = await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
+        const ok = await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         if (!ok) break; // stop batch on error
       }
 
@@ -266,7 +266,7 @@ export function PromptForm() {
         }),
         {
           batchId: sweepId,
-          wildcardPicks: resolved.picks,
+          wildcardPicks: resolved.picks, source: promptSource(form, resolved),
           sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
         },
       );

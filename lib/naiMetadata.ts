@@ -1,4 +1,4 @@
-import { NovelAIModel } from '@/types/novelai';
+import { GeneratedImage, NovelAIModel, PromptSource } from '@/types/novelai';
 
 // NovelAI embeds generation metadata directly in PNG tEXt chunks on every
 // image its server returns (confirmed 2026-09-17 by reading the raw bytes of
@@ -34,6 +34,35 @@ export interface ParsedNaiMetadata {
    *  confident guess could be made; callers should leave the current model
    *  selection untouched in that case rather than silently picking one. */
   guessedModel?: NovelAIModel;
+  /** Only known for this app's own history images (see metadataFromImage):
+   *  the sidebar modifiers that produced it, restored with Settings. */
+  modifiers?: PromptSource['modifiers'];
+}
+
+/** The same shape as a dropped PNG's metadata, but read from a history image,
+ *  which knows more: the prompt before modifiers were applied (so reusing it
+ *  doesn't double up quality tags or prefixes), the exact model, and the
+ *  modifiers themselves. Images from before that was recorded fall back to
+ *  the text that was actually sent. */
+export function metadataFromImage(image: GeneratedImage): ParsedNaiMetadata {
+  const p = image.parameters;
+  return {
+    prompt: image.source?.prompt ?? image.prompt,
+    negativePrompt: image.source?.negativePrompt ?? image.negativePrompt,
+    characters: (p.characterPrompts ?? []).map((c) => ({ prompt: c.prompt, uc: c.uc, center: c.center })),
+    seed: image.seed,
+    steps: p.steps,
+    scale: p.scale,
+    width: p.width,
+    height: p.height,
+    sampler: p.sampler,
+    noiseSchedule: p.noise_schedule,
+    smea: p.sm,
+    smeaDyn: p.sm_dyn,
+    cfgRescale: p.cfg_rescale,
+    guessedModel: image.model,
+    modifiers: image.source?.modifiers,
+  };
 }
 
 function readPngTextChunks(bytes: Uint8Array): Record<string, string> {

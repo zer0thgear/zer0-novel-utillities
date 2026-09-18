@@ -1,3 +1,5 @@
+import type { QualityLevel, UcLevel } from '@/lib/naiPresets';
+
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
 
 /** A toggleable sub-prompt appended to its parent prompt's text when enabled —
@@ -261,6 +263,24 @@ export interface GeneratedImage {
   wildcardPicks?: WildcardPicks;
   /** Set on every image from an X/Y sweep: which grid cell it is. */
   sweep?: SweepCellInfo;
+  /** The prompt as written, before the sidebar's modifiers were applied, so
+   *  "Reuse" can restore it without doubling up quality tags, prefixes, etc.
+   *  `prompt` / `negativePrompt` above are the final text actually sent. */
+  source?: PromptSource;
+}
+
+export interface PromptSource {
+  /** Base prompt with tidbits folded in and wildcards rolled, pre-modifiers. */
+  prompt: string;
+  /** Negative prompt before the UC preset was added. */
+  negativePrompt: string;
+  modifiers: {
+    furMode: boolean;
+    nsfwMode: boolean;
+    transparentBg: boolean;
+    qualityPreset: QualityLevel;
+    ucPreset: UcLevel;
+  };
 }
 
 export interface SweepAxisInfo {

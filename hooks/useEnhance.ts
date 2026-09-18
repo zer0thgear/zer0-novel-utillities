@@ -8,6 +8,7 @@ import {
   composeFinalPrompts,
   EDIT_REQUEST_FLAGS,
   formSampling,
+  promptSource,
   randomSeed,
   resolveSelectedPrompt,
 } from '@/lib/imageRequest';
@@ -99,7 +100,7 @@ export function useEnhance(): UseEnhanceReturn {
       // Create a fresh object URL for the source image so the enhanced image can
       // display it even if the source is later removed from the session.
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       // blobToBase64 failures land here; API errors are handled by generate()
       console.error('Enhance setup error:', err);

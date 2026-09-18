@@ -5,6 +5,7 @@ import {
   NovelAIModel,
   NovelAIParameters,
   NovelAISampler,
+  PromptSource,
   WildcardPicks,
 } from '@/types/novelai';
 import { resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
@@ -53,6 +54,22 @@ export function composeFinalPrompts(
     .toLowerCase();
   const negativePrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
   return { input, negativePrompt };
+}
+
+/** What "Reuse" needs to restore a request's prompt as written: the resolved
+ *  text before composeFinalPrompts adds anything, and the modifiers it used. */
+export function promptSource(form: PromptModifiers, resolved: ResolvedRequestPrompts): PromptSource {
+  return {
+    prompt: resolved.baseText,
+    negativePrompt: resolved.negativePrompt,
+    modifiers: {
+      furMode: form.furMode,
+      nsfwMode: form.nsfwMode,
+      transparentBg: form.transparentBg,
+      qualityPreset: form.qualityPreset,
+      ucPreset: form.ucPreset,
+    },
+  };
 }
 
 type SamplingKey =

@@ -13,6 +13,8 @@ import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
 import { MetadataModal } from './MetadataModal';
+import { DEFAULT_IMPORT, ImportModal } from './ImportModal';
+import { metadataFromImage } from '@/lib/naiMetadata';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -47,6 +49,7 @@ export function ImageViewer() {
   const [showDirectorTools, setShowDirectorTools] = useState(false);
   const [baseImageSet, setBaseImageSet] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showReuse, setShowReuse] = useState(false);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
@@ -121,6 +124,20 @@ export function ImageViewer() {
       )}
       {showDirectorTools && focusedImage && (
         <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
+      )}
+      {showReuse && focusedImage && (
+        <ImportModal
+          key={focusedImage.id}
+          title="Reuse this image"
+          importHeading="Load back into the sidebar:"
+          previewUrl={focusedImage.url}
+          metadata={metadataFromImage(focusedImage)}
+          // Your own image: bringing its settings back is the usual intent.
+          defaults={{ ...DEFAULT_IMPORT, settings: true }}
+          onViewMetadata={() => setShowMetadata(true)}
+          escapeDisabled={showMetadata}
+          onClose={() => setShowReuse(false)}
+        />
       )}
       {showMetadata && focusedImage && (
         <MetadataModal image={focusedImage} onClose={() => setShowMetadata(false)} />
@@ -299,6 +316,14 @@ export function ImageViewer() {
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
             >
               Metadata
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReuse(true)}
+              title="Load this image's prompt and settings back into the sidebar"
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Reuse
             </button>
             <button
               type="button"
