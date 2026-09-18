@@ -11,7 +11,13 @@ import { useChainBusy } from '@/store/chainStore';
 import { chainSummary } from '@/lib/chains';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
-import { calculateAnlasCost, opusStatus, upscaleCost } from '@/lib/anlasCost';
+import {
+  calculateAnlasCost,
+  MAX_GENERATION_PIXELS,
+  opusStatus,
+  UPSCALE_MAX_PIXELS,
+  upscaleCost,
+} from '@/lib/anlasCost';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
@@ -92,6 +98,20 @@ export function ImageViewer() {
       })
     : 0;
   const upscalePrice = focusedImage ? upscaleCost(focusedImage.parameters.width, focusedImage.parameters.height) : null;
+
+  // NovelAI refuses renders past ~3.1 MP (Enhance, Variations, Inpaint, Edit
+  // all render at the image's size, Enhance ×1.5 larger) and only upscales
+  // images up to 1 MP. Explain instead of letting the request fail.
+  const imgW = focusedImage?.parameters.width ?? 0;
+  const imgH = focusedImage?.parameters.height ?? 0;
+  const enhanceW = enhanceUpscale ? round64(imgW * 1.5) : imgW;
+  const enhanceH = enhanceUpscale ? round64(imgH * 1.5) : imgH;
+  const tooLargeHint = (w: number, h: number) =>
+    `NovelAI can't render ${w}×${h}; its limit is about 3.1 megapixels.`;
+  const renderTooLarge = imgW * imgH > MAX_GENERATION_PIXELS ? tooLargeHint(imgW, imgH) : null;
+  const enhanceTooLarge = enhanceW * enhanceH > MAX_GENERATION_PIXELS ? tooLargeHint(enhanceW, enhanceH) : null;
+  const upscaleTooLarge =
+    imgW * imgH > UPSCALE_MAX_PIXELS ? `Upscale only takes images up to 1 megapixel; this one is ${imgW}×${imgH}.` : null;
 
   // Reset transient state whenever the focused image changes. Done during
   // render (React's pattern for state derived from a prop change) rather than
@@ -236,16 +256,24 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={handleEnhance}
-              disabled={isEnhancing || chainBusy}
+              disabled={isEnhancing || chainBusy || !!enhanceTooLarge}
+              title={enhanceTooLarge ?? undefined}
               className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isEnhancing
                 ? 'Enhancing…'
-                : subscription
+                : subscription && !enhanceTooLarge
                   ? enhanceCost > 0 ? `Enhance — ~${enhanceCost} Anlas` : 'Enhance — Free'
                   : 'Enhance Image'}
             </button>
           </div>
+
+          {enhanceTooLarge && (
+            <p className="mt-2 text-xs text-amber-400">
+              {enhanceTooLarge}
+              {enhanceUpscale && !renderTooLarge && ' Untick Upscale ×1.5 to enhance at the current size.'}
+            </p>
+          )}
 
           {/* Enhance error */}
           {enhanceError && (
@@ -309,7 +337,8 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => setShowEdit(true)}
-              disabled={chainBusy}
+              disabled={chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Edit
@@ -317,7 +346,8 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => setShowInpaint(true)}
-              disabled={chainBusy}
+              disabled={chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Inpaint
@@ -349,23 +379,24 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => { clearVariationsError(); generateVariations(focusedImage); }}
-              disabled={isGeneratingVariations || chainBusy}
-              title={subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined}
+              disabled={isGeneratingVariations || chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? (subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined)}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isGeneratingVariations
                 ? 'Generating…'
-                : subscription
+                : subscription && !renderTooLarge
                   ? variationsCost > 0 ? `Variations — ~${variationsCost} Anlas` : 'Variations — Free'
                   : 'Variations'}
             </button>
             <button
               type="button"
               onClick={() => { clearUpscaleError(); upscale(focusedImage); }}
-              disabled={isUpscaling || chainBusy}
+              disabled={isUpscaling || chainBusy || !!upscaleTooLarge}
+              title={upscaleTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isUpscaling ? 'Upscaling…' : upscalePrice ? `Upscale — ~${upscalePrice} Anlas` : 'Upscale'}
+              {isUpscaling ? 'Upscaling…' : upscalePrice && !upscaleTooLarge ? `Upscale — ~${upscalePrice} Anlas` : 'Upscale'}
             </button>
             <button
               type="button"

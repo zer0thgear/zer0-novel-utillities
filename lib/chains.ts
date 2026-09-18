@@ -1,5 +1,11 @@
 import { Chain, ChainDirectorTool, ChainStep, NovelAIModel } from '@/types/novelai';
-import { calculateAnlasCost, directorToolCost, UPSCALE_MAX_PIXELS, upscaleCost } from '@/lib/anlasCost';
+import {
+  calculateAnlasCost,
+  directorToolCost,
+  MAX_GENERATION_PIXELS,
+  UPSCALE_MAX_PIXELS,
+  upscaleCost,
+} from '@/lib/anlasCost';
 
 // Chained actions: a saved sequence of image actions, each step applied to the
 // previous step's result. Everything here is pure (labels, validation, cost
@@ -96,8 +102,6 @@ export interface ChainPlan {
 }
 
 const round64 = (n: number) => Math.round(n / 64) * 64;
-/** NovelAI refuses generations larger than this (its client's own limit). */
-const MAX_GENERATION_PIXELS = 3145728;
 const tooLarge = (w: number, h: number) =>
   w * h > MAX_GENERATION_PIXELS
     ? `NovelAI can't render ${w}×${h}; the limit is about 3.1 megapixels. Put this step before any upscaling.`

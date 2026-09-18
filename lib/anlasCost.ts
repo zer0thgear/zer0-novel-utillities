@@ -68,6 +68,10 @@ export function opusStatus(subscription: NovelAISubscription | null | undefined)
   return { isOpus: subscription?.tier === 3, opusExhausted: subscription?.usage?.isNegative ?? false };
 }
 
+/** NovelAI refuses to generate (or img2img/inpaint/edit) past this size;
+ *  its own client enforces the same limit. */
+export const MAX_GENERATION_PIXELS = 3145728;
+
 // ─── Upscale ──────────────────────────────────────────────────────────────────
 
 /** NovelAI's own UI only offers Upscale for images up to this size. */
