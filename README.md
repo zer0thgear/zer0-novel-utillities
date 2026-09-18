@@ -74,7 +74,9 @@ lib/
   naiPresets.ts                 # Quality Tags / UC Preset literal text, per model
   naiMetadata.ts                # PNG metadata (tEXt chunk) parsing
   tagAutocomplete.ts            # Prompt-segment extraction for autocomplete
-  promptTidbits.ts              # Toggleable sub-prompt composition
+  promptTidbits.ts              # Tidbit ↔ library linking helpers
+  promptText.ts                 # Prompt fragment joining (comma/whitespace rules)
+  wildcards.ts                  # __Label__ references + random wildcards, resolved once per request
   pixelSnap.ts                  # Client-side pixel-art filter
   imageUtils.ts / imageDb.ts
 types/

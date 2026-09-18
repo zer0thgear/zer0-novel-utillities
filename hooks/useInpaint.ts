@@ -3,7 +3,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
-import { composeWithTidbits } from '@/lib/promptTidbits';
+import { resolveRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
 import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
 
@@ -51,25 +51,30 @@ export function useInpaint(): UseInpaintReturn {
       const maskB64 = await blobToBase64(maskBlob);
 
       // ── Prompt assembly (mirrors useEnhance) ───────────────────────────────
-      const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
+      // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
+      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
+      const resolved = resolveRequestPrompts(
+        selectedBasePrompt ?? { text: '' },
+        form.characters,
+        form.negativePrompt,
+        form.tidbitLibrary,
+        image.wildcardPicks,
+      );
+      const activeCharacters = resolved.characters;
 
       const prefixes: string[] = [];
       if (form.furMode)  prefixes.push('fur dataset');
       if (form.nsfwMode) prefixes.push('nsfw');
-      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits, form.tidbitLibrary);
-      const prefixedText = joinPromptParts(...prefixes, baseText);
+      const prefixedText = joinPromptParts(...prefixes, resolved.baseText);
 
       let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
       if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
 
       // ── Negative prompt assembly ───────────────────────────────────────────
-      const positiveSearchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits, form.tidbitLibrary)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
+      const positiveSearchText = [resolved.baseText, ...activeCharacters.map((c) => c.prompt)]
+        .join(' ')
+        .toLowerCase();
+      const baseNegPrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
@@ -121,7 +126,7 @@ export function useInpaint(): UseInpaintReturn {
             caption: {
               base_caption: finalText,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: charPrompt(c),
+                char_caption: c.prompt,
                 centers: [c.center],
               })),
             },
@@ -139,7 +144,7 @@ export function useInpaint(): UseInpaintReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: charPrompt(c),
+            prompt: c.prompt,
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,
@@ -148,7 +153,7 @@ export function useInpaint(): UseInpaintReturn {
       };
 
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks });
     } catch (err) {
       console.error('Inpaint setup error:', err);
       return false;

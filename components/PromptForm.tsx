@@ -5,6 +5,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
+  BasePrompt,
   NovelAIGenerateRequest,
   NovelAIModel,
   NovelAISampler,
@@ -15,7 +16,7 @@ import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
-import { composeWithTidbits } from '@/lib/promptTidbits';
+import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -126,27 +127,30 @@ export function PromptForm() {
 
   // ── Request builder ────────────────────────────────────────────────────
 
-  function buildRequest(promptText: string, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
-    const activeCharacters = form.characters.filter((c) => c.enabled);
-    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
+  /** Rolls this prompt's wildcards once, for one request. */
+  function resolveFor(prompt: BasePrompt): ResolvedRequestPrompts {
+    return resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary);
+  }
+
+  function buildRequest(resolved: ResolvedRequestPrompts, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
+    const activeCharacters = resolved.characters;
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
     const prefixes: string[] = [];
     if (form.furMode) prefixes.push('fur dataset');
     if (form.nsfwMode) prefixes.push('nsfw');
-    const prefixedText = joinPromptParts(...prefixes, promptText);
+    const prefixedText = joinPromptParts(...prefixes, resolved.baseText);
 
     // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
     let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
     if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
 
-    // ── UC preset prefix — tags already present (case-insensitive) in any base
-    // or character positive prompt are skipped to avoid contradicting the user.
-    const positiveSearchText = [
-      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits, form.tidbitLibrary)),
-      ...form.characters.map((c) => charPrompt(c)),
-    ].join(' ').toLowerCase();
-    const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
+    // ── UC preset prefix — tags already present (case-insensitive) in the
+    // positive prompts being sent are skipped to avoid contradicting the user.
+    const positiveSearchText = [resolved.baseText, ...activeCharacters.map((c) => c.prompt)]
+      .join(' ')
+      .toLowerCase();
+    const baseNegPrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
     return {
       input: finalText,
@@ -184,7 +188,7 @@ export function PromptForm() {
           caption: {
             base_caption: finalText,
             char_captions: activeCharacters.map((c) => ({
-              char_caption: charPrompt(c),
+              char_caption: c.prompt,
               centers: [c.center],
             })),
           },
@@ -203,7 +207,7 @@ export function PromptForm() {
         },
         legacy_uc: false,
         characterPrompts: activeCharacters.map((c) => ({
-          prompt: charPrompt(c),
+          prompt: c.prompt,
           uc: c.uc,
           center: c.center,
           enabled: c.enabled,
@@ -214,30 +218,50 @@ export function PromptForm() {
 
   // ── Submit handler ─────────────────────────────────────────────────────
 
+  // The base prompts a Generate click would send.
+  const targetPrompts =
+    form.promptMode === 'single'
+      ? form.basePrompts.filter((p) => p.selected).slice(0, 1)
+      : form.basePrompts.filter((p) => p.selected && p.text.trim());
+  const wildcards = analyzeWildcards(targetPrompts, form.characters, form.negativePrompt, form.tidbitLibrary);
+  // Non-null while the "unknown wildcard" confirmation is open.
+  const [unknownRefs, setUnknownRefs] = useState<string[] | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    // Unknown __refs__ are warned about rather than blocked: a tag may
+    // legitimately look like one, and it's then sent as literal text.
+    if (wildcards.unknown.length > 0) {
+      setUnknownRefs(wildcards.unknown);
+      return;
+    }
+    await runGeneration();
+  };
 
+  async function runGeneration() {
+    setUnknownRefs(null);
     const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
 
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
-      const promptText = composeWithTidbits(selected.text, selected.tidbits, form.tidbitLibrary);
 
       if (copies > 1 && copiesMode === 'batch') {
         // True batch — one request, n_samples > 1, real extra Anlas cost.
+        // One request means one prompt, so every copy shares one wildcard roll.
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const resolved = resolveFor(selected);
         setIsLoading(true);
         await generate(
-          buildRequest(promptText, seed, baseImageB64, copies),
-          { batchId: crypto.randomUUID(), forceStandard: true },
+          buildRequest(resolved, seed, baseImageB64, copies),
+          { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks },
         );
         setIsLoading(false);
       } else if (copies > 1 && copiesMode === 'queue') {
         // Queued — separate single-image calls in a row, each with its own
         // fresh seed so they're not near-duplicates, each independently
-        // eligible for the free Opus allowance.
+        // eligible for the free Opus allowance, each with its own roll.
         setIsLoading(true);
         setBatchStatus({ current: 0, total: copies });
         const batchId = crypto.randomUUID();
@@ -246,7 +270,8 @@ export function PromptForm() {
           setBatchStatus({ current: i + 1, total: copies });
           const seed =
             form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed + i;
-          const ok = await generate(buildRequest(promptText, seed, baseImageB64), { batchId });
+          const resolved = resolveFor(selected);
+          const ok = await generate(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks });
           if (!ok) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
@@ -255,8 +280,9 @@ export function PromptForm() {
         setBatchStatus(null);
       } else {
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(buildRequest(promptText, seed, baseImageB64));
+        await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
         setIsLoading(false);
       }
     } else {
@@ -270,15 +296,15 @@ export function PromptForm() {
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits, form.tidbitLibrary);
-        const ok = await generate(buildRequest(promptText, seed, baseImageB64));
+        const resolved = resolveFor(selectedPrompts[i]);
+        const ok = await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
         if (!ok) break; // stop batch on error
       }
 
       setIsLoading(false);
       setBatchStatus(null);
     }
-  };
+  }
 
   // ── Derived button state ───────────────────────────────────────────────
 
@@ -596,7 +622,11 @@ export function PromptForm() {
           <div>
             <span className="text-xs font-semibold text-slate-400">Copies</span>
             <p className="text-xs text-slate-600">
-              {copiesMode === 'batch' ? 'One batch request, all at once' : 'Queued one at a time, ~1.5s apart'}
+              {copiesMode === 'queue'
+                ? 'Queued one at a time, ~1.5s apart'
+                : copies > 1 && wildcards.usesRandom
+                  ? 'One request, so all copies share one wildcard roll — use Queue to roll each'
+                  : 'One batch request, all at once'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -970,6 +1000,11 @@ export function PromptForm() {
           -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so
           it sits flush against the bottom edge with nothing peeking under it. */}
       <div className="sticky -bottom-5 -mx-5 -mb-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
+        {wildcards.unknown.length > 0 && (
+          <p className="mb-2 text-xs text-amber-400" title="No Tidbit Library entry has this label">
+            Unknown wildcard{wildcards.unknown.length > 1 ? 's' : ''}: {wildcards.unknown.join(', ')}
+          </p>
+        )}
         <button
           type="submit"
           disabled={isLoading || !hasValidPrompt}
@@ -978,6 +1013,48 @@ export function PromptForm() {
           {buttonLabel()}
         </button>
       </div>
+
+      {unknownRefs && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onMouseDown={(e) => e.target === e.currentTarget && setUnknownRefs(null)}
+        >
+          <div className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <div>
+              <h2 className="text-sm font-bold text-slate-100">
+                Unknown wildcard{unknownRefs.length > 1 ? 's' : ''}
+              </h2>
+              <p className="mt-2 text-xs text-slate-400">
+                No Tidbit Library entry is labelled{' '}
+                {unknownRefs.map((r, i) => (
+                  <span key={r}>
+                    {i > 0 && ', '}
+                    <code className="rounded bg-slate-800 px-1 text-amber-300">{r}</code>
+                  </span>
+                ))}
+                , so {unknownRefs.length > 1 ? 'they' : 'it'} will be sent to NovelAI as literal text.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setUnknownRefs(null)}
+                className="flex-1 rounded-lg bg-slate-700 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={runGeneration}
+                className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
+              >
+                Generate Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

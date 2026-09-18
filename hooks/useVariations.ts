@@ -3,7 +3,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
-import { composeWithTidbits } from '@/lib/promptTidbits';
+import { resolveRequestPrompts } from '@/lib/wildcards';
 
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
@@ -39,8 +39,10 @@ export function useVariations(): UseVariationsReturn {
 
     try {
       const imageB64 = await blobToBase64(image.blob);
-      const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
+      // Base prompt and negatives come from the image itself (already rolled);
+      // characters come from the current form, replaying the image's rolls.
+      const resolved = resolveRequestPrompts({ text: '' }, form.characters, '', form.tidbitLibrary, image.wildcardPicks);
+      const activeCharacters = resolved.characters;
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
 
@@ -90,7 +92,7 @@ export function useVariations(): UseVariationsReturn {
             caption: {
               base_caption: image.prompt,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: charPrompt(c),
+                char_caption: c.prompt,
                 centers: [c.center],
               })),
             },
@@ -108,7 +110,7 @@ export function useVariations(): UseVariationsReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: charPrompt(c),
+            prompt: c.prompt,
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,
@@ -121,6 +123,9 @@ export function useVariations(): UseVariationsReturn {
         sourceImageId: image.id,
         sourceImageUrl,
         forceStandard: true,
+        // Keep the source's base-prompt rolls alongside the characters' so a
+        // variation can itself be enhanced without re-rolling.
+        wildcardPicks: { ...image.wildcardPicks, ...resolved.picks },
       });
     } catch (err) {
       console.error('Variations setup error:', err);

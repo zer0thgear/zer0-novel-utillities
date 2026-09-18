@@ -15,12 +15,21 @@ export interface PromptTidbit {
   sourceId?: string;
 }
 
-/** A reusable tidbit saved once and linked into any number of prompts. */
+/** A reusable tidbit saved once and linked into any number of prompts, or
+ *  referenced inline as `__Label__`. A random entry holds one option per line
+ *  of `text` and contributes one of them per image (see lib/wildcards.ts). */
 export interface LibraryTidbit {
   id: string;
   label: string;
   text: string;
+  /** Absent on entries saved before wildcards existed, which are fixed. */
+  kind?: 'fixed' | 'random';
 }
+
+/** The option each random wildcard contributed to one request, keyed by
+ *  `<field scope>|<library entry id>` and then by occurrence order within that
+ *  field. Replaying it reproduces the rolls, e.g. when enhancing the image. */
+export type WildcardPicks = Record<string, string[]>;
 
 /** A named base prompt entry in the prompt list. */
 export interface BasePrompt {
@@ -247,4 +256,7 @@ export interface GeneratedImage {
   // Shared across every image produced by one "Copies" request (true batch or
   // queued) — lets the gallery clump them visually. Absent for single generations.
   batchId?: string;
+  /** Wildcard rolls that produced this image, replayed by Enhance/Inpaint/Edit/
+   *  Variations so reworking an image doesn't re-roll it. */
+  wildcardPicks?: WildcardPicks;
 }

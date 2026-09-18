@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { extractImagesFromZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { GeneratedImage, NovelAIGenerateRequest, WildcardPicks } from '@/types/novelai';
 
 interface GenerateOptions {
   /** If this generation is an enhancement, the source image's ID and a fresh object URL. */
@@ -15,6 +15,8 @@ interface GenerateOptions {
    *  clump them visually — a true batch's own samples, or one call in a
    *  queued sequence of separate single-image calls. */
   batchId?: string;
+  /** Rolls that produced this request's prompts, stored on the resulting images. */
+  wildcardPicks?: WildcardPicks;
 }
 
 interface UseGenerateReturn {
@@ -72,6 +74,7 @@ export function useGenerate(): UseGenerateReturn {
         sourceImageId: opts?.sourceImageId,
         sourceImageUrl: opts?.sourceImageUrl,
         batchId: opts?.batchId,
+        wildcardPicks: opts?.wildcardPicks,
       }));
 
       addImages(images);
@@ -183,6 +186,7 @@ export function useGenerate(): UseGenerateReturn {
             sourceImageId: opts?.sourceImageId,
             sourceImageUrl: opts?.sourceImageUrl,
             batchId: opts?.batchId,
+            wildcardPicks: opts?.wildcardPicks,
           }]);
           finalImageAdded = true;
           setStreamPreview(null);

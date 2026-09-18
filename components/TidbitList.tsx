@@ -1,7 +1,8 @@
 'use client';
 
 import { LibraryTidbit, NovelAIModel, PromptTidbit } from '@/types/novelai';
-import { createTidbit, createLinkedTidbit, linkedEntry } from '@/lib/promptTidbits';
+import { createTidbit, createLinkedTidbit, linkedEntry, snapshotText } from '@/lib/promptTidbits';
+import { isRandomEntry, randomOptions } from '@/lib/wildcards';
 import { moveItem, normalizePromptPart } from '@/lib/promptText';
 import { useSettingsStore } from '@/store/settingsStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
@@ -46,13 +47,14 @@ export function TidbitList({
   }
 
   /** Keeps the entry's current text as this prompt's own, so unlinking never
-   *  silently changes what the prompt generates. */
+   *  silently changes what the prompt generates — a random entry becomes a
+   *  `__Label__` reference, so it keeps rolling but is now editable here. */
   function unlink(tidbit: PromptTidbit) {
     const entry = linkedEntry(tidbit, library);
     update(tidbit.id, {
       sourceId: undefined,
       label: entry?.label ?? tidbit.label,
-      text: entry?.text ?? tidbit.text,
+      text: entry ? snapshotText(entry) : tidbit.text,
     });
   }
 
@@ -80,14 +82,25 @@ export function TidbitList({
                   className={`${labelWidthCls} flex-shrink-0 truncate rounded bg-violet-600/15 px-1.5 py-1 text-xs text-violet-300`}
                   title={`Linked to library tidbit "${entry.label}"`}
                 >
+                  {isRandomEntry(entry) && '⚄ '}
                   {entry.label || 'Untitled'}
                 </span>
-                <span
-                  className="min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400"
-                  title={entry.text}
-                >
-                  {entry.text || <span className="italic text-slate-600">empty</span>}
-                </span>
+                {isRandomEntry(entry) ? (
+                  <span
+                    className="min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400"
+                    title={`Picks one per image:\n${randomOptions(entry).join('\n')}`}
+                  >
+                    <span className="text-violet-300/80">1 of {randomOptions(entry).length}: </span>
+                    {randomOptions(entry).join(' · ') || <span className="italic text-slate-600">no options</span>}
+                  </span>
+                ) : (
+                  <span
+                    className="min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400"
+                    title={entry.text}
+                  >
+                    {entry.text || <span className="italic text-slate-600">empty</span>}
+                  </span>
+                )}
               </>
             ) : (
               <>
@@ -167,7 +180,7 @@ export function TidbitList({
             <option value="">+ From Library…</option>
             {library.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.label || 'Untitled'}
+                {`${isRandomEntry(entry) ? '⚄ ' : ''}${entry.label || 'Untitled'}`}
               </option>
             ))}
           </select>

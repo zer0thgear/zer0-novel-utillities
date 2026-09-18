@@ -2,12 +2,17 @@
 // that wants suggest-tags-style autocomplete (currently just the base prompt,
 // see components/BasePromptsEditor.tsx).
 
-/** The comma-delimited segment the cursor is currently inside, trimmed —
- *  this is what gets sent to the suggest-tags API as `prompt`. */
-export function currentSegment(text: string, cursor: number): string {
+/** Segments break on commas and line breaks — the latter matter for random
+ *  wildcard entries (one option per line) and Shift+Enter in prompt boxes. */
+function segmentStart(text: string, cursor: number): number {
   const beforeCursor = text.slice(0, cursor);
-  const start = beforeCursor.lastIndexOf(',') + 1;
-  return text.slice(start, cursor).trimStart();
+  return Math.max(beforeCursor.lastIndexOf(','), beforeCursor.lastIndexOf('\n')) + 1;
+}
+
+/** The segment the cursor is currently inside, trimmed — this is what gets
+ *  sent to the suggest-tags API as `prompt`. */
+export function currentSegment(text: string, cursor: number): string {
+  return text.slice(segmentStart(text, cursor), cursor).trimStart();
 }
 
 /** Replaces the segment the cursor was in with `tag`, preserving everything
@@ -15,10 +20,9 @@ export function currentSegment(text: string, cursor: number): string {
  *  (right after the inserted tag, followed by ", " ready for the next one). */
 export function applySegment(text: string, cursor: number, tag: string): { text: string; cursor: number } {
   const afterCursor = text.slice(cursor);
-  const beforeCursor = text.slice(0, cursor);
-  const segmentStart = beforeCursor.lastIndexOf(',') + 1;
-  const prefix = text.slice(0, segmentStart);
-  const needsSpace = segmentStart > 0 && !prefix.endsWith(' ');
+  const start = segmentStart(text, cursor);
+  const prefix = text.slice(0, start);
+  const needsSpace = start > 0 && !prefix.endsWith(' ') && !prefix.endsWith('\n');
   const insertion = `${needsSpace ? ' ' : ''}${tag}, `;
   const newText = prefix + insertion + afterCursor.trimStart();
   return { text: newText, cursor: prefix.length + insertion.length };

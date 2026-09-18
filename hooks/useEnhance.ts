@@ -3,7 +3,7 @@ import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
-import { composeWithTidbits } from '@/lib/promptTidbits';
+import { resolveRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
 import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
 
@@ -70,15 +70,21 @@ export function useEnhance(): UseEnhanceReturn {
       const height = upscale ? round64(image.parameters.height * 1.5) : image.parameters.height;
 
       // ── Prompt assembly (mirrors PromptForm.buildRequest) ──────────────────
-      const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits, form.tidbitLibrary);
+      // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
+      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
+      const resolved = resolveRequestPrompts(
+        selectedBasePrompt ?? { text: '' },
+        form.characters,
+        form.negativePrompt,
+        form.tidbitLibrary,
+        image.wildcardPicks,
+      );
+      const activeCharacters = resolved.characters;
 
       const prefixes: string[] = [];
       if (form.furMode)  prefixes.push('fur dataset');
       if (form.nsfwMode) prefixes.push('nsfw');
-      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits, form.tidbitLibrary);
-      const prefixedText = joinPromptParts(...prefixes, baseText);
+      const prefixedText = joinPromptParts(...prefixes, resolved.baseText);
 
       let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
       if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
@@ -86,11 +92,10 @@ export function useEnhance(): UseEnhanceReturn {
       finalText = joinPromptParts(finalText, '-2::upscaled, blurry::');
 
       // ── Negative prompt assembly ───────────────────────────────────────────
-      const positiveSearchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits, form.tidbitLibrary)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
+      const positiveSearchText = [resolved.baseText, ...activeCharacters.map((c) => c.prompt)]
+        .join(' ')
+        .toLowerCase();
+      const baseNegPrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
 
       const seed = Math.floor(Math.random() * 4294967295);
       const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
@@ -140,7 +145,7 @@ export function useEnhance(): UseEnhanceReturn {
             caption: {
               base_caption: finalText,
               char_captions: activeCharacters.map((c) => ({
-                char_caption: charPrompt(c),
+                char_caption: c.prompt,
                 centers: [c.center],
               })),
             },
@@ -158,7 +163,7 @@ export function useEnhance(): UseEnhanceReturn {
             legacy_uc: false,
           },
           characterPrompts: activeCharacters.map((c) => ({
-            prompt: charPrompt(c),
+            prompt: c.prompt,
             uc: c.uc,
             center: c.center,
             enabled: c.enabled,
@@ -170,7 +175,7 @@ export function useEnhance(): UseEnhanceReturn {
       // Create a fresh object URL for the source image so the enhanced image can
       // display it even if the source is later removed from the session.
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks });
     } catch (err) {
       // blobToBase64 failures land here; API errors are handled by generate()
       console.error('Enhance setup error:', err);

@@ -3,8 +3,13 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NovelAIModel } from '@/types/novelai';
-import { useTagSuggestions } from '@/hooks/useTagSuggestions';
+import { TagSuggestion, useTagSuggestions } from '@/hooks/useTagSuggestions';
 import { currentSegment, applySegment, relevanceBrightness } from '@/lib/tagAutocomplete';
+import { isRandomEntry, randomOptions } from '@/lib/wildcards';
+import { useSettingsStore } from '@/store/settingsStore';
+
+/** A tag from NovelAI, or (with `hint`) a Tidbit Library reference. */
+type Suggestion = TagSuggestion & { hint?: string };
 
 const DROPDOWN_MAX_HEIGHT = 240;
 const VIEWPORT_MARGIN = 8;
@@ -61,9 +66,35 @@ export function TagAutocompleteField({
     bottom?: number;
   } | null>(null);
 
+  const library = useSettingsStore((s) => s.tidbitLibrary);
   const query = cursor !== null ? currentSegment(value, cursor) : '';
-  const { suggestions: rawSuggestions } = useTagSuggestions(query, model, apiKey);
+  // A segment starting with `__` is a library reference being typed, so
+  // suggest labels locally instead of asking NovelAI for tags.
+  const libraryQuery = query.startsWith('__') ? query.slice(2).replace(/_+$/, '').toLowerCase() : null;
+  const { suggestions: tagSuggestions } = useTagSuggestions(libraryQuery === null ? query : '', model, apiKey);
+  const rawSuggestions: Suggestion[] =
+    libraryQuery === null ? tagSuggestions : librarySuggestions(libraryQuery);
   const suggestions = dismissed ? [] : rawSuggestions;
+
+  function librarySuggestions(q: string): Suggestion[] {
+    const seen = new Set<string>();
+    return library
+      .map((entry) => ({ entry, label: entry.label.trim() }))
+      .filter(({ label }) => {
+        const key = label.toLowerCase();
+        if (!label || seen.has(key) || !key.includes(q)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => Number(b.label.toLowerCase().startsWith(q)) - Number(a.label.toLowerCase().startsWith(q)))
+      .slice(0, 8)
+      .map(({ entry, label }) => ({
+        tag: `__${label}__`,
+        count: 10000,
+        confidence: 0,
+        hint: isRandomEntry(entry) ? `⚄ ${randomOptions(entry).length} options` : 'fixed',
+      }));
+  }
   const dropdownOpen = cursor !== null && suggestions.length > 0;
 
   // The field can sit inside any number of `overflow-hidden`/`overflow-auto`
@@ -199,12 +230,18 @@ export function TagAutocompleteField({
                     which fade a dot from white (exact/very common) down to
                     near-invisible based on `count`, not `confidence`. */}
                 <span
-                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white"
-                  style={{ opacity: relevanceBrightness(s.count) }}
-                  title={`count ${s.count.toLocaleString()}${s.confidence ? `, confidence ${(s.confidence * 100).toFixed(0)}%` : ''}`}
+                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${s.hint ? 'bg-violet-400' : 'bg-white'}`}
+                  style={{ opacity: s.hint ? 1 : relevanceBrightness(s.count) }}
+                  title={
+                    s.hint
+                      ? 'Tidbit Library entry'
+                      : `count ${s.count.toLocaleString()}${s.confidence ? `, confidence ${(s.confidence * 100).toFixed(0)}%` : ''}`
+                  }
                 />
                 <span className="flex-1">{s.tag}</span>
-                <span className="text-[10px] opacity-60">{s.count >= 10000 ? '' : s.count.toLocaleString()}</span>
+                <span className="text-[10px] opacity-60">
+                  {s.hint ?? (s.count >= 10000 ? '' : s.count.toLocaleString())}
+                </span>
               </button>
             ))}
           </div>,
