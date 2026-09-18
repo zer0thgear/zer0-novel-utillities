@@ -22,12 +22,11 @@ import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
 import { MODELS } from '@/lib/models';
 import { SweepModal } from './SweepModal';
-import { joinPromptParts } from '@/lib/promptText';
+import { buildImageRequest, composeFinalPrompts, formSampling, randomSeed } from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
-  composeWithQuality,
-  composeNegativeWithUc,
   getAvailableQualityLevels,
   getAvailableUcLevels,
   QUALITY_LEVEL_LABELS,
@@ -62,15 +61,6 @@ const inputCls =
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400';
 
 // ─── Component ───────────────────────────────────────────────────────────────
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 export function PromptForm() {
   const form = useSettingsStore();
@@ -125,87 +115,24 @@ export function PromptForm() {
     // A sweep cell's values, replacing the form's for this one request.
     overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
   ): NovelAIGenerateRequest {
-    const activeCharacters = resolved.characters;
-
-    // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
-    const prefixes: string[] = [];
-    if (form.furMode) prefixes.push('fur dataset');
-    if (form.nsfwMode) prefixes.push('nsfw');
-    const prefixedText = joinPromptParts(...prefixes, resolved.baseText);
-
-    // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
-    let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-    if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
-
-    // ── UC preset prefix — tags already present (case-insensitive) in the
-    // positive prompts being sent are skipped to avoid contradicting the user.
-    const positiveSearchText = [resolved.baseText, ...activeCharacters.map((c) => c.prompt)]
-      .join(' ')
-      .toLowerCase();
-    const baseNegPrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
-
-    return {
-      input: finalText,
+    const { input, negativePrompt } = composeFinalPrompts(form, resolved);
+    return buildImageRequest({
+      input,
+      negativePrompt,
       model: form.model,
       action: baseImageB64 ? 'img2img' : 'generate',
+      characters: resolved.characters,
+      useCoords: form.useCoords,
       parameters: {
-        params_version: 3,
-        width: baseImageB64 && img2imgSource ? img2imgSource.width : form.width,
-        height: baseImageB64 && img2imgSource ? img2imgSource.height : form.height,
-        scale: overrides.scale ?? form.scale,
-        sampler: overrides.sampler ?? form.sampler,
-        steps: overrides.steps ?? form.steps,
+        ...formSampling(form, overrides),
+        // An img2img base keeps its own size rather than the form's.
+        ...(baseImageB64 && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : {}),
         n_samples: nSamples,
-        ucPreset: 0,
-        qualityToggle: form.qualityToggle,
-        sm: form.smea,
-        sm_dyn: form.smeaDyn,
-        dynamic_thresholding: false,
-        controlnet_strength: 1,
-        legacy: false,
         add_original_image: !!baseImageB64,
-        cfg_rescale: form.cfgRescale,
-        noise_schedule: form.noiseSchedule,
-        skip_cfg_above_sigma: null,
-        use_coords: form.useCoords,
-        deliberate_euler_ancestral_bug: false,
-        prefer_brownian: true,
         seed,
         ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
-        negative_prompt: baseNegPrompt,
-        reference_image_multiple: [],
-        reference_information_extracted_multiple: [],
-        reference_strength_multiple: [],
-        v4_prompt: {
-          caption: {
-            base_caption: finalText,
-            char_captions: activeCharacters.map((c) => ({
-              char_caption: c.prompt,
-              centers: [c.center],
-            })),
-          },
-          use_coords: form.useCoords,
-          use_order: true,
-        },
-        v4_negative_prompt: {
-          caption: {
-            base_caption: baseNegPrompt,
-            char_captions: activeCharacters.map((c) => ({
-              char_caption: c.uc,
-              centers: [c.center],
-            })),
-          },
-          legacy_uc: false,
-        },
-        legacy_uc: false,
-        characterPrompts: activeCharacters.map((c) => ({
-          prompt: c.prompt,
-          uc: c.uc,
-          center: c.center,
-          enabled: c.enabled,
-        })),
       },
-    };
+    });
   }
 
   // ── Submit handler ─────────────────────────────────────────────────────
@@ -242,7 +169,7 @@ export function PromptForm() {
       if (copies > 1 && copiesMode === 'batch') {
         // True batch — one request, n_samples > 1, real extra Anlas cost.
         // One request means one prompt, so every copy shares one wildcard roll.
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
         await generate(
@@ -261,7 +188,7 @@ export function PromptForm() {
         for (let i = 0; i < copies; i++) {
           setBatchStatus({ current: i + 1, total: copies });
           const seed =
-            form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed + i;
+            form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
           const ok = await generate(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks });
           if (!ok) break;
@@ -271,7 +198,7 @@ export function PromptForm() {
         setIsLoading(false);
         setBatchStatus(null);
       } else {
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
         await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
@@ -287,7 +214,7 @@ export function PromptForm() {
 
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
         const ok = await generate(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks });
         if (!ok) break; // stop batch on error
@@ -315,7 +242,7 @@ export function PromptForm() {
     const xInfo = axisInfo(x, form.tidbitLibrary);
     const yInfo = y ? axisInfo(y, form.tidbitLibrary) : undefined;
     const sweepId = crypto.randomUUID();
-    const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+    const seed = form.seed === 0 ? randomSeed() : form.seed;
     // Roll every wildcard once and replay that across the grid, so the only
     // thing changing between cells is what's being swept.
     const baseline = resolveFor(selected);

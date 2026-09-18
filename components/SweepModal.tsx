@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { LibraryTidbit, NovelAISampler } from '@/types/novelai';
 import { SAMPLERS } from '@/lib/samplers';
 import { randomOptions } from '@/lib/wildcards';
+import { randomSeed } from '@/lib/imageRequest';
 import {
   MAX_SWEEP_CELLS,
   NUMERIC_LIMITS,
@@ -40,7 +41,6 @@ interface AxisDraft {
   picked: string[];
 }
 
-const randomSeed = () => Math.floor(Math.random() * 4294967295);
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
 function draftFor(key: string, d: Defaults, randomEntries: LibraryTidbit[]): AxisDraft {

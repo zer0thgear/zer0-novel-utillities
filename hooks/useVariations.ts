@@ -2,23 +2,16 @@ import { useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { GeneratedImage } from '@/types/novelai';
 import { resolveRequestPrompts } from '@/lib/wildcards';
+import { buildImageRequest, EDIT_REQUEST_FLAGS, randomSeed } from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
 
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
 export const VARIATION_COUNT = 3;
 const VARIATION_STRENGTH = 0.8;
 const VARIATION_NOISE = 0.1;
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 interface UseVariationsReturn {
   generateVariations: (image: GeneratedImage) => Promise<boolean>;
@@ -42,16 +35,20 @@ export function useVariations(): UseVariationsReturn {
       // Base prompt and negatives come from the image itself (already rolled);
       // characters come from the current form, replaying the image's rolls.
       const resolved = resolveRequestPrompts({ text: '' }, form.characters, '', form.tidbitLibrary, image.wildcardPicks);
-      const activeCharacters = resolved.characters;
-      const seed = Math.floor(Math.random() * 4294967295);
-      const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
+      const seed = randomSeed();
+      const extraNoiseSeed = randomSeed();
 
+      // Settings come from the image itself, not the current form.
       const p = image.parameters;
-      const request: NovelAIGenerateRequest = {
+      const request = buildImageRequest({
         input: image.prompt,
+        negativePrompt: image.negativePrompt,
         model: image.model,
         action: 'img2img',
+        characters: resolved.characters,
+        useCoords: form.useCoords,
         parameters: {
+          ...EDIT_REQUEST_FLAGS,
           params_version: p.params_version,
           width: p.width,
           height: p.height,
@@ -63,60 +60,17 @@ export function useVariations(): UseVariationsReturn {
           noise: VARIATION_NOISE,
           ucPreset: p.ucPreset,
           qualityToggle: p.qualityToggle,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          legacy_v3_extend: false,
           add_original_image: true,
           cfg_rescale: p.cfg_rescale,
           noise_schedule: p.noise_schedule,
           skip_cfg_above_sigma: p.skip_cfg_above_sigma,
-          use_coords: form.useCoords,
-          normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0,
           seed,
           extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           color_correct: false,
-          deliberate_euler_ancestral_bug: false,
-          prefer_brownian: true,
-          negative_prompt: image.negativePrompt,
-          legacy_uc: false,
-          reference_image_multiple: [],
-          reference_information_extracted_multiple: [],
-          reference_strength_multiple: [],
-          v4_prompt: {
-            caption: {
-              base_caption: image.prompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
-                centers: [c.center],
-              })),
-            },
-            use_coords: form.useCoords,
-            use_order: true,
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: image.negativePrompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.uc,
-                centers: [c.center],
-              })),
-            },
-            legacy_uc: false,
-          },
-          characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
-            uc: c.uc,
-            center: c.center,
-            enabled: c.enabled,
-          })),
         },
-      };
+      });
 
       const sourceImageUrl = URL.createObjectURL(image.blob);
       return await generate(request, {

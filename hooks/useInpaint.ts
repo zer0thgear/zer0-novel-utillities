@@ -2,21 +2,18 @@ import { useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
-import { resolveRequestPrompts } from '@/lib/wildcards';
-import { joinPromptParts } from '@/lib/promptText';
-import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
+import { GeneratedImage, NovelAIModel } from '@/types/novelai';
+import {
+  buildImageRequest,
+  composeFinalPrompts,
+  EDIT_REQUEST_FLAGS,
+  formSampling,
+  randomSeed,
+  resolveSelectedPrompt,
+} from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 function toInpaintingModel(model: NovelAIModel): NovelAIModel {
   if (model.endsWith('-inpainting')) return model;
@@ -50,64 +47,28 @@ export function useInpaint(): UseInpaintReturn {
       const imageB64 = await blobToBase64(image.blob);
       const maskB64 = await blobToBase64(maskBlob);
 
-      // ── Prompt assembly (mirrors useEnhance) ───────────────────────────────
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const resolved = resolveRequestPrompts(
-        selectedBasePrompt ?? { text: '' },
-        form.characters,
-        form.negativePrompt,
-        form.tidbitLibrary,
-        image.wildcardPicks,
-      );
-      const activeCharacters = resolved.characters;
+      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      const { input, negativePrompt } = composeFinalPrompts(form, resolved);
+      const seed = randomSeed();
+      const extraNoiseSeed = randomSeed();
 
-      const prefixes: string[] = [];
-      if (form.furMode)  prefixes.push('fur dataset');
-      if (form.nsfwMode) prefixes.push('nsfw');
-      const prefixedText = joinPromptParts(...prefixes, resolved.baseText);
-
-      let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-      if (form.transparentBg) finalText = joinPromptParts(finalText, 'transparent background');
-
-      // ── Negative prompt assembly ───────────────────────────────────────────
-      const positiveSearchText = [resolved.baseText, ...activeCharacters.map((c) => c.prompt)]
-        .join(' ')
-        .toLowerCase();
-      const baseNegPrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
-
-      const seed = Math.floor(Math.random() * 4294967295);
-      const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
-
-      const request: NovelAIGenerateRequest = {
-        input: finalText,
+      const request = buildImageRequest({
+        input,
+        negativePrompt,
         model: toInpaintingModel(form.model),
         action: 'infill',
+        characters: resolved.characters,
+        useCoords: form.useCoords,
         parameters: {
-          params_version: 3,
+          ...formSampling(form),
+          ...EDIT_REQUEST_FLAGS,
           width: image.parameters.width,
           height: image.parameters.height,
-          scale: form.scale,
-          sampler: form.sampler,
-          steps: form.steps,
           n_samples: 1,
           strength,
           noise: 0,
-          ucPreset: 0,
-          qualityToggle: form.qualityToggle,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          legacy_v3_extend: false,
           add_original_image: false,
-          cfg_rescale: form.cfgRescale,
-          noise_schedule: form.noiseSchedule,
-          skip_cfg_above_sigma: null,
-          use_coords: form.useCoords,
-          normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0.69,
           seed,
           extra_noise_seed: extraNoiseSeed,
@@ -115,42 +76,8 @@ export function useInpaint(): UseInpaintReturn {
           mask: maskB64,
           img2img: { strength: 0.69, color_correct: true },
           color_correct: true,
-          deliberate_euler_ancestral_bug: false,
-          prefer_brownian: true,
-          negative_prompt: baseNegPrompt,
-          legacy_uc: false,
-          reference_image_multiple: [],
-          reference_information_extracted_multiple: [],
-          reference_strength_multiple: [],
-          v4_prompt: {
-            caption: {
-              base_caption: finalText,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.prompt,
-                centers: [c.center],
-              })),
-            },
-            use_coords: form.useCoords,
-            use_order: true,
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: baseNegPrompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.uc,
-                centers: [c.center],
-              })),
-            },
-            legacy_uc: false,
-          },
-          characterPrompts: activeCharacters.map((c) => ({
-            prompt: c.prompt,
-            uc: c.uc,
-            center: c.center,
-            enabled: c.enabled,
-          })),
         },
-      };
+      });
 
       const sourceImageUrl = URL.createObjectURL(image.blob);
       return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks });
