@@ -139,8 +139,10 @@ const SETTING_CHECKS: Record<(typeof PRESET_SETTINGS_KEYS)[number], (v: unknown)
   ucPreset: (v) => ['none', 'light', 'heavy', 'furryFocus', 'humanFocus'].includes(v as string),
 };
 
-function parseSettings(v: unknown): SettingsValues | undefined {
-  if (!isObj(v)) return undefined;
+function parseSettings(raw: unknown): SettingsValues | undefined {
+  if (!isObj(raw)) return undefined;
+  // Files from before V4 Full's model ID was corrected.
+  const v = raw.model === 'nai-diffusion-4-full-preview' ? { ...raw, model: 'nai-diffusion-4-full' } : raw;
   const out = Object.fromEntries(
     PRESET_SETTINGS_KEYS.flatMap((k) => (k in v && SETTING_CHECKS[k](v[k]) ? [[k, v[k]]] : [])),
   ) as SettingsValues;

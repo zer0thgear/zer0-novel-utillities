@@ -16,9 +16,23 @@ import { blobToBase64 } from '@/lib/imageUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** NovelAI's own base → inpainting model mapping. Not a simple suffix: V4
+ *  Curated drops "-preview", and V5 Curated has no inpainting model of its
+ *  own, so NovelAI's client uses V4.5 Curated's (both checked against the
+ *  API on 2026-09-18). */
+const INPAINTING_MODEL: Partial<Record<NovelAIModel, NovelAIModel>> = {
+  'nai-diffusion-5-full': 'nai-diffusion-5-full-inpainting',
+  'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
+  'nai-diffusion-4-5-full': 'nai-diffusion-4-5-full-inpainting',
+  'nai-diffusion-4-full': 'nai-diffusion-4-full-inpainting',
+  'nai-diffusion-4-curated-preview': 'nai-diffusion-4-curated-inpainting',
+  'nai-diffusion-3': 'nai-diffusion-3-inpainting',
+  'nai-diffusion-furry-3': 'nai-diffusion-furry-3-inpainting',
+};
+
 function toInpaintingModel(model: NovelAIModel): NovelAIModel {
   if (model.endsWith('-inpainting')) return model;
-  return `${model}-inpainting` as NovelAIModel;
+  return INPAINTING_MODEL[model] ?? 'nai-diffusion-4-5-curated-inpainting';
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

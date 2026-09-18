@@ -105,7 +105,7 @@ function guessModel(sourceOrModelName: string | undefined): NovelAIModel | undef
   if (s.includes('furry')) return 'nai-diffusion-furry-3';
   if (s.includes('v5')) return 'nai-diffusion-5-full';
   if (s.includes('v4.5') || s.includes('4-5')) return 'nai-diffusion-4-5-full';
-  if (s.includes('v4')) return 'nai-diffusion-4-full-preview';
+  if (s.includes('v4')) return 'nai-diffusion-4-full';
   if (s.includes('v3') || s.includes('diffusion 3')) return 'nai-diffusion-3';
   return undefined;
 }

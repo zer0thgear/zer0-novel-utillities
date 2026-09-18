@@ -92,7 +92,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'novelai-settings',
-      version: 4,
+      version: 5,
       migrate(persistedState: unknown, version: number) {
         let s = persistedState as Record<string, unknown>;
         // v1 -> v2: single prompt: string -> basePrompts: BasePrompt[]
@@ -123,6 +123,22 @@ export const useSettingsStore = create<SettingsState>()(
         // qualityToggle, matching NovelAI's own client).
         if (version < 4) {
           s = { ...s, qualityToggle: undefined };
+        }
+        // v4 -> v5: V4 Full's model ID was wrong ("-preview" is only on V4
+        // Curated); the API rejects it, so carry saved selections over.
+        if (version < 5) {
+          const fix = (m: unknown) => (m === 'nai-diffusion-4-full-preview' ? 'nai-diffusion-4-full' : m);
+          s = {
+            ...s,
+            model: fix(s.model),
+            presets: Array.isArray(s.presets)
+              ? s.presets.map((p) =>
+                  p && typeof p === 'object' && 'values' in p
+                    ? { ...p, values: { ...(p as { values: object }).values, model: fix((p as { values: { model?: unknown } }).values.model) } }
+                    : p,
+                )
+              : s.presets,
+          };
         }
         return s as unknown as FormSettings;
       },

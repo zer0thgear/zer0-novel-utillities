@@ -5,7 +5,7 @@ export const MODELS: { value: NovelAIModel; label: string }[] = [
   { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
   { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
   { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
-  { value: 'nai-diffusion-4-full-preview', label: 'NAI Diffusion V4 Full' },
+  { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
   { value: 'nai-diffusion-3', label: 'NAI Diffusion V3 (Anime)' },
   { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion V3 (Furry)' },
 ];
