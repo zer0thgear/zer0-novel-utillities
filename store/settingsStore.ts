@@ -10,6 +10,7 @@ import {
   PromptMode,
 } from '@/types/novelai';
 import { QualityLevel, UcLevel } from '@/lib/naiPresets';
+import type { Preset } from '@/lib/presets';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,9 @@ export interface FormSettings {
    *  zustand merges defaults under the persisted state, so older saves just
    *  start with an empty library. */
   tidbitLibrary: LibraryTidbit[];
+  /** Saved snapshots of the settings above (see lib/presets.ts). Same as the
+   *  library: absent from older saves, so it just defaults to empty. */
+  presets: Preset[];
 }
 
 interface SettingsState extends FormSettings {
@@ -77,6 +81,7 @@ const DEFAULTS: FormSettings = {
   useCoords: false,
   streamingMode: false,
   tidbitLibrary: [],
+  presets: [],
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────

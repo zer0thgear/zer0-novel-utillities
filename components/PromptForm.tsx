@@ -16,9 +16,11 @@ import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
+import { PresetsSection } from './PresetsSection';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
+import { MODELS } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { joinPromptParts } from '@/lib/promptText';
 import { calculateAnlasCost } from '@/lib/anlasCost';
@@ -35,16 +37,6 @@ import {
 } from '@/lib/naiPresets';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-
-const MODELS: { value: NovelAIModel; label: string }[] = [
-  { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' },
-  { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
-  { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
-  { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
-  { value: 'nai-diffusion-4-full-preview', label: 'NAI Diffusion V4 Full' },
-  { value: 'nai-diffusion-3', label: 'NAI Diffusion V3 (Anime)' },
-  { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion V3 (Furry)' },
-];
 
 const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
   { value: 'native', label: 'Native' },
@@ -783,6 +775,8 @@ export function PromptForm() {
       )}
 
       <TidbitLibrarySection model={form.model} />
+
+      <PresetsSection />
 
       {/* Generation settings — collapsible; open by default so nothing already
           relied upon disappears, but collapsible to cut down sidebar scroll

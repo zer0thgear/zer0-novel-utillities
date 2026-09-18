@@ -58,6 +58,7 @@ components/
   InpaintModal.tsx / EditModal.tsx / DirectorToolsModal.tsx
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
   SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
+  PresetsSection.tsx          # Save/load named setting presets
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
@@ -79,7 +80,8 @@ lib/
   promptText.ts                 # Prompt fragment joining (comma/whitespace rules)
   wildcards.ts                  # __Label__ references + random wildcards, resolved once per request
   sweeps.ts                     # X/Y sweep axes → per-image cells
-  samplers.ts                   # Sampler list shared by the settings panel and sweeps
+  samplers.ts / models.ts       # Sampler and model lists shared across the UI
+  presets.ts                    # Saved presets: which settings they capture
   pixelSnap.ts                  # Client-side pixel-art filter
   imageUtils.ts / imageDb.ts
 types/
