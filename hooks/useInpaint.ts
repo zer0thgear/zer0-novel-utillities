@@ -64,14 +64,18 @@ export function useInpaint(): UseInpaintReturn {
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
       const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
-      const { input, negativePrompt } = composeFinalPrompts(form, resolved);
+      // Presets come from the model actually sent, as NovelAI does: V5 Curated
+      // inpaints with V4.5 Curated's model, so it gets V4.5 Curated's presets
+      // (verified against novelai.net's own request, 2026-09-18).
+      const model = toInpaintingModel(form.model);
+      const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
       const seed = randomSeed();
       const extraNoiseSeed = randomSeed();
 
       const request = buildImageRequest({
         input,
         negativePrompt,
-        model: toInpaintingModel(form.model),
+        model,
         action: 'infill',
         characters: resolved.characters,
         useCoords: form.useCoords,

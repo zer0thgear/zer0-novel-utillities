@@ -7,10 +7,12 @@ import { joinPromptParts } from '@/lib/promptText';
 // differs from docs.novelai.net in places; see docs/REVERSE_ENGINEERING.md,
 // "Quality Tags / UC Presets". Its token counter composes the same way.
 
-export type ModelFamily = 'v5' | 'v45full' | 'v4full' | 'v4curated' | 'v3anime' | 'v3furry';
+export type ModelFamily = 'v5' | 'v45full' | 'v45curated' | 'v4full' | 'v4curated' | 'v3anime' | 'v3furry';
 
 export function getModelFamily(model: NovelAIModel): ModelFamily {
   if (model.startsWith('nai-diffusion-5')) return 'v5';
+  // Not in the model picker, but V5 Curated inpaints with its inpainting model.
+  if (model.startsWith('nai-diffusion-4-5-curated')) return 'v45curated';
   if (model.startsWith('nai-diffusion-4-5')) return 'v45full';
   if (model.startsWith('nai-diffusion-4-curated')) return 'v4curated';
   if (model.startsWith('nai-diffusion-4')) return 'v4full';
@@ -29,6 +31,9 @@ const QUALITY_TEXT: Record<ModelFamily, Partial<Record<QualityLevel, string>>> =
   },
   v45full: {
     standard: ', very aesthetic, masterpiece, no text',
+  },
+  v45curated: {
+    standard: ', very aesthetic, masterpiece, no text, -0.8::feet::, rating:general',
   },
   v4full: {
     standard: ', no text, best quality, very aesthetic, absurdres',
@@ -76,6 +81,14 @@ const UC_TEXT: Record<ModelFamily, Partial<Record<UcLevel, string>>> = {
       '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic',
     humanFocus:
       'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy',
+  },
+  v45curated: {
+    heavy:
+      'blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page',
+    light:
+      'blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page',
+    humanFocus:
+      'blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page',
   },
   v4full: {
     heavy:
