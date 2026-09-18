@@ -17,7 +17,7 @@ import { blobToBase64 } from '@/lib/imageUtils';
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseEditReturn {
-  edit: (image: GeneratedImage, editedBlob: Blob, strength: number, noise: number) => Promise<boolean>;
+  edit: (image: GeneratedImage, editedBlob: Blob, strength: number, noise: number) => Promise<GeneratedImage[] | null>;
   isEditing: boolean;
   error: string | null;
   clearError: () => void;
@@ -34,7 +34,7 @@ export function useEdit(): UseEditReturn {
     editedBlob: Blob,
     strength: number,
     noise: number,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     setIsEditing(true);
     setIsLoading(true);
 
@@ -76,7 +76,7 @@ export function useEdit(): UseEditReturn {
       return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       console.error('Edit setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsEditing(false);
       setIsLoading(false);

@@ -35,7 +35,7 @@ export type EnhanceLevelNum = 1 | 2 | 3 | 4 | 5;
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseEnhanceReturn {
-  enhance: (image: GeneratedImage, level: EnhanceLevelNum, upscale: boolean) => Promise<boolean>;
+  enhance: (image: GeneratedImage, level: EnhanceLevelNum, upscale: boolean) => Promise<GeneratedImage[] | null>;
   isEnhancing: boolean;
   error: string | null;
   clearError: () => void;
@@ -52,7 +52,7 @@ export function useEnhance(): UseEnhanceReturn {
     image: GeneratedImage,
     levelNum: EnhanceLevelNum,
     upscale: boolean,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     setIsEnhancing(true);
     setIsLoading(true); // shows gallery progress indicator / streaming preview
 
@@ -105,7 +105,7 @@ export function useEnhance(): UseEnhanceReturn {
     } catch (err) {
       // blobToBase64 failures land here; API errors are handled by generate()
       console.error('Enhance setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsEnhancing(false);
       setIsLoading(false);

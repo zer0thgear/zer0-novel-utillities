@@ -14,7 +14,7 @@ export const VARIATION_STRENGTH = 0.8;
 const VARIATION_NOISE = 0.1;
 
 interface UseVariationsReturn {
-  generateVariations: (image: GeneratedImage) => Promise<boolean>;
+  generateVariations: (image: GeneratedImage) => Promise<GeneratedImage[] | null>;
   isGeneratingVariations: boolean;
   error: string | null;
   clearError: () => void;
@@ -26,7 +26,7 @@ export function useVariations(): UseVariationsReturn {
   const { setIsLoading } = useSessionStore();
   const form = useSettingsStore();
 
-  const generateVariations = async (image: GeneratedImage): Promise<boolean> => {
+  const generateVariations = async (image: GeneratedImage): Promise<GeneratedImage[] | null> => {
     setIsGeneratingVariations(true);
     setIsLoading(true);
 
@@ -86,7 +86,7 @@ export function useVariations(): UseVariationsReturn {
       });
     } catch (err) {
       console.error('Variations setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsGeneratingVariations(false);
       setIsLoading(false);

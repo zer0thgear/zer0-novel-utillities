@@ -5,7 +5,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { GeneratedImage } from '@/types/novelai';
 
 interface UsePixelSnapReturn {
-  snap: (image: GeneratedImage, options: PixelSnapOptions) => Promise<boolean>;
+  snap: (image: GeneratedImage, options: PixelSnapOptions) => Promise<GeneratedImage[] | null>;
   isSnapping: boolean;
   error: string | null;
   clearError: () => void;
@@ -18,7 +18,7 @@ export function usePixelSnap(): UsePixelSnapReturn {
   const [error, setError] = useState<string | null>(null);
   const { addImages, setIsLoading } = useSessionStore();
 
-  const snap = async (image: GeneratedImage, options: PixelSnapOptions): Promise<boolean> => {
+  const snap = async (image: GeneratedImage, options: PixelSnapOptions): Promise<GeneratedImage[] | null> => {
     setIsSnapping(true);
     setIsLoading(true);
     setError(null);
@@ -45,10 +45,10 @@ export function usePixelSnap(): UsePixelSnapReturn {
       };
 
       addImages([result]);
-      return true;
+      return [result];
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     } finally {
       setIsSnapping(false);
       setIsLoading(false);

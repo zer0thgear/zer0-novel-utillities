@@ -9,7 +9,7 @@ interface AugmentOptions {
 }
 
 interface UseAugmentReturn {
-  augment: (image: GeneratedImage, reqType: AugmentReqType, options?: AugmentOptions) => Promise<boolean>;
+  augment: (image: GeneratedImage, reqType: AugmentReqType, options?: AugmentOptions) => Promise<GeneratedImage[] | null>;
   isAugmenting: boolean;
   error: string | null;
   clearError: () => void;
@@ -24,10 +24,10 @@ export function useAugment(): UseAugmentReturn {
     image: GeneratedImage,
     reqType: AugmentReqType,
     options?: AugmentOptions,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     if (!apiKey) {
       setError('No API key set. Please enter your NovelAI API key.');
-      return false;
+      return null;
     }
 
     setIsAugmenting(true);
@@ -87,10 +87,10 @@ export function useAugment(): UseAugmentReturn {
       };
 
       addImages([result]);
-      return true;
+      return [result];
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     } finally {
       setIsAugmenting(false);
       setIsLoading(false);

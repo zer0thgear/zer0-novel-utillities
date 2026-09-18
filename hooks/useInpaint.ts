@@ -39,7 +39,7 @@ function toInpaintingModel(model: NovelAIModel): NovelAIModel {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseInpaintReturn {
-  inpaint: (image: GeneratedImage, maskBlob: Blob, strength: number) => Promise<boolean>;
+  inpaint: (image: GeneratedImage, maskBlob: Blob, strength: number) => Promise<GeneratedImage[] | null>;
   isInpainting: boolean;
   error: string | null;
   clearError: () => void;
@@ -55,7 +55,7 @@ export function useInpaint(): UseInpaintReturn {
     image: GeneratedImage,
     maskBlob: Blob,
     strength: number,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     setIsInpainting(true);
     setIsLoading(true);
 
@@ -104,7 +104,7 @@ export function useInpaint(): UseInpaintReturn {
       return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       console.error('Inpaint setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsInpainting(false);
       setIsLoading(false);

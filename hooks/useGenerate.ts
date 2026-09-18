@@ -24,7 +24,8 @@ interface GenerateOptions {
 }
 
 interface UseGenerateReturn {
-  generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<boolean>;
+  /** The images added to the session, or null if the request failed. */
+  generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<GeneratedImage[] | null>;
   error: string | null;
   clearError: () => void;
 }
@@ -44,7 +45,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
 
-  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     try {
       const response = await fetch('https://image.novelai.net/ai/generate-image', {
@@ -84,16 +85,16 @@ export function useGenerate(): UseGenerateReturn {
       }));
 
       addImages(images);
-      return true;
+      return images;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     }
   };
 
   // ── Streaming (SSE) generation ─────────────────────────────────────────────
 
-  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     try {
       const response = await fetch('https://image.novelai.net/ai/generate-image-stream', {
@@ -115,7 +116,7 @@ export function useGenerate(): UseGenerateReturn {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalImageAdded = false;
+      let finalImage: GeneratedImage | null = null;
 
       // Process one parsed SSE event.
       //
@@ -179,7 +180,7 @@ export function useGenerate(): UseGenerateReturn {
             imageBlob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
           }
 
-          addImages([{
+          finalImage = {
             id: crypto.randomUUID(),
             url: URL.createObjectURL(imageBlob),
             blob: imageBlob,
@@ -195,8 +196,8 @@ export function useGenerate(): UseGenerateReturn {
             wildcardPicks: opts?.wildcardPicks,
             sweep: opts?.sweep,
             source: opts?.source,
-          }]);
-          finalImageAdded = true;
+          };
+          addImages([finalImage]);
           setStreamPreview(null);
 
         } else if (isError) {
@@ -232,25 +233,25 @@ export function useGenerate(): UseGenerateReturn {
         }
       }
 
-      if (!finalImageAdded) {
+      if (!finalImage) {
         // The stream closed without a recognised final event.
         // Surface as an error so the user knows something went wrong.
         throw new Error('Stream closed without delivering a final image. Check the browser console for raw SSE output.');
       }
-      return true;
+      return [finalImage];
     } catch (err) {
       setStreamPreview(null);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     }
   };
 
   // ── Public generate function ────────────────────────────────────────────────
 
-  const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     if (!apiKey) {
       setError('No API key set. Please enter your NovelAI API key.');
-      return false;
+      return null;
     }
     return streamingMode && !opts?.forceStandard
       ? generateStreaming(request, opts)

@@ -4,7 +4,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { GeneratedImage, UpscaleRequest } from '@/types/novelai';
 
 interface UseUpscaleReturn {
-  upscale: (image: GeneratedImage) => Promise<boolean>;
+  upscale: (image: GeneratedImage) => Promise<GeneratedImage[] | null>;
   isUpscaling: boolean;
   error: string | null;
   clearError: () => void;
@@ -15,10 +15,10 @@ export function useUpscale(): UseUpscaleReturn {
   const [error, setError] = useState<string | null>(null);
   const { apiKey, addImages, setIsLoading } = useSessionStore();
 
-  const upscale = async (image: GeneratedImage): Promise<boolean> => {
+  const upscale = async (image: GeneratedImage): Promise<GeneratedImage[] | null> => {
     if (!apiKey) {
       setError('No API key set. Please enter your NovelAI API key.');
-      return false;
+      return null;
     }
 
     setIsUpscaling(true);
@@ -74,10 +74,10 @@ export function useUpscale(): UseUpscaleReturn {
       };
 
       addImages([upscaled]);
-      return true;
+      return [upscaled];
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     } finally {
       setIsUpscaling(false);
       setIsLoading(false);
