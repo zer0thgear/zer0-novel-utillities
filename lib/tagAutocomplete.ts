@@ -1,31 +1,65 @@
-// Pure helpers for comma-segment tag autocomplete — shared by any textarea
-// that wants suggest-tags-style autocomplete (currently just the base prompt,
-// see components/BasePromptsEditor.tsx).
+// Pure helpers for comma-segment tag autocomplete, shared by every prompt
+// field (components/TagAutocompleteField.tsx).
 
 /** Segments break on commas and line breaks — the latter matter for random
  *  wildcard entries (one option per line) and Shift+Enter in prompt boxes. */
-function segmentStart(text: string, cursor: number): number {
-  const beforeCursor = text.slice(0, cursor);
-  return Math.max(beforeCursor.lastIndexOf(','), beforeCursor.lastIndexOf('\n')) + 1;
+function segmentBounds(text: string, cursor: number): { start: number; end: number } {
+  const before = text.slice(0, cursor);
+  const start = Math.max(before.lastIndexOf(','), before.lastIndexOf('\n')) + 1;
+  const comma = text.indexOf(',', cursor);
+  const line = text.indexOf('\n', cursor);
+  const end = Math.min(comma === -1 ? text.length : comma, line === -1 ? text.length : line);
+  return { start, end };
 }
 
-/** The segment the cursor is currently inside, trimmed — this is what gets
- *  sent to the suggest-tags API as `prompt`. */
+// Emphasis a tag can open with: {…}, […] or an explicit weight (1.2::…::).
+// A plain tag starting with a digit ("1girl") isn't one; the weight form
+// needs its "::".
+const OPENERS = /^(?:\{+|\[+|-?\d*\.?\d+::)*/;
+const CLOSERS = /(?:\}|\]|::)+$/;
+
+/** The closers that balance a run of openers, innermost first. */
+function closersFor(openers: string): string {
+  const tokens = openers.match(/\{|\[|-?\d*\.?\d+::/g) ?? [];
+  return tokens
+    .reverse()
+    .map((t) => (t === '{' ? '}' : t === '[' ? ']' : '::'))
+    .join('');
+}
+
+/** The tag being typed at the cursor, without leading whitespace or emphasis
+ *  syntax — this is what gets sent to the suggest-tags API as `prompt`. */
 export function currentSegment(text: string, cursor: number): string {
-  return text.slice(segmentStart(text, cursor), cursor).trimStart();
+  const { start } = segmentBounds(text, cursor);
+  return text.slice(start, cursor).trimStart().replace(OPENERS, '').trimStart();
 }
 
-/** Replaces the segment the cursor was in with `tag`, preserving everything
- *  else, and returns the new full text plus where the cursor should land
- *  (right after the inserted tag, followed by ", " ready for the next one). */
+/** Replaces the whole tag the cursor is in with `tag`, keeping the tag's own
+ *  emphasis (and closing it if it's still being typed, so `{{blu` becomes
+ *  `{{blue hair}}`), plus any closers that belong to an enclosing group.
+ *  Returns the new text and where the cursor lands: after ", " at the end of
+ *  a line ready for the next tag, or right after the tag mid-prompt. */
 export function applySegment(text: string, cursor: number, tag: string): { text: string; cursor: number } {
-  const afterCursor = text.slice(cursor);
-  const start = segmentStart(text, cursor);
-  const prefix = text.slice(0, start);
-  const needsSpace = start > 0 && !prefix.endsWith(' ') && !prefix.endsWith('\n');
-  const insertion = `${needsSpace ? ' ' : ''}${tag}, `;
-  const newText = prefix + insertion + afterCursor.trimStart();
-  return { text: newText, cursor: prefix.length + insertion.length };
+  const { start, end } = segmentBounds(text, cursor);
+  const segment = text.slice(start, end).trim();
+  const openers = OPENERS.exec(segment)?.[0] ?? '';
+  const closers = closersFor(openers);
+  const trailing = CLOSERS.exec(segment.slice(openers.length))?.[0] ?? '';
+  // Closers beyond this tag's own belong to a group opened in an earlier
+  // segment (`{a, b}`), so they're kept. A partial set of this tag's own
+  // (`{{blu}`) is simply completed.
+  const outer = trailing.startsWith(closers) ? trailing.slice(closers.length) : closers.startsWith(trailing) ? '' : trailing;
+
+  const before = text.slice(0, start);
+  const lead = start > 0 && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : '';
+  const replaced = lead + openers + tag + closers + outer;
+  const after = text.slice(end);
+
+  if (after.startsWith(',')) {
+    return { text: before + replaced + after, cursor: before.length + replaced.length };
+  }
+  const withComma = replaced + ', ';
+  return { text: before + withComma + after, cursor: before.length + withComma.length };
 }
 
 // Relevance-dot brightness (0-1) for a suggestion, matching NovelAI's own
