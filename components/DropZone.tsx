@@ -134,9 +134,14 @@ export function DropZone() {
     if (options.prompt) {
       const target = form.basePrompts.find((p) => p.selected) ?? form.basePrompts[0];
       if (target) {
+        // Tidbits are a UI-only split of the prompt; an imported prompt is
+        // already the full composed text, so any tidbits left on the target
+        // would be appended a second time. Replace the prompt wholesale.
         form.set(
           'basePrompts',
-          form.basePrompts.map((p) => (p.id === target.id ? { ...p, text: tidy(metadata.prompt) } : p)),
+          form.basePrompts.map((p) =>
+            p.id === target.id ? { ...p, text: tidy(metadata.prompt), tidbits: [] } : p,
+          ),
         );
       }
     }
@@ -252,7 +257,7 @@ export function DropZone() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  {checkbox('prompt', 'Prompt', '(replaces the selected base prompt)')}
+                  {checkbox('prompt', 'Prompt', '(replaces the selected base prompt and its tidbits)')}
                   {checkbox('uc', 'Undesired Content')}
                   {checkbox('characters', 'Characters')}
                   {checkbox('appendCharacters', 'Append', '(keep existing characters)', true)}
