@@ -48,6 +48,9 @@ export function resolveRequestPrompts(
   negativePrompt: string,
   library: LibraryTidbit[],
   replay?: WildcardPicks,
+  /** Pins random entries (by id) to one option everywhere they occur —
+   *  how a sweep steps through a wildcard's options. Overrides `replay`. */
+  force?: Record<string, string>,
 ): ResolvedRequestPrompts {
   const index = labelIndex(library);
   const picks: WildcardPicks = {};
@@ -60,7 +63,7 @@ export function resolveRequestPrompts(
     const n = (counters[key] = (counters[key] ?? -1) + 1);
     // A replayed pick is authoritative even if the option has since been
     // edited out of the entry — it's what actually produced the image.
-    const recorded = replay?.[key]?.[n];
+    const recorded = force?.[entry.id] ?? replay?.[key]?.[n];
     const options = randomOptions(entry);
     const choice = recorded ?? (options.length ? options[Math.floor(Math.random() * options.length)] : '');
     (picks[key] ??= [])[n] = choice;
@@ -109,6 +112,8 @@ export interface WildcardAnalysis {
   unknown: string[];
   /** Whether any random entry is reachable, i.e. repeat requests can differ. */
   usesRandom: boolean;
+  /** The random entries reachable from these prompts, in first-seen order. */
+  randomEntries: LibraryTidbit[];
 }
 
 /** Static scan of what a request would draw on, following references into
@@ -122,12 +127,12 @@ export function analyzeWildcards(
   const index = labelIndex(library);
   const unknown = new Set<string>();
   const visited = new Set<string>();
-  let usesRandom = false;
+  const randomEntries: LibraryTidbit[] = [];
 
   function visit(entry: LibraryTidbit) {
     if (visited.has(entry.id)) return;
     visited.add(entry.id);
-    if (isRandomEntry(entry)) usesRandom = true;
+    if (isRandomEntry(entry)) randomEntries.push(entry);
     scan(entry.text);
   }
   function scan(text: string) {
@@ -156,5 +161,5 @@ export function analyzeWildcards(
   }
   scan(negativePrompt);
 
-  return { unknown: [...unknown], usesRandom };
+  return { unknown: [...unknown], usesRandom: randomEntries.length > 0, randomEntries };
 }

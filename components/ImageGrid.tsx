@@ -5,6 +5,7 @@ import { downloadSessionAsZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { GeneratedImage } from '@/types/novelai';
 import { ImageCard } from './ImageCard';
+import { SweepGridModal } from './SweepGridModal';
 
 // Groups consecutive images sharing a batchId — a Copies batch/queue run
 // always lands adjacent in the array since nothing else generates mid-run.
@@ -37,6 +38,7 @@ function Spinner({ className }: { className?: string }) {
 export function HistoryStrip() {
   const { images, focusedImageId, isLoading, streamPreview, clearImages } = useSessionStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [gridSweepId, setGridSweepId] = useState<string | null>(null);
 
   // ── Collapsed state ──────────────────────────────────────────────────────
 
@@ -141,13 +143,35 @@ export function HistoryStrip() {
               so they read as one generation while staying individually
               clickable/removable. */}
           {groupConsecutiveByBatch(images).map((group) =>
-            group.length === 1 ? (
+            // A sweep keeps its header (and Grid button) even if it was
+            // stopped after one image; other one-image groups are just cards.
+            group.length === 1 && !group[0].sweep ? (
               <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
             ) : (
               <div key={group[0].batchId} className="rounded-lg border border-violet-700/30 bg-violet-950/10 p-1.5">
-                <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
-                  Batch of {group.length}
-                </p>
+                {group[0].sweep ? (
+                  <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5">
+                    <p
+                      className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
+                      title={`Sweep: ${group[0].sweep.x.name}${group[0].sweep.y ? ` × ${group[0].sweep.y.name}` : ''}`}
+                    >
+                      Sweep · {group[0].sweep.x.name}
+                      {group[0].sweep.y && ` × ${group[0].sweep.y.name}`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setGridSweepId(group[0].sweep!.id)}
+                      title="Open as a labelled grid"
+                      className="flex-shrink-0 rounded bg-violet-600/30 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200 transition-colors hover:bg-violet-600"
+                    >
+                      Grid
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
+                    Batch of {group.length}
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-1.5">
                   {group.map((image) => (
                     <ImageCard key={image.id} image={image} focused={image.id === focusedImageId} />
@@ -158,6 +182,8 @@ export function HistoryStrip() {
           )}
         </div>
       </div>
+
+      {gridSweepId && <SweepGridModal sweepId={gridSweepId} onClose={() => setGridSweepId(null)} />}
     </div>
   );
 }

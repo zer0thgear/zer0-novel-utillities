@@ -259,4 +259,22 @@ export interface GeneratedImage {
   /** Wildcard rolls that produced this image, replayed by Enhance/Inpaint/Edit/
    *  Variations so reworking an image doesn't re-roll it. */
   wildcardPicks?: WildcardPicks;
+  /** Set on every image from an X/Y sweep: which grid cell it is. */
+  sweep?: SweepCellInfo;
+}
+
+export interface SweepAxisInfo {
+  /** Display name, e.g. "CFG" or a wildcard's label. */
+  name: string;
+  /** Display values, in grid order. */
+  values: string[];
+}
+
+export interface SweepCellInfo {
+  /** Shared by every image in one sweep (also used as its batchId). */
+  id: string;
+  x: SweepAxisInfo;
+  xIndex: number;
+  y?: SweepAxisInfo;
+  yIndex?: number;
 }

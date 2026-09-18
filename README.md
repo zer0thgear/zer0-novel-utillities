@@ -57,6 +57,7 @@ components/
   ImageCard.tsx
   InpaintModal.tsx / EditModal.tsx / DirectorToolsModal.tsx
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
+  SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
@@ -77,6 +78,8 @@ lib/
   promptTidbits.ts              # Tidbit ↔ library linking helpers
   promptText.ts                 # Prompt fragment joining (comma/whitespace rules)
   wildcards.ts                  # __Label__ references + random wildcards, resolved once per request
+  sweeps.ts                     # X/Y sweep axes → per-image cells
+  samplers.ts                   # Sampler list shared by the settings panel and sweeps
   pixelSnap.ts                  # Client-side pixel-art filter
   imageUtils.ts / imageDb.ts
 types/

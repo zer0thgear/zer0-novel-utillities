@@ -17,6 +17,9 @@ import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
+import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
+import { SAMPLERS } from '@/lib/samplers';
+import { SweepModal } from './SweepModal';
 import { joinPromptParts } from '@/lib/promptText';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -41,16 +44,6 @@ const MODELS: { value: NovelAIModel; label: string }[] = [
   { value: 'nai-diffusion-4-full-preview', label: 'NAI Diffusion V4 Full' },
   { value: 'nai-diffusion-3', label: 'NAI Diffusion V3 (Anime)' },
   { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion V3 (Furry)' },
-];
-
-const SAMPLERS: { value: NovelAISampler; label: string }[] = [
-  { value: 'k_euler', label: 'Euler' },
-  { value: 'k_euler_ancestral', label: 'Euler Ancestral' },
-  { value: 'k_dpmpp_2s_ancestral', label: 'DPM++ 2S Ancestral' },
-  { value: 'k_dpmpp_2m', label: 'DPM++ 2M' },
-  { value: 'k_dpmpp_2m_sde', label: 'DPM++ 2M SDE' },
-  { value: 'k_dpmpp_sde', label: 'DPM++ SDE' },
-  { value: 'ddim_v3', label: 'DDIM V3' },
 ];
 
 const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
@@ -132,7 +125,14 @@ export function PromptForm() {
     return resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary);
   }
 
-  function buildRequest(resolved: ResolvedRequestPrompts, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
+  function buildRequest(
+    resolved: ResolvedRequestPrompts,
+    seed: number,
+    baseImageB64?: string,
+    nSamples = 1,
+    // A sweep cell's values, replacing the form's for this one request.
+    overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
+  ): NovelAIGenerateRequest {
     const activeCharacters = resolved.characters;
 
     // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
@@ -160,9 +160,9 @@ export function PromptForm() {
         params_version: 3,
         width: baseImageB64 && img2imgSource ? img2imgSource.width : form.width,
         height: baseImageB64 && img2imgSource ? img2imgSource.height : form.height,
-        scale: form.scale,
-        sampler: form.sampler,
-        steps: form.steps,
+        scale: overrides.scale ?? form.scale,
+        sampler: overrides.sampler ?? form.sampler,
+        steps: overrides.steps ?? form.steps,
         n_samples: nSamples,
         ucPreset: 0,
         qualityToggle: form.qualityToggle,
@@ -304,6 +304,73 @@ export function PromptForm() {
       setIsLoading(false);
       setBatchStatus(null);
     }
+  }
+
+  // ── X/Y sweep ──────────────────────────────────────────────────────────
+
+  const [showSweep, setShowSweep] = useState(false);
+  const [sweepRunning, setSweepRunning] = useState(false);
+  const [sweepStopping, setSweepStopping] = useState(false);
+  // Checked between requests, so Stop lets the in-flight image finish.
+  const sweepStopRef = useRef(false);
+
+  async function runSweep(x: SweepAxis, y?: SweepAxis) {
+    setShowSweep(false);
+    const selected = form.basePrompts.find((p) => p.selected);
+    if (!selected?.text.trim()) return;
+
+    const cells = sweepCells(x, y);
+    const xInfo = axisInfo(x, form.tidbitLibrary);
+    const yInfo = y ? axisInfo(y, form.tidbitLibrary) : undefined;
+    const sweepId = crypto.randomUUID();
+    const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+    // Roll every wildcard once and replay that across the grid, so the only
+    // thing changing between cells is what's being swept.
+    const baseline = resolveFor(selected);
+    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+
+    sweepStopRef.current = false;
+    setSweepRunning(true);
+    setIsLoading(true);
+    for (let i = 0; i < cells.length; i++) {
+      if (sweepStopRef.current) break;
+      const cell = cells[i];
+      setBatchStatus({ current: i + 1, total: cells.length });
+      const resolved = resolveRequestPrompts(
+        selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
+      );
+      const ok = await generate(
+        buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
+          scale: cell.scale,
+          steps: cell.steps,
+          sampler: cell.sampler,
+        }),
+        {
+          batchId: sweepId,
+          wildcardPicks: resolved.picks,
+          sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
+        },
+      );
+      if (!ok) break;
+      if (i < cells.length - 1 && !sweepStopRef.current) await new Promise((r) => setTimeout(r, 1500));
+    }
+    setIsLoading(false);
+    setBatchStatus(null);
+    setSweepRunning(false);
+    setSweepStopping(false);
+  }
+
+  function sweepCostFor(steps: number): number | null {
+    if (!subscription) return null;
+    return calculateAnlasCost({
+      width: img2imgSource ? img2imgSource.width : form.width,
+      height: img2imgSource ? img2imgSource.height : form.height,
+      steps,
+      smea: form.smea,
+      smeaDyn: form.smeaDyn,
+      nSamples: 1,
+      isOpus: subscription.tier === 3,
+    });
   }
 
   // ── Derived button state ───────────────────────────────────────────────
@@ -1005,14 +1072,53 @@ export function PromptForm() {
             Unknown wildcard{wildcards.unknown.length > 1 ? 's' : ''}: {wildcards.unknown.join(', ')}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={isLoading || !hasValidPrompt}
-          className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {buttonLabel()}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={isLoading || !hasValidPrompt}
+            className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {buttonLabel()}
+          </button>
+          {sweepRunning ? (
+            <button
+              type="button"
+              onClick={() => {
+                sweepStopRef.current = true;
+                setSweepStopping(true);
+              }}
+              disabled={sweepStopping}
+              title="Stop the sweep after the image in progress"
+              className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-red-700 disabled:opacity-60"
+            >
+              {sweepStopping ? 'Stopping…' : 'Stop'}
+            </button>
+          ) : (
+            form.promptMode === 'single' && (
+              <button
+                type="button"
+                onClick={() => setShowSweep(true)}
+                disabled={isLoading || !hasValidPrompt}
+                title="X/Y sweep: compare settings or wildcard options side by side"
+                className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Sweep
+              </button>
+            )
+          )}
+        </div>
       </div>
+
+      {showSweep && (
+        <SweepModal
+          defaults={{ scale: form.scale, steps: form.steps, sampler: form.sampler, seed: form.seed }}
+          randomEntries={wildcards.randomEntries}
+          unknownRefs={wildcards.unknown}
+          costFor={sweepCostFor}
+          onRun={runSweep}
+          onClose={() => setShowSweep(false)}
+        />
+      )}
 
       {unknownRefs && (
         <div
