@@ -22,7 +22,7 @@ import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
-import { MODELS } from '@/lib/models';
+import { MODELS, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
@@ -740,7 +740,7 @@ export function PromptForm() {
             Generation Settings
             {!showGenSettings && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                {form.model.includes('5') ? 'V5' : form.model.includes('4-5') ? 'V4.5' : form.model.includes('4') ? 'V4' : 'V3'}
+                {modelShortName(form.model)}
                 {' · '}
                 {img2imgSource ? img2imgSource.width : form.width}×{img2imgSource ? img2imgSource.height : form.height}
                 {' · '}{form.steps} steps

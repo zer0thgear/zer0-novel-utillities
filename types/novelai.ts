@@ -54,6 +54,7 @@ export type NovelAIModel =
   | 'nai-diffusion-5-curated'
   | 'nai-diffusion-4-5-full'
   | 'nai-diffusion-4-5-full-inpainting'
+  | 'nai-diffusion-4-5-curated'
   // No V5 Curated inpainting model exists server-side; NovelAI's client
   // inpaints V5 Curated with this one (see toInpaintingModel).
   | 'nai-diffusion-4-5-curated-inpainting'
