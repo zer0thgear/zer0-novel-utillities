@@ -2,6 +2,8 @@
 
 A custom Next.js frontend for [NovelAI](https://novelai.net)'s image generation API. Generates images via NAI's API using your own account key, with support for V3 through V5 models, per-character V4/V5 prompts with freeform positioning, prompt tidbits, batch/queued generation, Director Tools, drag-and-drop metadata import, and tag autocomplete.
 
+See [`docs/FEATURES.md`](docs/FEATURES.md) for a tour of everything it does.
+
 This is an unofficial, third-party client. See [`docs/REVERSE_ENGINEERING.md`](docs/REVERSE_ENGINEERING.md) for how its API behavior was figured out, and for reference if you're building something similar.
 
 ## Prerequisites
@@ -106,6 +108,7 @@ public/tokenizers/              # Apache-2.0 tokenizer data (see its README)
 scripts/
   build-tokenizers.mjs          # Regenerates public/tokenizers/ from Hugging Face files
 docs/
+  FEATURES.md                   # What the app does, feature by feature
   REVERSE_ENGINEERING.md        # How this app's API behavior was reverse-engineered
 ```
 
