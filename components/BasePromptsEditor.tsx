@@ -6,6 +6,8 @@ import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 import { TidbitList } from '@/components/TidbitList';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { moveItem } from '@/lib/promptText';
+import { TokenMeter } from '@/components/TokenMeter';
+import type { TokenCounts } from '@/hooks/useTokenCounts';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -20,6 +22,7 @@ interface BasePromptsEditorProps {
   model: NovelAIModel;
   onChange: (basePrompts: BasePrompt[]) => void;
   onModeChange: (mode: PromptMode) => void;
+  tokens?: TokenCounts | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -30,6 +33,7 @@ export function BasePromptsEditor({
   model,
   onChange,
   onModeChange,
+  tokens,
 }: BasePromptsEditorProps) {
   const apiKey = useSessionStore((s) => s.apiKey);
 
@@ -203,6 +207,15 @@ export function BasePromptsEditor({
             apiKey={apiKey}
             placeholder="artist:name, ..."
           />
+
+          {tokens?.base[prompt.id] !== undefined && (
+            <TokenMeter
+              own={tokens.base[prompt.id]}
+              others={tokens.characterPromptTotal}
+              othersLabel="Characters"
+              budget={tokens.budget}
+            />
+          )}
         </div>
       ))}
 

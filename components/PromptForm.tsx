@@ -28,6 +28,8 @@ import { buildImageRequest, composeFinalPrompts, formSampling, promptSource, ran
 import { blobToBase64 } from '@/lib/imageUtils';
 import { calculateAnlasCost } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useTokenCounts } from '@/hooks/useTokenCounts';
+import { TokenMeter } from './TokenMeter';
 import {
   getAvailableQualityLevels,
   getAvailableUcLevels,
@@ -98,6 +100,7 @@ export function PromptForm() {
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
   const { subscription } = useSubscription();
+  const tokens = useTokenCounts(form);
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
@@ -562,6 +565,7 @@ export function PromptForm() {
             model={form.model}
             onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
             onModeChange={(promptMode) => form.set('promptMode', promptMode)}
+            tokens={tokens}
           />
         ) : (
           <>
@@ -570,6 +574,7 @@ export function PromptForm() {
               onChange={(characters) => form.set('characters', characters)}
               maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
               model={form.model}
+              tokens={tokens}
             />
             {form.characters.length > 0 && (
               <>
@@ -701,6 +706,16 @@ export function PromptForm() {
                 apiKey={apiKey}
                 className={`${inputCls} resize-y`}
               />
+              {tokens && (
+                <div className="mt-2">
+                  <TokenMeter
+                    own={tokens.negative}
+                    others={tokens.characterUcTotal}
+                    othersLabel="Character negatives"
+                    budget={tokens.budget}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

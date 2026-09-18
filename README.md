@@ -62,6 +62,7 @@ components/
   TransferModal.tsx / TransferSection.tsx  # Selective import/export to a JSON file
   ImportModal.tsx             # Image import/reuse window (drop, paste, Reuse)
   WeightBar.tsx               # Emphasis weight slider (Ctrl+↑/↓)
+  TokenMeter.tsx              # Per-field token usage bar (shared budget)
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
@@ -71,6 +72,7 @@ hooks/
   usePixelSnap.ts               # Client-side only — see docs/REVERSE_ENGINEERING.md
   useSubscription.ts            # Account/Anlas/Opus usage
   useTagSuggestions.ts          # Live tag autocomplete
+  useTokenCounts.ts             # Live prompt token counts for the editor
 store/
   settingsStore.ts              # Persisted generation settings (Zustand + localStorage)
   sessionStore.ts               # In-memory session state (images, loading, API key)
@@ -89,10 +91,15 @@ lib/
   transfer.ts                   # Import/export file format, validation, re-linking
   emphasis.ts                   # {}/[]/w::text:: emphasis parsing and stepping
   imageRequest.ts               # Builds every /ai/generate-image request
+  tokenCount.ts                 # Per-model tokenizer + limit, NovelAI's counting rules
+  tokenizers/                   # T5 Unigram and Qwen 3.5 BPE token counters
   pixelSnap.ts                  # Client-side pixel-art filter
   imageUtils.ts / imageDb.ts
 types/
   novelai.ts                    # API request/response types
+public/tokenizers/              # Apache-2.0 tokenizer data (see its README)
+scripts/
+  build-tokenizers.mjs          # Regenerates public/tokenizers/ from Hugging Face files
 docs/
   REVERSE_ENGINEERING.md        # How this app's API behavior was reverse-engineered
 ```

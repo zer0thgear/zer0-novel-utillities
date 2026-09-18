@@ -7,6 +7,8 @@ import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 import { TidbitList } from '@/components/TidbitList';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { moveItem } from '@/lib/promptText';
+import { TokenMeter } from '@/components/TokenMeter';
+import type { TokenCounts } from '@/hooks/useTokenCounts';
 
 interface Props {
   characters: CharacterPromptEntry[];
@@ -14,11 +16,12 @@ interface Props {
   /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
   maxEnabled?: number;
   model: NovelAIModel;
+  tokens?: TokenCounts | null;
 }
 
 type ActiveTab = 'prompt' | 'uc';
 
-export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model, tokens }: Props) {
   const apiKey = useSessionStore((s) => s.apiKey);
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
 
@@ -210,6 +213,10 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                   />
                 )}
 
+                {tokens?.characters[char.id] && (
+                  <CharacterTokenMeter tokens={tokens} id={char.id} tab={tab} />
+                )}
+
                 {/* Position inputs */}
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-slate-600">Position</span>
@@ -247,5 +254,24 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
         </p>
       )}
     </div>
+  );
+}
+
+function CharacterTokenMeter({ tokens, id, tab }: { tokens: TokenCounts; id: string; tab: ActiveTab }) {
+  const own = tokens.characters[id][tab];
+  return tab === 'prompt' ? (
+    <TokenMeter
+      own={own}
+      others={tokens.selectedBase + tokens.characterPromptTotal - own}
+      othersLabel="Base prompt and other characters"
+      budget={tokens.budget}
+    />
+  ) : (
+    <TokenMeter
+      own={own}
+      others={tokens.negative + tokens.characterUcTotal - own}
+      othersLabel="Negative prompt and other characters"
+      budget={tokens.budget}
+    />
   );
 }

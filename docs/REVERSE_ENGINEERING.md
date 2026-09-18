@@ -54,6 +54,14 @@ NovelAI's current web client exposes these as hidden, multi-level, per-model pre
 
 The literal tag text for every level and every model is fully documented, unadvertised, on **docs.novelai.net**: `/en/image/qualitytags/` and `/en/image/undesiredcontent/`. Reproducing these presets client-side (append/prepend the documented literal text) is not a hack — it's how these presets worked natively before NovelAI moved the expansion server-side, and produces the same generation as NovelAI's own preset since it's the same text NovelAI itself injects.
 
+**Caveat found later (2026-09-18): the docs and NovelAI's client disagree in places.** The client's JS bundle carries its own preset tables, and its request builder (`prompt = qualityPreset(prompt)`, then `uc = ucPreset(model, ucPresetId, prompt, uc)`) uses those, not the docs. Differences from the docs text this app uses:
+- V4.5 Full "Standard" quality is `very aesthetic, masterpiece, no text`, without the docs' leading `location`.
+- V4 Curated "Standard" quality is `rating:general, best quality, very aesthetic, absurdres`; the docs say `amazing quality`.
+- For **Full** models (V4 Full, V4.5 Full, V5 Full; the client's list of exempt models is every Curated one plus `custom`), whenever a UC preset other than None is selected, the client prepends `nsfw, ` to the UC unless the final positive prompt contains "nsfw".
+- The client does **not** drop UC preset tags that also appear in the positive prompt. This app does, deliberately.
+
+The UC preset tag lists themselves match the docs exactly, and so do the V5, V4 Full and V3 quality texts. NovelAI's own token counter (below) reflects the client's composition, which is how these differences showed up.
+
 ### Anlas pricing
 
 Not published anywhere by NovelAI. The formula (for all "modern" models — V3 through V5):
@@ -72,6 +80,26 @@ As of 2026-09-17, `A = 4.9e-6`, `B = 8.55e-7` fit 4 real (resolution, steps) →
 `GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores. `model` genuinely changes the result set/order, not just a vocabulary filter on one shared list — double-check you're passing the exact model string the live UI is set to before comparing, a mismatch (e.g. `nai-diffusion-4-5-curated` vs `nai-diffusion-5-curated`) silently gives a different-looking but plausible result.
 
 NovelAI's own client renders each suggestion as a chip with a small relevance dot. That dot's brightness tracks `count`, not `confidence` — confirmed by reading the dot's actual computed CSS color for a live response and comparing against that response's JSON (two tags with the same `confidence` but very different `count` had very different dot brightness). It also debounces roughly 500ms after the last keystroke before firing the request (timed by patching `window.fetch` on novelai.net itself and diffing the request timestamp against the triggering keystroke's `input` event, twice, for consistency).
+
+### Prompt token counting
+
+NovelAI counts prompt tokens entirely client-side, in a Web Worker that loads `https://novelai.net/tokenizer/compressed/<name>.def?v=2&static=true`. That file is proprietary compressed JSON, and it's served without CORS headers, so other origins can't use it. Which tokenizer and limit apply depends on the model:
+
+| Models | Tokenizer | Limit |
+| --- | --- | --- |
+| V5 Full | Qwen 3.5, byte-level BPE (`qwen35_tokenizer.def`: 248,070 tokens, 247,587 merges, NFC) | 1471 |
+| V5 Curated | same | 703 |
+| V4 / V4.5 (all variants) | T5, SentencePiece Unigram (`t5_tokenizer.def`: the standard 32,100-piece T5 vocab) | 512 |
+| V3 | CLIP BPE | 225 per prompt |
+
+Details that matter for matching its numbers exactly:
+- **One shared budget, not one per field.** For V4 and later, the base prompt and every enabled character's prompt draw on the same limit. The negative prompt and every character's negative share a second one. Disabled characters count 0.
+- **Counted text is the composed text**: quality tags are appended to the base prompt and the UC preset is prepended to the negative (see the caveat above). Character fields are counted as typed.
+- **Preprocessing**: inside `||a|b||` random groups only the longest option counts. The text is then split on single `|` (the old prompt-mix separator, at most 6 parts) and each part is counted separately. NovelAI's own `text:` macros are expanded first; this app has none.
+- **T5 specifics**: `[`, `]`, `{`, `}` and every `-?\d*\.?\d*::` are stripped first. There is no normalizer, although the HF config lists a Precompiled one. The text is split on `/\s+/` without dropping empty strings, so a leading or trailing space costs a `▁` token. Every word gets a `▁` prefix. The Viterbi lattice walks UTF-16 code units. Every part includes EOS (`</s>`), so an empty field counts 1.
+- **Qwen specifics**: nothing is stripped (braces and `1.5::` weights count), and there's no EOS. The pre-tokenizer regex is Qwen's, with `\s` written out as Unicode White_Space. Literal special tokens such as `<|endoftext|>` count as 1.
+
+This app bundles the open Apache-2.0 equivalents: the T5 vocab from `google-t5/t5-base` and Qwen 3.5's `merges.txt`, in `public/tokenizers/`. It reimplements the counting in `lib/tokenizers/`. Verified on 2026-09-18 by running NovelAI's own tokenizer worker in a logged-in novelai.net tab against a seeded 1,520-prompt corpus: tags, weights, unicode, emoji, whitespace edge cases, special tokens. **0 mismatches** for T5 or Qwen. The harness caught deliberate single-rule mutations (282 to 796 mismatches). Full-pipeline counts (quality tags, UC preset, a character) were also checked against the numbers NovelAI's UI displays.
 
 ### Editing endpoints (Director Tools, Upscale, Variations)
 
