@@ -33,9 +33,10 @@ export function resolveSelectedPrompt(form: FormSettings, replay?: WildcardPicks
   return resolveRequestPrompts(selected ?? { text: '' }, form.characters, form.negativePrompt, form.tidbitLibrary, replay);
 }
 
-/** Applies the prompt modifiers to resolved text: fur/nsfw prefixes, the
- *  quality preset, transparent background, an optional flow-specific suffix,
- *  and the UC preset (minus tags the positive prompts already ask for). */
+/** Applies the prompt modifiers to resolved text as NovelAI's client does:
+ *  fur/nsfw prefixes, then transparent background and the quality preset
+ *  (see composeWithQuality for where they go), an optional flow-specific
+ *  suffix, and the UC preset (whose `nsfw` rule reads the final prompt). */
 export function composeFinalPrompts(
   form: PromptModifiers,
   resolved: ResolvedRequestPrompts,
@@ -45,14 +46,15 @@ export function composeFinalPrompts(
   if (form.furMode) prefixes.push('fur dataset');
   if (form.nsfwMode) prefixes.push('nsfw');
 
-  let input = composeWithQuality(joinPromptParts(...prefixes, resolved.baseText), form.model, form.qualityPreset);
-  if (form.transparentBg) input = joinPromptParts(input, 'transparent background');
+  let input = composeWithQuality(
+    joinPromptParts(...prefixes, resolved.baseText),
+    form.model,
+    form.qualityPreset,
+    form.transparentBg,
+  );
   if (extraPositive) input = joinPromptParts(input, extraPositive);
 
-  const positiveSearchText = [resolved.baseText, ...resolved.characters.map((c) => c.prompt)]
-    .join(' ')
-    .toLowerCase();
-  const negativePrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, positiveSearchText);
+  const negativePrompt = composeNegativeWithUc(resolved.negativePrompt, form.model, form.ucPreset, input);
   return { input, negativePrompt };
 }
 

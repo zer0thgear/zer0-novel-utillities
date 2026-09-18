@@ -60,7 +60,7 @@ export class QwenTokenizer {
   /** `merges` is Qwen's merges.txt: one "left right" pair per line, in rank order. */
   constructor(merges: string) {
     let rank = 0;
-    for (const line of merges.split('\n')) if (line) this.ranks.set(line, rank++);
+    for (const line of merges.split(/\r?\n/)) if (line) this.ranks.set(line, rank++);
   }
 
   count(text: string): number {

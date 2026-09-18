@@ -471,7 +471,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Transparent BG</span>
-                <p className="text-xs text-slate-600">Appends &quot;transparent background&quot; (V5 only)</p>
+                <p className="text-xs text-slate-600">Adds &quot;transparent background&quot; before the quality tags (V5 only)</p>
               </div>
               <input
                 type="checkbox"

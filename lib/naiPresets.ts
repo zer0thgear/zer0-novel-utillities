@@ -1,14 +1,11 @@
 import { NovelAIModel } from '@/types/novelai';
 import { joinPromptParts } from '@/lib/promptText';
 
-// Quality Tags / UC Preset literal text, per NovelAI's own official documentation
-// (docs.novelai.net/en/image/qualitytags, docs.novelai.net/en/image/undesiredcontent —
-// confirmed 2026-09-17 against novelai.net's own V5 UI, which now exposes both as
-// hidden server-side presets rather than visible prompt text; this app instead
-// injects the documented literal text directly, which is how these presets worked
-// natively before NovelAI moved the expansion server-side, and is the only way to
-// reproduce them without access to NovelAI's own preset IDs). See
-// memory/project_novelai_quality_uc_presets.md for the investigation this replaces.
+// Quality Tags / UC Preset literal text, per model, and how NovelAI splices it
+// into a request. The text and the rules both match NovelAI's own web client
+// (its bundled preset tables and request builder, read 2026-09-18), which
+// differs from docs.novelai.net in places; see docs/REVERSE_ENGINEERING.md,
+// "Quality Tags / UC Presets". Its token counter composes the same way.
 
 export type ModelFamily = 'v5' | 'v45full' | 'v4full' | 'v4curated' | 'v3anime' | 'v3furry';
 
@@ -31,13 +28,13 @@ const QUALITY_TEXT: Record<ModelFamily, Partial<Record<QualityLevel, string>>> =
     standard: ', very aesthetic, masterpiece, no text',
   },
   v45full: {
-    standard: ', location, very aesthetic, masterpiece, no text',
+    standard: ', very aesthetic, masterpiece, no text',
   },
   v4full: {
     standard: ', no text, best quality, very aesthetic, absurdres',
   },
   v4curated: {
-    standard: ', rating:general, amazing quality, very aesthetic, absurdres',
+    standard: ', rating:general, best quality, very aesthetic, absurdres',
   },
   v3anime: {
     standard: ', best quality, amazing quality, very aesthetic, absurdres',
@@ -82,18 +79,15 @@ const UC_TEXT: Record<ModelFamily, Partial<Record<UcLevel, string>>> = {
   },
   v4full: {
     heavy:
-      'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks',
-    light: 'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing',
+      'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, white blank page, blank page',
+    light: 'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, white blank page, blank page',
   },
   v4curated: {
     heavy:
-      'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts',
+      'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts, white blank page, blank page',
     light:
-      'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature',
+      'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature, white blank page, blank page',
   },
-  // NovelAI's docs present "V3" as a single UC preset set, not split by Anime/Furry —
-  // used for both nai-diffusion-3 and nai-diffusion-furry-3 here. Flag for follow-up
-  // if a Furry-3-specific list ever surfaces.
   v3anime: {
     heavy:
       'lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]',
@@ -103,10 +97,8 @@ const UC_TEXT: Record<ModelFamily, Partial<Record<UcLevel, string>>> = {
   },
   v3furry: {
     heavy:
-      'lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]',
-    light: 'lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing',
-    humanFocus:
-      'lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes',
+      '{{worst quality}}, [displeasing], {unusual pupils}, guide lines, {{unfinished}}, {bad}, url, artist name, {{tall image}}, mosaic, {sketch page}, comic panel, impact (font), [dated], {logo}, ych, {what}, {where is your god now}, {distorted text}, repeated text, {floating head}, {1994}, {widescreen}, absolutely everyone, sequence, {compression artifacts}, hard translated, {cropped}, {commissioner name}, unknown text, high contrast',
+    light: '{worst quality}, guide lines, unfinished, bad, url, tall image, widescreen, compression artifacts, unknown text',
   },
 };
 
@@ -138,31 +130,80 @@ export const UC_LEVEL_LABELS: Record<UcLevel, string> = {
 // Centralized since every request-building site (PromptForm, useEnhance,
 // useInpaint, useEdit) needs the same logic.
 
-/** Appends the model's quality preset text to a positive prompt, verbatim.
- *  The preset tables carry NovelAI's documented text including its leading
- *  ", " — joinPromptParts normalizes that away and re-adds the delimiter, so
- *  the tables stay verbatim-comparable against docs.novelai.net. */
-export function composeWithQuality(text: string, model: NovelAIModel, level: QualityLevel): string {
-  return joinPromptParts(text, getQualityText(model, level));
+/** V4 and later: base + character captions (and the `text:` feature). */
+const hasCharacterPrompts = (model: NovelAIModel) =>
+  !model.startsWith('nai-diffusion-3') && !model.startsWith('nai-diffusion-furry-3');
+/** Only V5 renders `transparent background`. */
+const supportsTransparency = (model: NovelAIModel) => model.startsWith('nai-diffusion-5');
+/** NovelAI never adds `nsfw` to these models' UC (see composeNegativeWithUc). */
+const isCuratedModel = (model: NovelAIModel) => model.includes('curated');
+
+// Where a text-rendering section starts ("…, text: Hello"), as NovelAI finds it.
+const TEXT_SECTION = /(?:^|\s|[,.:[\]{}、。])text:(?!:)/i;
+
+/** Index of the first prompt-mix `|` (outside `||a|b||` random groups), or
+ *  the end of the text. On V4+ NovelAI applies presets to the first part only. */
+function firstMixPart(text: string): number {
+  let offset = 0;
+  const segments = text.split('||');
+  for (let i = 0; i < segments.length; i++) {
+    const bar = i % 2 === 0 ? segments[i].indexOf('|') : -1;
+    if (bar >= 0) return offset + bar;
+    offset += segments[i].length + 2;
+  }
+  return text.length;
 }
 
 /**
- * Prepends the model's UC preset tags to a negative prompt, skipping any tag
- * that already appears in `positiveSearchText` (lowercased) to avoid injecting
- * a negative tag that contradicts something the user explicitly asked for.
+ * Adds the quality preset (and, on V5, "transparent background" ahead of it)
+ * where NovelAI puts them: after the prompt, but on V4+ before a `text:`
+ * section so the tags aren't rendered as text, and before any prompt-mix `|`.
+ * V3 prompt mixing gets them on every part, ahead of its `:weight`.
+ */
+export function composeWithQuality(
+  text: string,
+  model: NovelAIModel,
+  level: QualityLevel,
+  transparentBg = false,
+): string {
+  const suffix = joinPromptParts(
+    transparentBg && supportsTransparency(model) ? 'transparent background' : '',
+    getQualityText(model, level),
+  );
+  if (!suffix) return text;
+  if (!hasCharacterPrompts(model)) {
+    return text
+      .split('|')
+      .map((part) => {
+        const weight = part.match(/:[\d.]+$/)?.[0] ?? '';
+        return joinPromptParts(part.slice(0, part.length - weight.length), suffix) + weight;
+      })
+      .join('|');
+  }
+  const cut = firstMixPart(text);
+  const head = text.slice(0, cut);
+  const textSection = TEXT_SECTION.exec(head);
+  const composed = textSection
+    ? joinPromptParts(head.slice(0, textSection.index), suffix, head.slice(textSection.index))
+    : joinPromptParts(head, suffix);
+  return composed + text.slice(cut);
+}
+
+/**
+ * Prepends the model's UC preset tags to a negative prompt (its first
+ * prompt-mix part on V4+). As NovelAI does, a Full (non-Curated) model with
+ * any UC preset also gets `nsfw` in its UC unless the final positive prompt
+ * mentions "nsfw"; asking for nsfw in the prompt turns that off.
  */
 export function composeNegativeWithUc(
   negativePrompt: string,
   model: NovelAIModel,
   level: UcLevel,
-  positiveSearchText: string,
+  finalPositive: string,
 ): string {
   const presetText = getUcText(model, level);
   if (!presetText) return negativePrompt;
-  const tags = presetText
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t) => t && !positiveSearchText.includes(t.toLowerCase()));
-  if (tags.length === 0) return negativePrompt;
-  return joinPromptParts(tags.join(', '), negativePrompt);
+  const cut = hasCharacterPrompts(model) ? firstMixPart(negativePrompt) : negativePrompt.length;
+  const uc = joinPromptParts(presetText, negativePrompt.slice(0, cut)) + negativePrompt.slice(cut);
+  return !isCuratedModel(model) && !finalPositive.toLowerCase().includes('nsfw') ? joinPromptParts('nsfw', uc) : uc;
 }

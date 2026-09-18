@@ -54,13 +54,14 @@ NovelAI's current web client exposes these as hidden, multi-level, per-model pre
 
 The literal tag text for every level and every model is fully documented, unadvertised, on **docs.novelai.net**: `/en/image/qualitytags/` and `/en/image/undesiredcontent/`. Reproducing these presets client-side (append/prepend the documented literal text) is not a hack — it's how these presets worked natively before NovelAI moved the expansion server-side, and produces the same generation as NovelAI's own preset since it's the same text NovelAI itself injects.
 
-**Caveat found later (2026-09-18): the docs and NovelAI's client disagree in places.** The client's JS bundle carries its own preset tables, and its request builder (`prompt = qualityPreset(prompt)`, then `uc = ucPreset(model, ucPresetId, prompt, uc)`) uses those, not the docs. Differences from the docs text this app uses:
-- V4.5 Full "Standard" quality is `very aesthetic, masterpiece, no text`, without the docs' leading `location`.
-- V4 Curated "Standard" quality is `rating:general, best quality, very aesthetic, absurdres`; the docs say `amazing quality`.
-- For **Full** models (V4 Full, V4.5 Full, V5 Full; the client's list of exempt models is every Curated one plus `custom`), whenever a UC preset other than None is selected, the client prepends `nsfw, ` to the UC unless the final positive prompt contains "nsfw".
-- The client does **not** drop UC preset tags that also appear in the positive prompt. This app does, deliberately.
+**Update (2026-09-18): NovelAI's client is the source of truth, not the docs. This app now follows the client.** The client's JS bundle has its own preset tables, and its request builder uses them: quality first, then `uc = ucPreset(model, ucPresetId, finalPrompt, uc)`. Where the client differs from the docs:
+- Quality: V4.5 Full "Standard" has no leading `location`, and V4 Curated uses `best quality`, not `amazing quality`.
+- UC lists: V4 Full and V4 Curated Heavy and Light end with `white blank page, blank page`. V3 Furry has its own Heavy and Light lists, not V3 Anime's, and no Human Focus.
+- **`nsfw` in the UC**: on every non-Curated model (V3, V4 Full, V4.5 Full, V5 Full), whenever a UC preset other than None is selected, `nsfw, ` goes in front of the UC unless the final positive prompt contains "nsfw" (case-insensitive substring).
+- **Placement**: on V4+, quality tags (and on V5, `transparent background` just before them) go before the first `text:` section (`/(?:^|\s|[,.:[\]{}、。])text:(?!:)/i`), so they aren't rendered as text, and only onto the first prompt-mix `|` part. The UC preset also goes on the first `|` part only. V3 appends quality to every `|` part, ahead of a trailing `:weight`.
+- There is no removal of UC preset tags that also appear in the positive prompt. An earlier version of this app did that; it's gone.
 
-The UC preset tag lists themselves match the docs exactly, and so do the V5, V4 Full and V3 quality texts. NovelAI's own token counter (below) reflects the client's composition, which is how these differences showed up.
+The V5 and V4.5 Full UC lists and the V5, V4 Full and V3 quality texts already matched the docs. The app's one deliberate deviation is comma normalization at the joins (`joinPromptParts`), so no `,,` appears where NovelAI would produce one. After aligning, the app's token counts equal NovelAI's on V4.5 Full and V5 Curated with quality, UC preset and a character.
 
 ### Anlas pricing
 
@@ -94,7 +95,7 @@ NovelAI counts prompt tokens entirely client-side, in a Web Worker that loads `h
 
 Details that matter for matching its numbers exactly:
 - **One shared budget, not one per field.** For V4 and later, the base prompt and every enabled character's prompt draw on the same limit. The negative prompt and every character's negative share a second one. Disabled characters count 0.
-- **Counted text is the composed text**: quality tags are appended to the base prompt and the UC preset is prepended to the negative (see the caveat above). Character fields are counted as typed.
+- **Counted text is the composed text**: the quality preset is added to the base prompt and the UC preset to the negative, exactly as in the request (see the update above). Character fields are counted as typed.
 - **Preprocessing**: inside `||a|b||` random groups only the longest option counts. The text is then split on single `|` (the old prompt-mix separator, at most 6 parts) and each part is counted separately. NovelAI's own `text:` macros are expanded first; this app has none.
 - **T5 specifics**: `[`, `]`, `{`, `}` and every `-?\d*\.?\d*::` are stripped first. There is no normalizer, although the HF config lists a Precompiled one. The text is split on `/\s+/` without dropping empty strings, so a leading or trailing space costs a `▁` token. Every word gets a `▁` prefix. The Viterbi lattice walks UTF-16 code units. Every part includes EOS (`</s>`), so an empty field counts 1.
 - **Qwen specifics**: nothing is stripped (braces and `1.5::` weights count), and there's no EOS. The pre-tokenizer regex is Qwen's, with `\s` written out as Unicode White_Space. Literal special tokens such as `<|endoftext|>` count as 1.
