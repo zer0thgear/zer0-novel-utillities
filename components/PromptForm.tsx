@@ -17,6 +17,7 @@ import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
+import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
@@ -690,10 +691,13 @@ export function PromptForm() {
 
           {showNegativePrompt && (
             <div className="border-t border-slate-700/40 p-3">
-              <textarea
-                value={form.negativePrompt}
-                onChange={(e) => form.set('negativePrompt', e.target.value)}
+              <TagAutocompleteField
+                as="textarea"
                 rows={3}
+                value={form.negativePrompt}
+                onChange={(text) => form.set('negativePrompt', text)}
+                model={form.model}
+                apiKey={apiKey}
                 className={`${inputCls} resize-y`}
               />
             </div>

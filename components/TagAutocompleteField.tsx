@@ -1,12 +1,14 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NovelAIModel } from '@/types/novelai';
 import { TagSuggestion, useTagSuggestions } from '@/hooks/useTagSuggestions';
 import { currentSegment, applySegment, relevanceBrightness } from '@/lib/tagAutocomplete';
 import { isRandomEntry, randomOptions } from '@/lib/wildcards';
 import { useSettingsStore } from '@/store/settingsStore';
+import { findWeightTarget, parseWeighted, Span, stepWeight, withWeight } from '@/lib/emphasis';
+import { WeightBar } from '@/components/WeightBar';
 
 /** A tag from NovelAI, or (with `hint`) a Tidbit Library reference. */
 type Suggestion = TagSuggestion & { hint?: string };
@@ -150,7 +152,49 @@ export function TagAutocompleteField({
     }, 0);
   }
 
+  // ── Emphasis (Ctrl+↑/↓ and the weight bar) ─────────────────────────────
+  const [weightSpan, setWeightSpan] = useState<Span | null>(null);
+  const [barFocused, setBarFocused] = useState(false);
+  const getField = useCallback(() => fieldRef.current, []);
+
+  function trackWeightSpan(el: HTMLTextAreaElement | HTMLInputElement) {
+    setWeightSpan(findWeightTarget(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0));
+  }
+
+  /** Swaps a span's text, leaving the new group selected so repeated steps
+   *  keep acting on it. */
+  function replaceSpan(span: Span, next: string) {
+    const el = fieldRef.current;
+    const newSpan = { start: span.start, end: span.start + next.length };
+    setWeightSpan(newSpan);
+    // Editing through the browser keeps Ctrl+Z working. That needs the field
+    // focused, which it isn't while the slider or number box is in use.
+    if (el && document.activeElement === el) {
+      el.setSelectionRange(span.start, span.end);
+      if (document.execCommand('insertText', false, next)) {
+        el.setSelectionRange(newSpan.start, newSpan.end);
+        return;
+      }
+      setTimeout(() => el.setSelectionRange(newSpan.start, newSpan.end), 0);
+    }
+    onChange(value.slice(0, span.start) + next + value.slice(span.end));
+  }
+
+  const spanText = weightSpan && weightSpan.end <= value.length ? value.slice(weightSpan.start, weightSpan.end) : null;
+  const parsedWeight = spanText ? parseWeighted(spanText) : null;
+  // Shown while the caret is in a weighted group (so one Ctrl+↑ reveals it),
+  // and kept while you're using it, even if that takes the weight back to 1.
+  const showWeightBar = !!parsedWeight && ((cursor !== null && parsedWeight.kind !== 'plain') || barFocused);
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
+    // Before the dropdown's own arrow handling: Ctrl+arrows always mean emphasis.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const span = findWeightTarget(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0);
+      if (span) replaceSpan(span, stepWeight(el.value.slice(span.start, span.end), e.key === 'ArrowUp' ? 1 : -1));
+      return;
+    }
     if (dropdownOpen && e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlightIndex((i) => (i + 1) % suggestions.length);
@@ -184,9 +228,11 @@ export function TagAutocompleteField({
       setCursor(e.target.selectionStart);
       setHighlightIndex(0);
       setDismissed(false);
+      trackWeightSpan(e.target);
     },
     onSelect: (e: React.SyntheticEvent<HTMLTextAreaElement | HTMLInputElement>) => {
       setCursor(e.currentTarget.selectionStart);
+      trackWeightSpan(e.currentTarget);
     },
     onBlur: () => setTimeout(() => setCursor(null), 150),
     onKeyDown: handleKeyDown,
@@ -200,6 +246,15 @@ export function TagAutocompleteField({
         <textarea ref={fieldRef as React.Ref<HTMLTextAreaElement>} rows={rows} {...sharedProps} />
       ) : (
         <input ref={fieldRef as React.Ref<HTMLInputElement>} type="text" {...sharedProps} />
+      )}
+      {showWeightBar && weightSpan && parsedWeight && (
+        <WeightBar
+          getAnchor={getField}
+          parsed={parsedWeight}
+          onStep={(dir) => replaceSpan(weightSpan, stepWeight(value.slice(weightSpan.start, weightSpan.end), dir))}
+          onSetWeight={(w) => replaceSpan(weightSpan, withWeight(parsedWeight.inner, w))}
+          onFocusChange={setBarFocused}
+        />
       )}
       {dropdownOpen &&
         placement &&
