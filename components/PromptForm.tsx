@@ -509,7 +509,7 @@ export function PromptForm() {
       <div ref={tabAnchorRef} className="-mb-4" />
       {/* -top-5 cancels the scroll container's p-5, which sticky otherwise
           honors, leaving a gap under the header for content to peek through. */}
-      <div className="sticky -top-5 z-20 -mx-5 border-b border-slate-800/80 bg-slate-900/95 px-5 py-2 backdrop-blur-sm">
+      <div className="sticky -top-5 z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2">
         <div className="flex overflow-hidden rounded-md border border-slate-700 text-xs">
           <button
             type="button"

@@ -37,10 +37,10 @@ export default function Home() {
 
       {/* ── Left panel: generation form ── */}
       <aside
-        className="flex flex-shrink-0 flex-col bg-slate-900/40"
+        className="flex flex-shrink-0 flex-col bg-sidebar"
         style={{ width: panelWidth }}
       >
-        <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 bg-slate-900/80 px-5 py-4 backdrop-blur-sm">
+        <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 px-5 py-4">
           <h1 className="text-base font-bold tracking-tight">
             <span className="text-violet-400">NAI</span> Image Generator
           </h1>
