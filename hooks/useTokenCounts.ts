@@ -12,8 +12,8 @@ export interface TokenCounts {
   base: Record<string, number>;
   /** Enabled characters only. */
   characters: Record<string, { prompt: number; uc: number }>;
-  /** The negative prompt as sent with the selected base prompt (the UC
-   *  preset skips tags that prompt asks for, so it can vary by prompt). */
+  /** The negative prompt as sent with the selected base prompt (whether the
+   *  UC preset adds `nsfw` depends on that prompt, so it can vary by prompt). */
   negative: number;
   /** The largest selected base prompt, what the characters share the
    *  budget with (in Batch mode each selected prompt is its own request). */
@@ -42,7 +42,7 @@ function computeCounts(form: Inputs, budget: TokenBudget, counter: TokenCounter)
   const memo = new Map<string, number>();
   const count = (text: string) => {
     let n = memo.get(text);
-    if (n === undefined) memo.set(text, (n = countPromptTokens(counter, text)));
+    if (n === undefined) memo.set(text, (n = countPromptTokens(counter, text, budget)));
     return n;
   };
   // Random wildcards count as their longest option: the budget has to hold
@@ -64,9 +64,10 @@ function computeCounts(form: Inputs, budget: TokenBudget, counter: TokenCounter)
     if (prompt.selected) selectedBase = Math.max(selectedBase, base[prompt.id]);
     if (prompt === (selected[0] ?? form.basePrompts[0])) {
       negative = count(final.negativePrompt);
-      characters = Object.fromEntries(
-        resolved.characters.map((c) => [c.id, { prompt: count(c.prompt), uc: count(c.uc) }]),
-      );
+      // V3 has no character prompts; nothing shares its limits.
+      characters = budget.perPart
+        ? {}
+        : Object.fromEntries(resolved.characters.map((c) => [c.id, { prompt: count(c.prompt), uc: count(c.uc) }]));
     }
   }
   const charValues = Object.values(characters);
@@ -82,7 +83,7 @@ function computeCounts(form: Inputs, budget: TokenBudget, counter: TokenCounter)
 }
 
 /** Live token counts for the prompt editor, or null while the tokenizer
- *  loads, if it failed to, or for a model this doesn't count (V3). */
+ *  loads or if it failed to. */
 export function useTokenCounts(form: Inputs): TokenCounts | null {
   const budget = tokenBudget(form.model);
   const kind = budget?.kind;

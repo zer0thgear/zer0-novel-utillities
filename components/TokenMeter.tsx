@@ -22,9 +22,9 @@ export function TokenMeter({ own, others, budget, othersLabel }: Props) {
   const tone = over ? 'bg-red-500' : near ? 'bg-amber-400' : 'bg-violet-400';
   const tokens = (n: number) => `${n} token${n === 1 ? '' : 's'}`;
   const tooltip = [
-    `This field: ${tokens(own)}`,
+    budget.perPart ? `This field: ${tokens(own)} (its largest | part)` : `This field: ${tokens(own)}`,
     others ? `${othersLabel}: ${tokens(others)}` : null,
-    `Limit: ${budget.limit}${over ? ` (over by ${total - budget.limit}; the rest gets cut off)` : ''}`,
+    `Limit: ${budget.limit}${budget.perPart ? ' per | part' : ''}${over ? ` (over by ${total - budget.limit}; the rest gets cut off)` : ''}`,
     'Counts include quality tags and the UC preset; random wildcards count their longest option.',
   ]
     .filter(Boolean)

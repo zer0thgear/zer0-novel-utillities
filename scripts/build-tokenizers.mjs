@@ -3,9 +3,10 @@
 //   1. Download into one folder:
 //        https://huggingface.co/google-t5/t5-base/resolve/main/tokenizer.json  → t5_tokenizer.json
 //        https://huggingface.co/Qwen/Qwen3.5-0.8B/resolve/main/merges.txt     → qwen_merges.txt
+//        https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/merges.txt → clip_merges.txt
 //   2. node scripts/build-tokenizers.mjs <that folder>
 //
-// Both are Apache-2.0 (see public/tokenizers/README.md).
+// T5 and Qwen are Apache-2.0, CLIP is MIT (see public/tokenizers/README.md).
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,5 +35,10 @@ writeFileSync(
 const merges = readFileSync(join(src, 'qwen_merges.txt'), 'utf8').replace(/\r\n/g, '\n');
 if (merges.startsWith('#')) throw new Error('unexpected header line in merges.txt');
 writeFileSync(join(out, 'qwen3.5-merges.txt'), merges);
+
+// CLIP: the "#version" header plus the 48,894 merges CLIP (and NovelAI) use.
+const clip = readFileSync(join(src, 'clip_merges.txt'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+if (!clip[0].startsWith('#version')) throw new Error('expected a "#version" header in the CLIP merges');
+writeFileSync(join(out, 'clip-merges.txt'), clip.slice(0, 1 + 48894).join('\n') + '\n');
 
 console.log('wrote', out);
