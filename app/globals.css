@@ -3,11 +3,16 @@
 :root {
   --background: #020617; /* slate-950 */
   --foreground: #f1f5f9; /* slate-100 */
+  /* slate-900 at 40% over slate-950, made opaque so the sidebar header and
+     the pinned tab bar can match the sidebar body exactly while still hiding
+     content that scrolls underneath them. */
+  --sidebar: #070d1f;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

@@ -1,19 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { CharacterPromptEntry, PromptTidbit } from '@/types/novelai';
-import { createTidbit } from '@/lib/promptTidbits';
+import { CharacterPromptEntry, NovelAIModel } from '@/types/novelai';
+import { useSessionStore } from '@/store/sessionStore';
+import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { TidbitList } from '@/components/TidbitList';
+import { ReorderArrows } from '@/components/ReorderArrows';
+import { moveItem } from '@/lib/promptText';
+import { TokenMeter } from '@/components/TokenMeter';
+import type { TokenCounts } from '@/hooks/useTokenCounts';
 
 interface Props {
   characters: CharacterPromptEntry[];
   onChange: (characters: CharacterPromptEntry[]) => void;
   /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
   maxEnabled?: number;
+  model: NovelAIModel;
+  tokens?: TokenCounts | null;
 }
 
 type ActiveTab = 'prompt' | 'uc';
 
-export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model, tokens }: Props) {
+  const apiKey = useSessionStore((s) => s.apiKey);
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
 
   const enabledCount = characters.filter((c) => c.enabled).length;
@@ -43,26 +52,8 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
   const update = (id: string, patch: Partial<CharacterPromptEntry>) =>
     onChange(characters.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
-  const addTidbit = (charId: string) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    const tidbits = char.tidbits ?? [];
-    update(charId, { tidbits: [...tidbits, createTidbit(`Tidbit ${tidbits.length + 1}`)] });
-  };
-
-  const updateTidbit = (charId: string, tidbitId: string, changes: Partial<PromptTidbit>) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    update(charId, {
-      tidbits: (char.tidbits ?? []).map((t) => (t.id === tidbitId ? { ...t, ...changes } : t)),
-    });
-  };
-
-  const removeTidbit = (charId: string, tidbitId: string) => {
-    const char = characters.find((c) => c.id === charId);
-    if (!char) return;
-    update(charId, { tidbits: (char.tidbits ?? []).filter((t) => t.id !== tidbitId) });
-  };
+  const moveCharacter = (index: number, direction: 'up' | 'down') =>
+    onChange(moveItem(characters, index, direction));
 
   const getTab = (id: string): ActiveTab => activeTabs[id] ?? 'prompt';
 
@@ -152,6 +143,13 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
                   />
                 </label>
 
+                <ReorderArrows
+                  index={index}
+                  count={characters.length}
+                  onMove={(direction) => moveCharacter(index, direction)}
+                  label="character"
+                />
+
                 {/* Remove button */}
                 <button
                   type="button"
@@ -186,63 +184,37 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
 
               {/* Tab content */}
               <div className="flex flex-col gap-2.5 p-3">
-                <textarea
+                <TagAutocompleteField
+                  as="textarea"
+                  rows={3}
                   value={tab === 'prompt' ? char.prompt : char.uc}
-                  onChange={(e) =>
-                    update(char.id, { [tab === 'prompt' ? 'prompt' : 'uc']: e.target.value })
+                  onChange={(text) =>
+                    update(char.id, { [tab === 'prompt' ? 'prompt' : 'uc']: text })
                   }
+                  model={model}
+                  apiKey={apiKey}
                   placeholder={
                     tab === 'prompt'
                       ? 'girl, solo, anthro, …'
                       : 'negative tags for this character…'
                   }
-                  rows={3}
                   className="w-full resize-none rounded-lg bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
                 />
 
                 {/* Tidbits — toggleable sub-prompts appended to the prompt above when enabled */}
                 {tab === 'prompt' && (
-                  <div className="flex flex-col gap-1.5">
-                    {(char.tidbits ?? []).map((tidbit) => (
-                      <div key={tidbit.id} className="flex items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          checked={tidbit.enabled}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { enabled: e.target.checked })}
-                          className="h-3.5 w-3.5 flex-shrink-0 accent-violet-500"
-                        />
-                        <input
-                          type="text"
-                          value={tidbit.label}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { label: e.target.value })}
-                          placeholder="Label"
-                          className="w-16 flex-shrink-0 rounded bg-slate-700/60 px-1.5 py-1 text-xs text-slate-300 outline-none border border-transparent focus:border-violet-500/60 transition-colors"
-                        />
-                        <input
-                          type="text"
-                          value={tidbit.text}
-                          onChange={(e) => updateTidbit(char.id, tidbit.id, { text: e.target.value })}
-                          placeholder="red dress, ..."
-                          className="min-w-0 flex-1 rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeTidbit(char.id, tidbit.id)}
-                          title="Remove tidbit"
-                          className="flex-shrink-0 text-xs text-slate-600 hover:text-red-400 transition-colors"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => addTidbit(char.id)}
-                      className="flex items-center gap-1 self-start text-xs text-slate-600 hover:text-violet-400 transition-colors"
-                    >
-                      <span>+</span> Add Tidbit
-                    </button>
-                  </div>
+                  <TidbitList
+                    tidbits={char.tidbits ?? []}
+                    onChange={(tidbits) => update(char.id, { tidbits })}
+                    model={model}
+                    apiKey={apiKey}
+                    placeholder="red dress, ..."
+                    labelWidthCls="w-16"
+                  />
+                )}
+
+                {tokens?.characters[char.id] && (
+                  <CharacterTokenMeter tokens={tokens} id={char.id} tab={tab} />
                 )}
 
                 {/* Position inputs */}
@@ -282,5 +254,24 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6 }:
         </p>
       )}
     </div>
+  );
+}
+
+function CharacterTokenMeter({ tokens, id, tab }: { tokens: TokenCounts; id: string; tab: ActiveTab }) {
+  const own = tokens.characters[id][tab];
+  return tab === 'prompt' ? (
+    <TokenMeter
+      own={own}
+      others={tokens.selectedBase + tokens.characterPromptTotal - own}
+      othersLabel="Base prompt and other characters"
+      budget={tokens.budget}
+    />
+  ) : (
+    <TokenMeter
+      own={own}
+      others={tokens.negative + tokens.characterUcTotal - own}
+      othersLabel="Negative prompt and other characters"
+      budget={tokens.budget}
+    />
   );
 }

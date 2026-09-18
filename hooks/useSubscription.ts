@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useSessionStore } from '@/store/sessionStore';
+import { useSubscriptionStore } from '@/store/subscriptionStore';
 import { NovelAISubscription } from '@/types/novelai';
 
 interface UseSubscriptionReturn {
@@ -9,43 +10,24 @@ interface UseSubscriptionReturn {
   refresh: () => void;
 }
 
-// Feeds the "Opus Generation Usage Limit" meter NovelAI's own site shows.
-// GET /user/subscription needs only the persistent API key — no extra params.
+// Feeds the Anlas balance and the "Opus Generation Usage Limit" meter NovelAI's
+// own site shows. GET /user/subscription needs only the persistent API key.
+// State is shared (store/subscriptionStore.ts), and refreshes itself after
+// anything that spends Anlas.
 export function useSubscription(): UseSubscriptionReturn {
   const apiKey = useSessionStore((s) => s.apiKey);
-  const [subscription, setSubscription] = useState<NovelAISubscription | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshCount, setRefreshCount] = useState(0);
+  const { subscription, forKey, isLoading, error, refresh } = useSubscriptionStore();
 
-  const refresh = useCallback(() => setRefreshCount((c) => c + 1), []);
-
+  // First use under a new key fetches once; other components mounting
+  // alongside it read the live store (not this render's copy) and skip.
   useEffect(() => {
-    if (!apiKey) return; // nothing to fetch; the return value below masks stale data anyway
+    if (apiKey && useSubscriptionStore.getState().attemptedFor !== apiKey) refresh();
+  }, [apiKey, refresh]);
 
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-
-    fetch('https://image.novelai.net/user/subscription', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Failed to load subscription info (${res.status}).`);
-        return res.json() as Promise<NovelAISubscription>;
-      })
-      .then((data) => {
-        if (!cancelled) setSubscription(data);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [apiKey, refreshCount]);
-
-  return { subscription: apiKey ? subscription : null, isLoading, error, refresh };
+  return {
+    subscription: apiKey && forKey === apiKey ? subscription : null,
+    isLoading,
+    error,
+    refresh,
+  };
 }

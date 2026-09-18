@@ -2,9 +2,17 @@ import { useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
-import { composeWithTidbits } from '@/lib/promptTidbits';
-import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
+import { GeneratedImage } from '@/types/novelai';
+import {
+  buildImageRequest,
+  composeFinalPrompts,
+  EDIT_REQUEST_FLAGS,
+  formSampling,
+  promptSource,
+  randomSeed,
+  resolveSelectedPrompt,
+} from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
 
 // ─── Enhance level config ─────────────────────────────────────────────────────
 
@@ -24,21 +32,10 @@ export const ENHANCE_LEVELS = [
 
 export type EnhanceLevelNum = 1 | 2 | 3 | 4 | 5;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseEnhanceReturn {
-  enhance: (image: GeneratedImage, level: EnhanceLevelNum, upscale: boolean) => Promise<boolean>;
+  enhance: (image: GeneratedImage, level: EnhanceLevelNum, upscale: boolean) => Promise<GeneratedImage[] | null>;
   isEnhancing: boolean;
   error: string | null;
   clearError: () => void;
@@ -55,7 +52,7 @@ export function useEnhance(): UseEnhanceReturn {
     image: GeneratedImage,
     levelNum: EnhanceLevelNum,
     upscale: boolean,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     setIsEnhancing(true);
     setIsLoading(true); // shows gallery progress indicator / streaming preview
 
@@ -68,114 +65,47 @@ export function useEnhance(): UseEnhanceReturn {
       const width  = upscale ? round64(image.parameters.width  * 1.5) : image.parameters.width;
       const height = upscale ? round64(image.parameters.height * 1.5) : image.parameters.height;
 
-      // ── Prompt assembly (mirrors PromptForm.buildRequest) ──────────────────
-      const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+      // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
+      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      // Enhance always nudges away from an upscaled/blurry look.
+      const { input, negativePrompt } = composeFinalPrompts(form, resolved, '-2::upscaled, blurry::');
+      const seed = randomSeed();
+      const extraNoiseSeed = randomSeed();
 
-      const prefixes: string[] = [];
-      if (form.furMode)  prefixes.push('fur dataset');
-      if (form.nsfwMode) prefixes.push('nsfw');
-      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
-      const prefixedText = prefixes.length > 0
-        ? `${prefixes.join(', ')}, ${baseText}`
-        : baseText;
-
-      let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-      if (form.transparentBg) finalText += ', transparent background';
-      // Always append enhance-specific negative weight tag
-      finalText = finalText + ', -2::upscaled, blurry::';
-
-      // ── Negative prompt assembly ───────────────────────────────────────────
-      const positiveSearchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
-
-      const seed = Math.floor(Math.random() * 4294967295);
-      const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
-
-      const request: NovelAIGenerateRequest = {
-        input: finalText,
+      const request = buildImageRequest({
+        input,
+        negativePrompt,
         model: form.model,
         action: 'img2img',
+        characters: resolved.characters,
+        useCoords: form.useCoords,
+        presets: { quality: form.qualityPreset, uc: form.ucPreset },
         parameters: {
-          params_version: 3,
+          ...formSampling(form),
+          ...EDIT_REQUEST_FLAGS,
           width,
           height,
-          scale: form.scale,
-          sampler: form.sampler,
-          steps: form.steps,
           n_samples: 1,
           strength: level.strength,
           noise: level.noise,
-          ucPreset: 0,
-          qualityToggle: form.qualityToggle,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          legacy_v3_extend: false,
           add_original_image: true,
-          cfg_rescale: form.cfgRescale,
-          noise_schedule: form.noiseSchedule,
-          skip_cfg_above_sigma: null,
-          use_coords: form.useCoords,
-          normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0,
           seed,
           extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           color_correct: false,
-          deliberate_euler_ancestral_bug: false,
-          prefer_brownian: true,
-          negative_prompt: baseNegPrompt,
-          legacy_uc: false,
-          reference_image_multiple: [],
-          reference_information_extracted_multiple: [],
-          reference_strength_multiple: [],
-          v4_prompt: {
-            caption: {
-              base_caption: finalText,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: charPrompt(c),
-                centers: [c.center],
-              })),
-            },
-            use_coords: form.useCoords,
-            use_order: true,
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: baseNegPrompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.uc,
-                centers: [c.center],
-              })),
-            },
-            legacy_uc: false,
-          },
-          characterPrompts: activeCharacters.map((c) => ({
-            prompt: charPrompt(c),
-            uc: c.uc,
-            center: c.center,
-            enabled: c.enabled,
-          })),
         },
-      };
+      });
 
       // Delegate to useGenerate — handles streaming/non-streaming transparently
       // Create a fresh object URL for the source image so the enhanced image can
       // display it even if the source is later removed from the session.
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       // blobToBase64 failures land here; API errors are handled by generate()
       console.error('Enhance setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsEnhancing(false);
       setIsLoading(false);

@@ -2,6 +2,16 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { GeneratedImage } from '@/types/novelai';
 
+/** Raw base64 (no data: prefix), as NovelAI's image fields expect. */
+export function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 /** Extract all PNG blobs from a NovelAI response zip buffer. */
 export async function extractImagesFromZip(zipBuffer: ArrayBuffer): Promise<Blob[]> {
   const zip = await JSZip.loadAsync(zipBuffer);

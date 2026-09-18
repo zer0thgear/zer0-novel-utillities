@@ -1,3 +1,5 @@
+import type { QualityLevel, UcLevel } from '@/lib/naiPresets';
+
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
 
 /** A toggleable sub-prompt appended to its parent prompt's text when enabled —
@@ -9,7 +11,27 @@ export interface PromptTidbit {
   label: string;
   text: string;
   enabled: boolean;
+  /** Links this tidbit to a shared library entry, whose text wins at compose
+   *  time so editing the entry updates every prompt using it. `label`/`text`
+   *  stay as a snapshot and are used as a fallback if the entry is deleted. */
+  sourceId?: string;
 }
+
+/** A reusable tidbit saved once and linked into any number of prompts, or
+ *  referenced inline as `__Label__`. A random entry holds one option per line
+ *  of `text` and contributes one of them per image (see lib/wildcards.ts). */
+export interface LibraryTidbit {
+  id: string;
+  label: string;
+  text: string;
+  /** Absent on entries saved before wildcards existed, which are fixed. */
+  kind?: 'fixed' | 'random';
+}
+
+/** The option each random wildcard contributed to one request, keyed by
+ *  `<field scope>|<library entry id>` and then by occurrence order within that
+ *  field. Replaying it reproduces the rolls, e.g. when enhancing the image. */
+export type WildcardPicks = Record<string, string[]>;
 
 /** A named base prompt entry in the prompt list. */
 export interface BasePrompt {
@@ -30,12 +52,15 @@ export type NovelAIModel =
   | 'nai-diffusion-5-full'
   | 'nai-diffusion-5-full-inpainting'
   | 'nai-diffusion-5-curated'
-  | 'nai-diffusion-5-curated-inpainting'
   | 'nai-diffusion-4-5-full'
   | 'nai-diffusion-4-5-full-inpainting'
+  | 'nai-diffusion-4-5-curated'
+  // No V5 Curated inpainting model exists server-side; NovelAI's client
+  // inpaints V5 Curated with this one (see toInpaintingModel).
+  | 'nai-diffusion-4-5-curated-inpainting'
   | 'nai-diffusion-4-curated-preview'
   | 'nai-diffusion-4-curated-inpainting'
-  | 'nai-diffusion-4-full-preview'
+  | 'nai-diffusion-4-full'
   | 'nai-diffusion-4-full-inpainting'
   | 'nai-diffusion-3'
   | 'nai-diffusion-3-inpainting'
@@ -110,25 +135,41 @@ export interface NovelAIParameters {
   sampler: NovelAISampler;
   steps: number;
   n_samples: number;
-  ucPreset: number;
-  qualityToggle: boolean;
-  sm: boolean;
-  sm_dyn: boolean;
+  /** Legacy numeric UC preset. Not sent: NovelAI's client uses `ucPresetId`
+   *  (and applies the preset text itself). Older images' metadata may carry it. */
+  ucPreset?: number;
+  /** NovelAI's named presets and their numeric hints (none 0, standard 1,
+   *  heavy 2, light 3, humanFocus 4, furryFocus 5). The preset text itself is
+   *  already in the prompt; these mirror what NovelAI's client sends. */
+  qualityPresetId?: string;
+  ucPresetId?: string;
+  tag_hint_qt?: number;
+  tag_hint_uc_preset?: number;
+  /** V5 (transparency-capable) only; NovelAI's default setting is `true`. */
+  straight_alpha?: boolean;
+  /** Never sent. NovelAI's client dropped it for `qualityPresetId`, and
+   *  sending `true` measurably changes the image (see
+   *  docs/REVERSE_ENGINEERING.md). Older images' metadata may still carry it. */
+  qualityToggle?: boolean;
+  /** SMEA. Sent for V3 only (and as false on image edits), as NovelAI does. */
+  sm?: boolean;
+  sm_dyn?: boolean;
   dynamic_thresholding: boolean;
   controlnet_strength: number;
   legacy: boolean;
   add_original_image: boolean;
   cfg_rescale: number;
   noise_schedule: NovelAINoiseSchedule;
-  /** NovelAI's "Variety+" boost. Must be `null` to match the API's own default
-   *  (off) — a nonzero value forces increased output variance and is resolution/
+  /** NovelAI's "Variety+" boost. Omit (or null) for the API's default, off:
+   *  a nonzero value forces increased output variance and is resolution/
    *  model-dependent, so never hardcode a constant here. */
-  skip_cfg_above_sigma: number | null;
+  skip_cfg_above_sigma?: number | null;
   seed: number;
   negative_prompt: string;
-  reference_image_multiple: string[];
-  reference_information_extracted_multiple: number[];
-  reference_strength_multiple: number[];
+  /** Vibe Transfer inputs; omitted when there are none, as NovelAI does. */
+  reference_image_multiple?: string[];
+  reference_information_extracted_multiple?: number[];
+  reference_strength_multiple?: number[];
   // V4 fields — only included when using character prompts or v4 models
   params_version?: number;
   use_coords?: boolean;
@@ -236,4 +277,84 @@ export interface GeneratedImage {
   // Shared across every image produced by one "Copies" request (true batch or
   // queued) — lets the gallery clump them visually. Absent for single generations.
   batchId?: string;
+  /** Wildcard rolls that produced this image, replayed by Enhance/Inpaint/Edit/
+   *  Variations so reworking an image doesn't re-roll it. */
+  wildcardPicks?: WildcardPicks;
+  /** Set on every image from an X/Y sweep: which grid cell it is. */
+  sweep?: SweepCellInfo;
+  /** The prompt as written, before the sidebar's modifiers were applied, so
+   *  "Reuse" can restore it without doubling up quality tags, prefixes, etc.
+   *  `prompt` / `negativePrompt` above are the final text actually sent. */
+  source?: PromptSource;
+  /** Set on every image a chain produced: which run and step made it. */
+  chain?: ChainStepInfo;
+}
+
+// ─── Chained actions ─────────────────────────────────────────────────────────
+
+export type ChainDirectorTool = 'bg-removal' | 'lineart' | 'sketch' | 'declutter' | 'colorize' | 'emotion';
+
+/** One step of a chain. Each takes the previous step's image. */
+export type ChainStep =
+  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; upscale: boolean }
+  | { kind: 'upscale' }
+  | { kind: 'variations' }
+  | {
+      kind: 'director';
+      tool: ChainDirectorTool;
+      /** colorize: guidance prompt; emotion: extra prompt. */
+      prompt?: string;
+      /** colorize / emotion: 0–5. */
+      defry?: number;
+      /** emotion only, e.g. "happy". */
+      emotion?: string;
+    }
+  | { kind: 'pixelSnap'; palettize: 'off' | 'auto' | 'custom'; colors?: number; avoidOverRefining?: boolean; upscale?: boolean }
+  | { kind: 'download' };
+
+export interface Chain {
+  id: string;
+  name: string;
+  steps: ChainStep[];
+}
+
+export interface ChainStepInfo {
+  /** One run of a chain on one source image; results share it as batchId. */
+  runId: string;
+  chainId: string;
+  name: string;
+  /** 1-based. */
+  step: number;
+  total: number;
+  label: string;
+}
+
+export interface PromptSource {
+  /** Base prompt with tidbits folded in and wildcards rolled, pre-modifiers. */
+  prompt: string;
+  /** Negative prompt before the UC preset was added. */
+  negativePrompt: string;
+  modifiers: {
+    furMode: boolean;
+    nsfwMode: boolean;
+    transparentBg: boolean;
+    qualityPreset: QualityLevel;
+    ucPreset: UcLevel;
+  };
+}
+
+export interface SweepAxisInfo {
+  /** Display name, e.g. "CFG" or a wildcard's label. */
+  name: string;
+  /** Display values, in grid order. */
+  values: string[];
+}
+
+export interface SweepCellInfo {
+  /** Shared by every image in one sweep (also used as its batchId). */
+  id: string;
+  x: SweepAxisInfo;
+  xIndex: number;
+  y?: SweepAxisInfo;
+  yIndex?: number;
 }

@@ -20,6 +20,8 @@ interface SessionState {
 
   images: GeneratedImage[];
   addImages: (images: GeneratedImage[]) => void;
+  /** Merges fields into existing images (e.g. tagging a chain's results). */
+  updateImages: (ids: string[], patch: Partial<GeneratedImage>) => void;
   removeImage: (id: string) => void;
   clearImages: () => void;
 
@@ -38,7 +40,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setApiKey: (key) => {
     if (typeof window !== 'undefined') {
-      key ? localStorage.setItem(API_KEY_KEY, key) : localStorage.removeItem(API_KEY_KEY);
+      if (key) localStorage.setItem(API_KEY_KEY, key);
+      else localStorage.removeItem(API_KEY_KEY);
     }
     set({ apiKey: key });
   },
@@ -66,6 +69,11 @@ export const useSessionStore = create<SessionState>((set) => ({
       images: [...newImages, ...state.images],
       // Auto-focus the newest image
       focusedImageId: newImages[0]?.id ?? state.focusedImageId,
+    })),
+
+  updateImages: (ids, patch) =>
+    set((state) => ({
+      images: state.images.map((img) => (ids.includes(img.id) ? { ...img, ...patch } : img)),
     })),
 
   removeImage: (id) =>

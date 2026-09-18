@@ -2,30 +2,44 @@ import { useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
-import { composeWithTidbits } from '@/lib/promptTidbits';
-import { composeWithQuality, composeNegativeWithUc } from '@/lib/naiPresets';
+import { GeneratedImage, NovelAIModel } from '@/types/novelai';
+import {
+  buildImageRequest,
+  composeFinalPrompts,
+  EDIT_REQUEST_FLAGS,
+  formSampling,
+  promptSource,
+  randomSeed,
+  resolveSelectedPrompt,
+} from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
+/** NovelAI's own base → inpainting model mapping. Not a simple suffix: V4
+ *  Curated drops "-preview", and V5 Curated has no inpainting model of its
+ *  own, so NovelAI's client uses V4.5 Curated's (both checked against the
+ *  API on 2026-09-18). */
+const INPAINTING_MODEL: Partial<Record<NovelAIModel, NovelAIModel>> = {
+  'nai-diffusion-5-full': 'nai-diffusion-5-full-inpainting',
+  'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
+  'nai-diffusion-4-5-full': 'nai-diffusion-4-5-full-inpainting',
+  'nai-diffusion-4-5-curated': 'nai-diffusion-4-5-curated-inpainting',
+  'nai-diffusion-4-full': 'nai-diffusion-4-full-inpainting',
+  'nai-diffusion-4-curated-preview': 'nai-diffusion-4-curated-inpainting',
+  'nai-diffusion-3': 'nai-diffusion-3-inpainting',
+  'nai-diffusion-furry-3': 'nai-diffusion-furry-3-inpainting',
+};
 
 function toInpaintingModel(model: NovelAIModel): NovelAIModel {
   if (model.endsWith('-inpainting')) return model;
-  return `${model}-inpainting` as NovelAIModel;
+  return INPAINTING_MODEL[model] ?? 'nai-diffusion-4-5-curated-inpainting';
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseInpaintReturn {
-  inpaint: (image: GeneratedImage, maskBlob: Blob, strength: number) => Promise<boolean>;
+  inpaint: (image: GeneratedImage, maskBlob: Blob, strength: number) => Promise<GeneratedImage[] | null>;
   isInpainting: boolean;
   error: string | null;
   clearError: () => void;
@@ -41,7 +55,7 @@ export function useInpaint(): UseInpaintReturn {
     image: GeneratedImage,
     maskBlob: Blob,
     strength: number,
-  ): Promise<boolean> => {
+  ): Promise<GeneratedImage[] | null> => {
     setIsInpainting(true);
     setIsLoading(true);
 
@@ -49,61 +63,33 @@ export function useInpaint(): UseInpaintReturn {
       const imageB64 = await blobToBase64(image.blob);
       const maskB64 = await blobToBase64(maskBlob);
 
-      // ── Prompt assembly (mirrors useEnhance) ───────────────────────────────
-      const activeCharacters = form.characters.filter((c) => c.enabled);
-      const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+      // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
+      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      // Presets come from the model actually sent, as NovelAI does: V5 Curated
+      // inpaints with V4.5 Curated's model, so it gets V4.5 Curated's presets
+      // (verified against novelai.net's own request, 2026-09-18).
+      const model = toInpaintingModel(form.model);
+      const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
+      const seed = randomSeed();
+      const extraNoiseSeed = randomSeed();
 
-      const prefixes: string[] = [];
-      if (form.furMode)  prefixes.push('fur dataset');
-      if (form.nsfwMode) prefixes.push('nsfw');
-      const selectedBasePrompt = form.basePrompts.find((p) => p.selected);
-      const baseText = composeWithTidbits(selectedBasePrompt?.text ?? '', selectedBasePrompt?.tidbits);
-      const prefixedText = prefixes.length > 0
-        ? `${prefixes.join(', ')}, ${baseText}`
-        : baseText;
-
-      let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-      if (form.transparentBg) finalText += ', transparent background';
-
-      // ── Negative prompt assembly ───────────────────────────────────────────
-      const positiveSearchText = [
-        ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-        ...form.characters.map((c) => charPrompt(c)),
-      ].join(' ').toLowerCase();
-      const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
-
-      const seed = Math.floor(Math.random() * 4294967295);
-      const extraNoiseSeed = Math.floor(Math.random() * 4294967295);
-
-      const request: NovelAIGenerateRequest = {
-        input: finalText,
-        model: toInpaintingModel(form.model),
+      const request = buildImageRequest({
+        input,
+        negativePrompt,
+        model,
         action: 'infill',
+        characters: resolved.characters,
+        useCoords: form.useCoords,
+        presets: { quality: form.qualityPreset, uc: form.ucPreset },
         parameters: {
-          params_version: 3,
+          ...formSampling(form),
+          ...EDIT_REQUEST_FLAGS,
           width: image.parameters.width,
           height: image.parameters.height,
-          scale: form.scale,
-          sampler: form.sampler,
-          steps: form.steps,
           n_samples: 1,
           strength,
           noise: 0,
-          ucPreset: 0,
-          qualityToggle: form.qualityToggle,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          legacy_v3_extend: false,
           add_original_image: false,
-          cfg_rescale: form.cfgRescale,
-          noise_schedule: form.noiseSchedule,
-          skip_cfg_above_sigma: null,
-          use_coords: form.useCoords,
-          normalize_reference_strength_multiple: true,
           inpaintImg2ImgStrength: 0.69,
           seed,
           extra_noise_seed: extraNoiseSeed,
@@ -111,48 +97,14 @@ export function useInpaint(): UseInpaintReturn {
           mask: maskB64,
           img2img: { strength: 0.69, color_correct: true },
           color_correct: true,
-          deliberate_euler_ancestral_bug: false,
-          prefer_brownian: true,
-          negative_prompt: baseNegPrompt,
-          legacy_uc: false,
-          reference_image_multiple: [],
-          reference_information_extracted_multiple: [],
-          reference_strength_multiple: [],
-          v4_prompt: {
-            caption: {
-              base_caption: finalText,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: charPrompt(c),
-                centers: [c.center],
-              })),
-            },
-            use_coords: form.useCoords,
-            use_order: true,
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption: baseNegPrompt,
-              char_captions: activeCharacters.map((c) => ({
-                char_caption: c.uc,
-                centers: [c.center],
-              })),
-            },
-            legacy_uc: false,
-          },
-          characterPrompts: activeCharacters.map((c) => ({
-            prompt: charPrompt(c),
-            uc: c.uc,
-            center: c.center,
-            enabled: c.enabled,
-          })),
         },
-      };
+      });
 
       const sourceImageUrl = URL.createObjectURL(image.blob);
-      return await generate(request, { sourceImageId: image.id, sourceImageUrl });
+      return await generate(request, { sourceImageId: image.id, sourceImageUrl, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
     } catch (err) {
       console.error('Inpaint setup error:', err);
-      return false;
+      return null;
     } finally {
       setIsInpainting(false);
       setIsLoading(false);

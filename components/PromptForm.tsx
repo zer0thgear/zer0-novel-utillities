@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
+  BasePrompt,
+  GeneratedImage,
   NovelAIGenerateRequest,
   NovelAIModel,
   NovelAISampler,
@@ -14,12 +16,25 @@ import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
-import { composeWithTidbits } from '@/lib/promptTidbits';
-import { calculateAnlasCost } from '@/lib/anlasCost';
+import { TidbitLibrarySection } from './TidbitLibrarySection';
+import { PresetsSection } from './PresetsSection';
+import { ChainsSection } from './ChainsSection';
+import { useChainLauncher } from '@/hooks/useChainLauncher';
+import { useChainBusy } from '@/store/chainStore';
+import { TransferSection } from './TransferSection';
+import { TagAutocompleteField } from './TagAutocompleteField';
+import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
+import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
+import { SAMPLERS } from '@/lib/samplers';
+import { MODELS, modelShortName } from '@/lib/models';
+import { SweepModal } from './SweepModal';
+import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
+import { blobToBase64 } from '@/lib/imageUtils';
+import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useTokenCounts } from '@/hooks/useTokenCounts';
+import { TokenMeter } from './TokenMeter';
 import {
-  composeWithQuality,
-  composeNegativeWithUc,
   getAvailableQualityLevels,
   getAvailableUcLevels,
   QUALITY_LEVEL_LABELS,
@@ -29,26 +44,6 @@ import {
 } from '@/lib/naiPresets';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-
-const MODELS: { value: NovelAIModel; label: string }[] = [
-  { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' },
-  { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
-  { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
-  { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
-  { value: 'nai-diffusion-4-full-preview', label: 'NAI Diffusion V4 Full' },
-  { value: 'nai-diffusion-3', label: 'NAI Diffusion V3 (Anime)' },
-  { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion V3 (Furry)' },
-];
-
-const SAMPLERS: { value: NovelAISampler; label: string }[] = [
-  { value: 'k_euler', label: 'Euler' },
-  { value: 'k_euler_ancestral', label: 'Euler Ancestral' },
-  { value: 'k_dpmpp_2s_ancestral', label: 'DPM++ 2S Ancestral' },
-  { value: 'k_dpmpp_2m', label: 'DPM++ 2M' },
-  { value: 'k_dpmpp_2m_sde', label: 'DPM++ 2M SDE' },
-  { value: 'k_dpmpp_sde', label: 'DPM++ SDE' },
-  { value: 'ddim_v3', label: 'DDIM V3' },
-];
 
 const NOISE_SCHEDULES: { value: NovelAINoiseSchedule; label: string }[] = [
   { value: 'native', label: 'Native' },
@@ -75,15 +70,6 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider te
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
 export function PromptForm() {
   const form = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -91,6 +77,19 @@ export function PromptForm() {
   const [showNegativePrompt, setShowNegativePrompt] = useState(false);
   const [showGenSettings, setShowGenSettings] = useState(true);
   const [promptTab, setPromptTab] = useState<'prompts' | 'characters'>('prompts');
+  // Marks where the sticky tab bar naturally sits. Switching tabs while the bar
+  // is pinned (scrolled down into settings) would otherwise swap content that's
+  // entirely above the viewport, so we jump back to the top of the editor.
+  const tabAnchorRef = useRef<HTMLDivElement>(null);
+
+  function switchPromptTab(tab: 'prompts' | 'characters') {
+    setPromptTab(tab);
+    const anchor = tabAnchorRef.current;
+    const scroller = anchor?.closest('.overflow-y-auto');
+    if (anchor && scroller && anchor.getBoundingClientRect().top < scroller.getBoundingClientRect().top) {
+      anchor.scrollIntoView({ block: 'start' });
+    }
+  }
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
   const [img2imgNoise, setImg2imgNoise] = useState(0);
@@ -105,125 +104,124 @@ export function PromptForm() {
   const { generate, error, clearError } = useGenerate();
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
   const { subscription } = useSubscription();
+  const tokens = useTokenCounts(form);
+  const launchChain = useChainLauncher();
+  // A running chain has an image request in flight; Generate waits for it.
+  const chainBusy = useChainBusy();
+
+  /** Wraps generate() to collect every image a run makes, for the auto chain. */
+  function collectingGenerate() {
+    const made: GeneratedImage[] = [];
+    const gen = async (...args: Parameters<typeof generate>) => {
+      const result = await generate(...args);
+      if (result) made.push(...result);
+      return result;
+    };
+    return { made, gen };
+  }
+
+  /** Offers the "after each Generate" chain on a run's new images. */
+  function offerAutoChain(made: GeneratedImage[]) {
+    const chain = form.chains.find((c) => c.id === form.autoChainId);
+    if (chain && made.length > 0) launchChain(chain, made, true);
+  }
 
   // Batch status: null when idle, set during a batch run
   const [batchStatus, setBatchStatus] = useState<{ current: number; total: number } | null>(null);
 
   // ── Request builder ────────────────────────────────────────────────────
 
-  function buildRequest(promptText: string, seed: number, baseImageB64?: string, nSamples = 1): NovelAIGenerateRequest {
-    const activeCharacters = form.characters.filter((c) => c.enabled);
-    const charPrompt = (c: (typeof activeCharacters)[number]) => composeWithTidbits(c.prompt, c.tidbits);
+  /** Rolls this prompt's wildcards once, for one request. */
+  function resolveFor(prompt: BasePrompt): ResolvedRequestPrompts {
+    return resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary);
+  }
 
-    // ── Prefix assembly (order: fur dataset → nsfw → prompt) ──────────────────
-    const prefixes: string[] = [];
-    if (form.furMode) prefixes.push('fur dataset');
-    if (form.nsfwMode) prefixes.push('nsfw');
-    const prefixedText =
-      prefixes.length > 0 ? `${prefixes.join(', ')}, ${promptText}` : promptText;
-
-    // ── Quality preset suffix (verbatim per-model text, see lib/naiPresets.ts) ──
-    let finalText = composeWithQuality(prefixedText, form.model, form.qualityPreset);
-    if (form.transparentBg) finalText += ', transparent background';
-
-    // ── UC preset prefix — tags already present (case-insensitive) in any base
-    // or character positive prompt are skipped to avoid contradicting the user.
-    const positiveSearchText = [
-      ...form.basePrompts.map((p) => composeWithTidbits(p.text, p.tidbits)),
-      ...form.characters.map((c) => charPrompt(c)),
-    ].join(' ').toLowerCase();
-    const baseNegPrompt = composeNegativeWithUc(form.negativePrompt, form.model, form.ucPreset, positiveSearchText);
-
-    return {
-      input: finalText,
+  function buildRequest(
+    resolved: ResolvedRequestPrompts,
+    seed: number,
+    baseImageB64?: string,
+    nSamples = 1,
+    // A sweep cell's values, replacing the form's for this one request.
+    overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
+  ): NovelAIGenerateRequest {
+    const { input, negativePrompt } = composeFinalPrompts(form, resolved);
+    return buildImageRequest({
+      input,
+      negativePrompt,
       model: form.model,
       action: baseImageB64 ? 'img2img' : 'generate',
+      characters: resolved.characters,
+      useCoords: form.useCoords,
+      presets: { quality: form.qualityPreset, uc: form.ucPreset },
       parameters: {
-        params_version: 3,
-        width: baseImageB64 && img2imgSource ? img2imgSource.width : form.width,
-        height: baseImageB64 && img2imgSource ? img2imgSource.height : form.height,
-        scale: form.scale,
-        sampler: form.sampler,
-        steps: form.steps,
+        ...formSampling(form, overrides),
+        // NovelAI sends this default on V4+ generations only.
+        ...(form.model.startsWith('nai-diffusion-3') || form.model.startsWith('nai-diffusion-furry-3')
+          ? {}
+          : { inpaintImg2ImgStrength: 1 }),
+        // An img2img base keeps its own size rather than the form's.
+        ...(baseImageB64 && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : {}),
         n_samples: nSamples,
-        ucPreset: 0,
-        qualityToggle: form.qualityToggle,
-        sm: form.smea,
-        sm_dyn: form.smeaDyn,
-        dynamic_thresholding: false,
-        controlnet_strength: 1,
-        legacy: false,
-        add_original_image: !!baseImageB64,
-        cfg_rescale: form.cfgRescale,
-        noise_schedule: form.noiseSchedule,
-        skip_cfg_above_sigma: null,
-        use_coords: form.useCoords,
-        deliberate_euler_ancestral_bug: false,
-        prefer_brownian: true,
+        // NovelAI sends true for plain generations too.
+        add_original_image: true,
         seed,
         ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
-        negative_prompt: baseNegPrompt,
-        reference_image_multiple: [],
-        reference_information_extracted_multiple: [],
-        reference_strength_multiple: [],
-        v4_prompt: {
-          caption: {
-            base_caption: finalText,
-            char_captions: activeCharacters.map((c) => ({
-              char_caption: charPrompt(c),
-              centers: [c.center],
-            })),
-          },
-          use_coords: form.useCoords,
-          use_order: true,
-        },
-        v4_negative_prompt: {
-          caption: {
-            base_caption: baseNegPrompt,
-            char_captions: activeCharacters.map((c) => ({
-              char_caption: c.uc,
-              centers: [c.center],
-            })),
-          },
-          legacy_uc: false,
-        },
-        legacy_uc: false,
-        characterPrompts: activeCharacters.map((c) => ({
-          prompt: charPrompt(c),
-          uc: c.uc,
-          center: c.center,
-          enabled: c.enabled,
-        })),
       },
-    };
+    });
   }
 
   // ── Submit handler ─────────────────────────────────────────────────────
 
+  // The base prompts a Generate click would send.
+  const targetPrompts =
+    form.promptMode === 'single'
+      ? form.basePrompts.filter((p) => p.selected).slice(0, 1)
+      : form.basePrompts.filter((p) => p.selected && p.text.trim());
+  const wildcards = analyzeWildcards(targetPrompts, form.characters, form.negativePrompt, form.tidbitLibrary);
+  // Non-null while the "unknown wildcard" confirmation is open.
+  const [unknownRefs, setUnknownRefs] = useState<string[] | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (isLoading || chainBusy) return;
+    // Unknown __refs__ are warned about rather than blocked: a tag may
+    // legitimately look like one, and it's then sent as literal text.
+    if (wildcards.unknown.length > 0) {
+      setUnknownRefs(wildcards.unknown);
+      return;
+    }
+    await runGeneration();
+  };
 
+  async function runGeneration() {
+    setUnknownRefs(null);
+    const { made, gen } = collectingGenerate();
+    await generateAll(gen);
+    offerAutoChain(made);
+  }
+
+  async function generateAll(gen: typeof generate) {
     const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
 
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
       if (!selected?.text.trim()) return;
-      const promptText = composeWithTidbits(selected.text, selected.tidbits);
 
       if (copies > 1 && copiesMode === 'batch') {
         // True batch — one request, n_samples > 1, real extra Anlas cost.
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        // One request means one prompt, so every copy shares one wildcard roll.
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
+        const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(
-          buildRequest(promptText, seed, baseImageB64, copies),
-          { batchId: crypto.randomUUID(), forceStandard: true },
+        await gen(
+          buildRequest(resolved, seed, baseImageB64, copies),
+          { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks, source: promptSource(form, resolved) },
         );
         setIsLoading(false);
       } else if (copies > 1 && copiesMode === 'queue') {
         // Queued — separate single-image calls in a row, each with its own
         // fresh seed so they're not near-duplicates, each independently
-        // eligible for the free Opus allowance.
+        // eligible for the free Opus allowance, each with its own roll.
         setIsLoading(true);
         setBatchStatus({ current: 0, total: copies });
         const batchId = crypto.randomUUID();
@@ -231,8 +229,9 @@ export function PromptForm() {
         for (let i = 0; i < copies; i++) {
           setBatchStatus({ current: i + 1, total: copies });
           const seed =
-            form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed + i;
-          const ok = await generate(buildRequest(promptText, seed, baseImageB64), { batchId });
+            form.seed === 0 ? randomSeed() : form.seed + i;
+          const resolved = resolveFor(selected);
+          const ok = await gen(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
           if (!ok) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
@@ -240,9 +239,10 @@ export function PromptForm() {
         setIsLoading(false);
         setBatchStatus(null);
       } else {
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
+        const resolved = resolveFor(selected);
         setIsLoading(true);
-        await generate(buildRequest(promptText, seed, baseImageB64));
+        await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         setIsLoading(false);
       }
     } else {
@@ -255,16 +255,91 @@ export function PromptForm() {
 
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
-        const seed = form.seed === 0 ? Math.floor(Math.random() * 4294967295) : form.seed;
-        const promptText = composeWithTidbits(selectedPrompts[i].text, selectedPrompts[i].tidbits);
-        const ok = await generate(buildRequest(promptText, seed, baseImageB64));
+        const seed = form.seed === 0 ? randomSeed() : form.seed;
+        const resolved = resolveFor(selectedPrompts[i]);
+        const ok = await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         if (!ok) break; // stop batch on error
       }
 
       setIsLoading(false);
       setBatchStatus(null);
     }
-  };
+  }
+
+  // ── X/Y sweep ──────────────────────────────────────────────────────────
+
+  const [showSweep, setShowSweep] = useState(false);
+  const [sweepRunning, setSweepRunning] = useState(false);
+  const [sweepStopping, setSweepStopping] = useState(false);
+  // Checked between requests, so Stop lets the in-flight image finish.
+  const sweepStopRef = useRef(false);
+
+  async function runSweep(x: SweepAxis, y?: SweepAxis) {
+    setShowSweep(false);
+    const selected = form.basePrompts.find((p) => p.selected);
+    if (!selected?.text.trim()) return;
+
+    const cells = sweepCells(x, y);
+    const xInfo = axisInfo(x, form.tidbitLibrary);
+    const yInfo = y ? axisInfo(y, form.tidbitLibrary) : undefined;
+    const sweepId = crypto.randomUUID();
+    const seed = form.seed === 0 ? randomSeed() : form.seed;
+    // Roll every wildcard once and replay that across the grid, so the only
+    // thing changing between cells is what's being swept.
+    const baseline = resolveFor(selected);
+    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+
+    const { made, gen } = collectingGenerate();
+    sweepStopRef.current = false;
+    setSweepRunning(true);
+    setIsLoading(true);
+    for (let i = 0; i < cells.length; i++) {
+      if (sweepStopRef.current) break;
+      const cell = cells[i];
+      setBatchStatus({ current: i + 1, total: cells.length });
+      const resolved = resolveRequestPrompts(
+        selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
+      );
+      const ok = await gen(
+        buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
+          scale: cell.scale,
+          steps: cell.steps,
+          sampler: cell.sampler,
+        }),
+        {
+          batchId: sweepId,
+          wildcardPicks: resolved.picks, source: promptSource(form, resolved),
+          sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
+        },
+      );
+      if (!ok) break;
+      if (i < cells.length - 1 && !sweepStopRef.current) await new Promise((r) => setTimeout(r, 1500));
+    }
+    setIsLoading(false);
+    setBatchStatus(null);
+    setSweepRunning(false);
+    setSweepStopping(false);
+    offerAutoChain(made);
+  }
+
+  // What a request with the form's settings costs (SMEA is only sent on V3;
+  // an img2img base prices by its own size and the strength used).
+  const costInput = (steps: number, nSamples: number) => ({
+    model: form.model,
+    width: img2imgSource ? img2imgSource.width : form.width,
+    height: img2imgSource ? img2imgSource.height : form.height,
+    steps,
+    smea: isV3Model(form.model) && form.smea,
+    smeaDyn: isV3Model(form.model) && form.smeaDyn,
+    nSamples,
+    strength: img2imgSource ? img2imgStrength : undefined,
+    ...opusStatus(subscription),
+  });
+
+  function sweepCostFor(steps: number): number | null {
+    if (!subscription) return null;
+    return calculateAnlasCost(costInput(steps, 1));
+  }
 
   // ── Derived button state ───────────────────────────────────────────────
 
@@ -275,15 +350,7 @@ export function PromptForm() {
       : 0;
 
   const useCopies = form.promptMode === 'single' && copies > 1;
-  const anlasCost = calculateAnlasCost({
-    width: img2imgSource ? img2imgSource.width : form.width,
-    height: img2imgSource ? img2imgSource.height : form.height,
-    steps: form.steps,
-    smea: form.smea,
-    smeaDyn: form.smeaDyn,
-    nSamples: useCopies && copiesMode === 'batch' ? copies : 1,
-    isOpus: subscription?.tier === 3,
-  });
+  const anlasCost = calculateAnlasCost(costInput(form.steps, useCopies && copiesMode === 'batch' ? copies : 1));
   const costPerImage =
     batchCount > 1 ? anlasCost * batchCount :
     useCopies && copiesMode === 'queue' ? anlasCost * copies :
@@ -291,6 +358,7 @@ export function PromptForm() {
 
   function buttonLabel() {
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
+    if (chainBusy) return 'Chain running…';
     if (isLoading) return 'Generating…';
     const base =
       form.promptMode === 'batch' && batchCount > 1 ? `Generate (${batchCount})` :
@@ -416,7 +484,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Fur Mode</span>
-                <p className="text-xs text-slate-600">Prepends "fur dataset"</p>
+                <p className="text-xs text-slate-600">Prepends &quot;fur dataset&quot;</p>
               </div>
               <input
                 type="checkbox"
@@ -428,7 +496,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">NSFW</span>
-                <p className="text-xs text-slate-600">Prepends "nsfw" (after fur dataset)</p>
+                <p className="text-xs text-slate-600">Prepends &quot;nsfw&quot; (after fur dataset)</p>
               </div>
               <input
                 type="checkbox"
@@ -440,7 +508,7 @@ export function PromptForm() {
             <label className="flex cursor-pointer items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">Transparent BG</span>
-                <p className="text-xs text-slate-600">Appends &quot;transparent background&quot; (V5 only)</p>
+                <p className="text-xs text-slate-600">Adds &quot;transparent background&quot; before the quality tags (V5 only)</p>
               </div>
               <input
                 type="checkbox"
@@ -453,7 +521,7 @@ export function PromptForm() {
               <div>
                 <span className="text-xs font-semibold text-slate-400">Quality Tags</span>
                 <p className="text-xs text-slate-600">
-                  NovelAI's own hidden quality preset for the selected model
+                  NovelAI&apos;s own hidden quality preset for the selected model
                 </p>
               </div>
               <select
@@ -471,7 +539,7 @@ export function PromptForm() {
             <div className="flex items-center justify-between px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-slate-400">UC Preset</span>
-                <p className="text-xs text-slate-600">NovelAI's own hidden undesired-content preset</p>
+                <p className="text-xs text-slate-600">NovelAI&apos;s own hidden undesired-content preset</p>
               </div>
               <select
                 value={form.ucPreset}
@@ -489,13 +557,17 @@ export function PromptForm() {
         )}
       </div>
 
-      {/* Prompt editor tabs */}
-      <div className="flex flex-col gap-3">
-        {/* Tab bar */}
+      {/* Prompt editor tab bar — a direct child of the form (not nested with the
+          tab content) so it stays pinned under the header for the whole scroll,
+          not just while the prompt list is on screen. */}
+      <div ref={tabAnchorRef} className="-mb-4" />
+      {/* -top-5 cancels the scroll container's p-5, which sticky otherwise
+          honors, leaving a gap under the header for content to peek through. */}
+      <div className="sticky -top-5 z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2">
         <div className="flex overflow-hidden rounded-md border border-slate-700 text-xs">
           <button
             type="button"
-            onClick={() => setPromptTab('prompts')}
+            onClick={() => switchPromptTab('prompts')}
             className={`flex-1 py-1.5 transition-colors ${
               promptTab === 'prompts'
                 ? 'bg-violet-600 text-white'
@@ -506,7 +578,7 @@ export function PromptForm() {
           </button>
           <button
             type="button"
-            onClick={() => setPromptTab('characters')}
+            onClick={() => switchPromptTab('characters')}
             className={`flex-1 py-1.5 transition-colors ${
               promptTab === 'characters'
                 ? 'bg-violet-600 text-white'
@@ -519,7 +591,9 @@ export function PromptForm() {
             )}
           </button>
         </div>
+      </div>
 
+      <div className="flex flex-col gap-3">
         {/* Tab content */}
         {promptTab === 'prompts' ? (
           <BasePromptsEditor
@@ -528,6 +602,7 @@ export function PromptForm() {
             model={form.model}
             onChange={(basePrompts) => form.set('basePrompts', basePrompts)}
             onModeChange={(promptMode) => form.set('promptMode', promptMode)}
+            tokens={tokens}
           />
         ) : (
           <>
@@ -535,6 +610,8 @@ export function PromptForm() {
               characters={form.characters}
               onChange={(characters) => form.set('characters', characters)}
               maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
+              model={form.model}
+              tokens={tokens}
             />
             {form.characters.length > 0 && (
               <>
@@ -575,7 +652,11 @@ export function PromptForm() {
           <div>
             <span className="text-xs font-semibold text-slate-400">Copies</span>
             <p className="text-xs text-slate-600">
-              {copiesMode === 'batch' ? 'One batch request, all at once' : 'Queued one at a time, ~1.5s apart'}
+              {copiesMode === 'queue'
+                ? 'Queued one at a time, ~1.5s apart'
+                : copies > 1 && wildcards.usesRandom
+                  ? 'One request, so all copies share one wildcard roll — use Queue to roll each'
+                  : 'One batch request, all at once'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -630,35 +711,60 @@ export function PromptForm() {
         />
       )}
 
-      {/* Negative Prompt — collapsible, shows a one-line preview when closed */}
-      <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
-        <button
-          type="button"
-          onClick={() => setShowNegativePrompt((v) => !v)}
-          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-        >
-          <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Negative Prompt
-          </span>
-          {!showNegativePrompt && (
-            <span className="min-w-0 flex-1 truncate text-xs normal-case font-normal text-slate-600">
-              {form.negativePrompt || 'None'}
+      {/* Negative Prompt — collapsible, shows a one-line preview when closed.
+          Base Prompts tab only: characters carry their own per-character
+          negatives in each card's "Negative" sub-tab. */}
+      {promptTab === 'prompts' && (
+        <div className="overflow-hidden rounded-lg border border-slate-700/40 bg-slate-800/40">
+          <button
+            type="button"
+            onClick={() => setShowNegativePrompt((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+          >
+            <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Negative Prompt
             </span>
-          )}
-          <span className="flex-shrink-0 text-xs text-slate-500">{showNegativePrompt ? '▾' : '▸'}</span>
-        </button>
+            {!showNegativePrompt && (
+              <span className="min-w-0 flex-1 truncate text-xs normal-case font-normal text-slate-600">
+                {form.negativePrompt || 'None'}
+              </span>
+            )}
+            <span className="flex-shrink-0 text-xs text-slate-500">{showNegativePrompt ? '▾' : '▸'}</span>
+          </button>
 
-        {showNegativePrompt && (
-          <div className="border-t border-slate-700/40 p-3">
-            <textarea
-              value={form.negativePrompt}
-              onChange={(e) => form.set('negativePrompt', e.target.value)}
-              rows={3}
-              className={`${inputCls} resize-y`}
-            />
-          </div>
-        )}
-      </div>
+          {showNegativePrompt && (
+            <div className="border-t border-slate-700/40 p-3">
+              <TagAutocompleteField
+                as="textarea"
+                rows={3}
+                value={form.negativePrompt}
+                onChange={(text) => form.set('negativePrompt', text)}
+                model={form.model}
+                apiKey={apiKey}
+                className={`${inputCls} resize-y`}
+              />
+              {tokens && (
+                <div className="mt-2">
+                  <TokenMeter
+                    own={tokens.negative}
+                    others={tokens.characterUcTotal}
+                    othersLabel="Character negatives"
+                    budget={tokens.budget}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <TidbitLibrarySection model={form.model} />
+
+      <PresetsSection />
+
+      <ChainsSection />
+
+      <TransferSection />
 
       {/* Generation settings — collapsible; open by default so nothing already
           relied upon disappears, but collapsible to cut down sidebar scroll
@@ -673,7 +779,7 @@ export function PromptForm() {
             Generation Settings
             {!showGenSettings && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                {form.model.includes('5') ? 'V5' : form.model.includes('4-5') ? 'V4.5' : form.model.includes('4') ? 'V4' : 'V3'}
+                {modelShortName(form.model)}
                 {' · '}
                 {img2imgSource ? img2imgSource.width : form.width}×{img2imgSource ? img2imgSource.height : form.height}
                 {' · '}{form.steps} steps
@@ -863,17 +969,6 @@ export function PromptForm() {
 
       {showAdvanced && (
         <div className="flex flex-col gap-3 rounded-lg bg-slate-800/40 p-4 border border-slate-700/40">
-          {/* Quality Toggle */}
-          <label className="flex cursor-pointer items-center justify-between">
-            <span className="text-xs text-slate-400">Quality Toggle</span>
-            <input
-              type="checkbox"
-              checked={form.qualityToggle}
-              onChange={(e) => form.set('qualityToggle', e.target.checked)}
-              className="h-4 w-4 accent-violet-500"
-            />
-          </label>
-
           {/* SMEA */}
           <label className="flex cursor-pointer items-center justify-between">
             <span className="text-xs text-slate-400">SMEA</span>
@@ -939,16 +1034,104 @@ export function PromptForm() {
         </div>
       )}
 
-      {/* Generate button — sticky at the bottom of the scroll container */}
-      <div className="sticky bottom-0 -mx-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
-        <button
-          type="submit"
-          disabled={isLoading || !hasValidPrompt}
-          className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {buttonLabel()}
-        </button>
+      {/* Generate button — sticky at the bottom of the scroll container.
+          -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so
+          it sits flush against the bottom edge with nothing peeking under it. */}
+      <div className="sticky -bottom-5 -mx-5 -mb-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
+        {wildcards.unknown.length > 0 && (
+          <p className="mb-2 text-xs text-amber-400" title="No Tidbit Library entry has this label">
+            Unknown wildcard{wildcards.unknown.length > 1 ? 's' : ''}: {wildcards.unknown.join(', ')}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={isLoading || chainBusy || !hasValidPrompt}
+            className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {buttonLabel()}
+          </button>
+          {sweepRunning ? (
+            <button
+              type="button"
+              onClick={() => {
+                sweepStopRef.current = true;
+                setSweepStopping(true);
+              }}
+              disabled={sweepStopping}
+              title="Stop the sweep after the image in progress"
+              className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-red-700 disabled:opacity-60"
+            >
+              {sweepStopping ? 'Stopping…' : 'Stop'}
+            </button>
+          ) : (
+            form.promptMode === 'single' && (
+              <button
+                type="button"
+                onClick={() => setShowSweep(true)}
+                disabled={isLoading || chainBusy || !hasValidPrompt}
+                title="X/Y sweep: compare settings or wildcard options side by side"
+                className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Sweep
+              </button>
+            )
+          )}
+        </div>
       </div>
+
+      {showSweep && (
+        <SweepModal
+          defaults={{ scale: form.scale, steps: form.steps, sampler: form.sampler, seed: form.seed }}
+          randomEntries={wildcards.randomEntries}
+          unknownRefs={wildcards.unknown}
+          costFor={sweepCostFor}
+          onRun={runSweep}
+          onClose={() => setShowSweep(false)}
+        />
+      )}
+
+      {unknownRefs && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onMouseDown={(e) => e.target === e.currentTarget && setUnknownRefs(null)}
+        >
+          <div className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <div>
+              <h2 className="text-sm font-bold text-slate-100">
+                Unknown wildcard{unknownRefs.length > 1 ? 's' : ''}
+              </h2>
+              <p className="mt-2 text-xs text-slate-400">
+                No Tidbit Library entry is labelled{' '}
+                {unknownRefs.map((r, i) => (
+                  <span key={r}>
+                    {i > 0 && ', '}
+                    <code className="rounded bg-slate-800 px-1 text-amber-300">{r}</code>
+                  </span>
+                ))}
+                , so {unknownRefs.length > 1 ? 'they' : 'it'} will be sent to NovelAI as literal text.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setUnknownRefs(null)}
+                className="flex-1 rounded-lg bg-slate-700 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={runGeneration}
+                className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
+              >
+                Generate Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

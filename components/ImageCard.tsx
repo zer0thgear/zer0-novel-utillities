@@ -37,6 +37,30 @@ export function ImageCard({ image, focused }: ImageCardProps) {
         </div>
       )}
 
+      {/* Sweep cell caption, e.g. "5 · Euler" */}
+      {image.sweep && (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1 pb-0.5 pt-2 text-[9px] font-semibold text-slate-200"
+          title={[
+            `${image.sweep.x.name}: ${image.sweep.x.values[image.sweep.xIndex]}`,
+            image.sweep.y && `${image.sweep.y.name}: ${image.sweep.y.values[image.sweep.yIndex ?? 0]}`,
+          ].filter(Boolean).join('\n')}
+        >
+          {image.sweep.x.values[image.sweep.xIndex]}
+          {image.sweep.y && ` · ${image.sweep.y.values[image.sweep.yIndex ?? 0]}`}
+        </div>
+      )}
+
+      {/* Chain step caption, e.g. "2/3 · Upscale ×2" */}
+      {image.chain && (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1 pb-0.5 pt-2 text-[9px] font-semibold text-slate-200"
+          title={`Chain "${image.chain.name}", step ${image.chain.step} of ${image.chain.total}: ${image.chain.label}`}
+        >
+          {image.chain.step}/{image.chain.total} · {image.chain.label}
+        </div>
+      )}
+
       {/* Remove button — visible on hover */}
       <button
         type="button"

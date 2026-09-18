@@ -30,8 +30,9 @@ export function ApiKeyModal() {
           Enter your NovelAI API Key
         </h2>
         <p className="mb-6 text-sm text-slate-400 leading-relaxed">
-          Your key is stored only in this browser session (cleared when you close the tab)
-          and is only ever sent directly to NovelAI&apos;s servers.
+          Your key is saved in this browser (it stays after you close it, until you use
+          &ldquo;Change key&rdquo;) and is only ever sent directly to NovelAI&apos;s servers.
+          Don&apos;t enter it on a shared or public machine.
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input

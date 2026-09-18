@@ -44,8 +44,27 @@ One practical gotcha: this endpoint is only fetched once per page load in most i
 ### Generation
 
 - `POST /ai/generate-image` (single response) and `POST /ai/generate-image-stream` (SSE, delivers intermediate preview frames then a final image) take an identical request body: `{ input, model, action, parameters }`. This envelope has been stable across V3 → V4 → V4.5 → V5; don't assume a new model generation means a new request shape.
+- **Model IDs**: only V4 *Curated* carries `-preview` (`nai-diffusion-4-curated-preview`). V4 Full is `nai-diffusion-4-full`, and `nai-diffusion-4-full-preview` is rejected ("Validation error: model … doesn't exist"). Inpainting IDs aren't always "base + `-inpainting`": V4 Curated's is `nai-diffusion-4-curated-inpainting`, and V5 Curated has none (`nai-diffusion-5-curated-inpainting` doesn't exist), so NovelAI's client inpaints V5 Curated with `nai-diffusion-4-5-curated-inpainting`. **Presets follow the model actually sent**: that V5 Curated inpaint gets V4.5 Curated's quality text (`…, very aesthetic, masterpiece, no text, -0.8::feet::, rating:general`) and V4.5 Curated's UC lists, not V5's. A level V4.5 Curated doesn't have (Light quality, Furry Focus UC) means no preset. This was confirmed on 2026-09-18 from novelai.net's own outgoing request: its page calls `window.fetch` for `/ai/generate-image-stream` with a `FormData` whose `request` part is the JSON body, so a `fetch` wrapper can read it. Its displayed and IndexedDB-stored inpaint results carry no metadata, because they're composited client-side, so the request is the only place to see this. `GET /ai/generate-image/suggest-tags?model=…` is a free way to check an ID: unknown models return 400 "Model not found".
 - The non-streaming response is a **ZIP file** (magic bytes `PK`), not a raw image — this is also true for `/ai/augment-image` and `/ai/upscale`. Always check for the ZIP signature before assuming the bytes are directly decodable as an image.
 - Determinism-critical parameters that are easy to get wrong because they don't correspond to any obvious UI control on NovelAI's basic interface: `skip_cfg_above_sigma` (must be `null` unless deliberately replicating NovelAI's opt-in "Variety+" feature — never hardcode a nonzero value), `prefer_brownian` (`true`) and `deliberate_euler_ancestral_bug` (`false`) affect the noise sampler for ancestral/SDE samplers. Getting any of these wrong doesn't error — it silently produces a different (but plausible-looking) image for the same seed.
+- **Don't send `qualityToggle`.** NovelAI's current client never sends it: it migrated the old boolean to `qualityPresetId` and composes quality tags client-side. The server still reads it, though. On 2026-09-18, with an otherwise identical request (V5 Full, seed 1234567, quality Standard, UC Heavy), `qualityToggle: true` gave an image about 2 levels brighter on average than novelai.net's (max 9/255 on an 8×12 block-mean grid). Leaving it out, or sending `false`, matched novelai.net's image exactly on that grid. Other fields its client sends that we don't made no measurable difference: `params_version: 4` (we send 3), `tag_hint_qt` / `tag_hint_uc_preset` (numeric preset hints), `straight_alpha`, and `stream: "msgpack"` on the stream endpoint.
+- **Request fields now mirror novelai.net's own (captured 2026-09-18).** This app sends:
+  - `params_version: 4`.
+  - The named presets `qualityPresetId` / `ucPresetId`, plus their numeric hints `tag_hint_qt` / `tag_hint_uc_preset` (none 0, standard 1, heavy 2, light 3, humanFocus 4, furryFocus 5). The preset *text* is still composed client-side.
+  - `straight_alpha: true` on V5, which is NovelAI's default setting.
+  - `autoSmea: false` and `normalize_reference_strength_multiple: true` on V4+, plus `legacy_v3_extend: false` everywhere.
+  - `inpaintImg2ImgStrength: 1` on V4+ generations, and `add_original_image: true`.
+
+  It no longer sends:
+  - `ucPreset` (numeric).
+  - `sm` / `sm_dyn` outside V3.
+  - Empty `reference_*_multiple` arrays.
+  - `skip_cfg_above_sigma` outside V3.
+
+  It skips the transport-only `stream: "msgpack"` / `image_format: "webp"`. None of these changed the image: identical output with the old and new field sets.
+- **V3 must not get the V4 caption fields.** `v4_prompt` or `v4_negative_prompt` on a `nai-diffusion-3` request gets a bare `500 Internal Server Error`. NovelAI omits both, along with `use_coords` and `legacy_uc`, for V3, and sends `skip_cfg_above_sigma: null` and `characterPrompts: []`.
+- **The same request can produce a different image on a different day.** On 2026-09-18 an identical V5 Full request (same seed, prompt and parameters, same `model_hash` 0ADF9AB7) produced a visibly different image in the evening than in the morning, on novelai.net and in this app alike. The two still matched each other exactly. Always regenerate the reference image on novelai.net just before comparing; never reuse an old one.
+- **Comparing images across runs:** exact pixel hashes now differ between two identical requests (tiny GPU-level noise), so compare downsampled grids instead: an 8×12 block mean, `imageSmoothingQuality: 'high'`. novelai.net also re-encodes the PNG it shows (one big IDAT, no `pHYs`, a larger file) from its msgpack stream. The pixels still compare fine, but file bytes and sizes won't match the API's PNG.
 - Every image NovelAI's server returns has full generation metadata embedded in the PNG file itself, as `tEXt` chunks: `Title`, `Description` (composed positive prompt), `Software`, `Source` (model name + hash — doesn't distinguish e.g. V5 Full vs Curated), `Generation_time`, and `Comment` (a JSON blob with the complete parameter set, including the same `v4_prompt`/`v4_negative_prompt` structure used in requests). No API call needed to read this — just parse the PNG chunks client-side.
 
 ### Quality Tags / UC ("Undesired Content") Presets
@@ -54,22 +73,61 @@ NovelAI's current web client exposes these as hidden, multi-level, per-model pre
 
 The literal tag text for every level and every model is fully documented, unadvertised, on **docs.novelai.net**: `/en/image/qualitytags/` and `/en/image/undesiredcontent/`. Reproducing these presets client-side (append/prepend the documented literal text) is not a hack — it's how these presets worked natively before NovelAI moved the expansion server-side, and produces the same generation as NovelAI's own preset since it's the same text NovelAI itself injects.
 
+**Update (2026-09-18): NovelAI's client is the source of truth, not the docs. This app now follows the client.** The client's JS bundle has its own preset tables, and its request builder uses them: quality first, then `uc = ucPreset(model, ucPresetId, finalPrompt, uc)`. Where the client differs from the docs:
+- Quality: V4.5 Full "Standard" has no leading `location`, and V4 Curated uses `best quality`, not `amazing quality`.
+- UC lists: V4 Full and V4 Curated Heavy and Light end with `white blank page, blank page`. V3 Furry has its own Heavy and Light lists, not V3 Anime's, and no Human Focus.
+- **`nsfw` in the UC**: on every non-Curated model (V3, V4 Full, V4.5 Full, V5 Full), whenever a UC preset other than None is selected, `nsfw, ` goes in front of the UC unless the final positive prompt contains "nsfw" (case-insensitive substring).
+- **Placement**: on V4+, quality tags (and on V5, `transparent background` just before them) go before the first `text:` section (`/(?:^|\s|[,.:[\]{}、。])text:(?!:)/i`), so they aren't rendered as text, and only onto the first prompt-mix `|` part. The UC preset also goes on the first `|` part only. V3 appends quality to every `|` part, ahead of a trailing `:weight`.
+- There is no removal of UC preset tags that also appear in the positive prompt. An earlier version of this app did that; it's gone.
+
+The V5 and V4.5 Full UC lists and the V5, V4 Full and V3 quality texts already matched the docs. The app's one deliberate deviation is comma normalization at the joins (`joinPromptParts`), so no `,,` appears where NovelAI would produce one. After aligning, the app's token counts equal NovelAI's on V4.5 Full and V5 Curated with quality, UC preset and a character.
+
 ### Anlas pricing
 
-Not published anywhere by NovelAI. The formula (for all "modern" models — V3 through V5):
+Not published by NovelAI, but its web client computes every price locally. The formulas below were read from novelai.net's bundle on 2026-09-18 and checked against prices its UI displays, for example 832×1216 at 30 steps: V5 Curated 32, V4.5 Full 21.
 
 ```
-r = max(width * height, 65536)
-per_sample = max(ceil((A*r + B*r*steps) * smea_factor), 2)
-opus_discount = isOpus && steps <= 28 && r <= 1024*1024   // subtracts exactly 1 sample's cost
-cost = per_sample * (n_samples - (opus_discount ? 1 : 0))
+pixels     = width * height
+perSample  = ceil(2.951823174884865e-6 * pixels + 5.753298233447344e-7 * pixels * steps)
+             * (sm && sm_dyn ? 1.4 : sm ? 1.2 : 1)
+if V5:       perSample *= 1.5
+perSample  = max(ceil(perSample * strength), 2)      // strength = img2img/enhance strength, else 1
+free       = Opus && pixels <= 1048576 && steps <= 28 && !(V5 && usage.isNegative)
+cost       = perSample * (n_samples - (free ? 1 : 0))
 ```
 
-As of 2026-09-17, `A = 4.9e-6`, `B = 8.55e-7` fit 4 real (resolution, steps) → cost data points read directly off novelai.net's own live cost preview (adjust the Settings panel, no generation needed to see the number) exactly. **These constants will drift.** If they look wrong, re-derive them the same way: pick two resolutions and two step counts, read the 4 resulting costs off NovelAI's own UI, solve the two linear equations. A community-sourced formula predicted 42 Anlas where the real cost was 63 — don't trust a copied formula without at least one live cross-check against a non-free (non-Opus-discounted) data point. `sm`/`sm_dyn` (SMEA) multipliers (1.2x / 1.4x) are carried over from that same community formula and were **not** independently re-verified — NovelAI's current web UI has no SMEA toggle at all to test against. Strength/noise (img2img) do **not** affect cost at all, confirmed live by dragging those sliders on NovelAI's own UI at a fixed resolution/step count and watching the displayed cost stay fixed.
+- **V3, V4, V4.5 and V5 share the curve, and V5 costs 1.5× more.** An earlier empirical fit used one curve for every model. It happened to match V5 but overstated V3/V4/V4.5 by about 1.5×.
+- **img2img strength scales the price.** An earlier "confirmed live" note said it didn't. That check almost certainly happened at a size where the Opus allowance made everything read 0.
+- **Only V5 has an Opus usage limit** (`usage.isNegative` on `/user/subscription`). Once it's used up, V5 stops being free; other models don't.
+- **Upscale** (`/ai/upscale`) is a flat price by input size, with no Opus discount: ≤1 MP 1, ≤1.75 MP 2, ≤2.45 MP 3, ≤3.1 MP 4. NovelAI's own UI doesn't offer Upscale above 1 MP.
+- **Director Tools** are priced as a 28-step V3 generation at the image's size clamped to 1–3.1 MP, so Opus gets them free at ≤1 MP. Background removal is 3× that plus 5, and never discounted. Pixel Snap is free.
 
 ### Tag autocomplete
 
-`GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores.
+`GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores. `model` genuinely changes the result set/order, not just a vocabulary filter on one shared list — double-check you're passing the exact model string the live UI is set to before comparing, a mismatch (e.g. `nai-diffusion-4-5-curated` vs `nai-diffusion-5-curated`) silently gives a different-looking but plausible result.
+
+NovelAI's own client renders each suggestion as a chip with a small relevance dot. That dot's brightness tracks `count`, not `confidence` — confirmed by reading the dot's actual computed CSS color for a live response and comparing against that response's JSON (two tags with the same `confidence` but very different `count` had very different dot brightness). It also debounces roughly 500ms after the last keystroke before firing the request (timed by patching `window.fetch` on novelai.net itself and diffing the request timestamp against the triggering keystroke's `input` event, twice, for consistency).
+
+### Prompt token counting
+
+NovelAI counts prompt tokens entirely client-side, in a Web Worker that loads `https://novelai.net/tokenizer/compressed/<name>.def?v=2&static=true`. That file is proprietary compressed JSON, and it's served without CORS headers, so other origins can't use it. Which tokenizer and limit apply depends on the model:
+
+| Models | Tokenizer | Limit |
+| --- | --- | --- |
+| V5 Full | Qwen 3.5, byte-level BPE (`qwen35_tokenizer.def`: 248,070 tokens, 247,587 merges, NFC) | 1471 |
+| V5 Curated | same | 703 |
+| V4 / V4.5 (all variants) | T5, SentencePiece Unigram (`t5_tokenizer.def`: the standard 32,100-piece T5 vocab) | 512 |
+| V3 | CLIP BPE | 225 per prompt |
+
+Details that matter for matching its numbers exactly:
+- **One shared budget, not one per field.** For V4 and later, the base prompt and every enabled character's prompt draw on the same limit. The negative prompt and every character's negative share a second one. Disabled characters count 0.
+- **Counted text is the composed text**: the quality preset is added to the base prompt and the UC preset to the negative, exactly as in the request (see the update above). Character fields are counted as typed.
+- **Preprocessing**: inside `||a|b||` random groups only the longest option counts. The text is then split on single `|` (the old prompt-mix separator, at most 6 parts) and each part is counted separately. NovelAI's own `text:` macros are expanded first; this app has none.
+- **T5 specifics**: `[`, `]`, `{`, `}` and every `-?\d*\.?\d*::` are stripped first. There is no normalizer, although the HF config lists a Precompiled one. The text is split on `/\s+/` without dropping empty strings, so a leading or trailing space costs a `▁` token. Every word gets a `▁` prefix. The Viterbi lattice walks UTF-16 code units. Every part includes EOS (`</s>`), so an empty field counts 1.
+- **CLIP specifics (V3)**: there's no shared pool. Each `|` part of a field has its own 225 limit, so a field's count is its largest part. `[`, `]`, `{`, `}` become spaces, not deleted. HTML entities are decoded twice, with the `html-entities` npm package (`&amp;amp;` → `&`). Whitespace collapses and everything is lowercased. Weight syntax isn't stripped, and no start/end tokens are counted. The vocabulary is OpenAI CLIP's `bpe_simple_vocab_16e6.txt`, and only its first 48,894 merges are used.
+- **Qwen specifics**: nothing is stripped (braces and `1.5::` weights count), and there's no EOS. The pre-tokenizer regex is Qwen's, with `\s` written out as Unicode White_Space. Literal special tokens such as `<|endoftext|>` count as 1.
+
+This app bundles the open Apache-2.0 equivalents: the T5 vocab from `google-t5/t5-base` and Qwen 3.5's `merges.txt`, in `public/tokenizers/`. It reimplements the counting in `lib/tokenizers/`. The CLIP merges come from OpenAI CLIP (MIT); their hash matches NovelAI's copy. The CLIP counter had 0 mismatches on the same corpus plus 32 HTML-entity and edge cases. Verified on 2026-09-18 by running NovelAI's own tokenizer worker in a logged-in novelai.net tab against a seeded 1,520-prompt corpus: tags, weights, unicode, emoji, whitespace edge cases, special tokens. **0 mismatches** for T5 or Qwen. The harness caught deliberate single-rule mutations (282 to 796 mismatches). Full-pipeline counts (quality tags, UC preset, a character) were also checked against the numbers NovelAI's UI displays.
 
 ### Editing endpoints (Director Tools, Upscale, Variations)
 

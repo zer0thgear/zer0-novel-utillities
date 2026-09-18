@@ -1,18 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
-import { useVariations, VARIATION_COUNT } from '@/hooks/useVariations';
+import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useVariations';
+import { useChainLauncher } from '@/hooks/useChainLauncher';
+import { useChainBusy } from '@/store/chainStore';
+import { chainSummary } from '@/lib/chains';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
-import { calculateAnlasCost } from '@/lib/anlasCost';
+import {
+  calculateAnlasCost,
+  MAX_GENERATION_PIXELS,
+  opusStatus,
+  UPSCALE_MAX_PIXELS,
+  upscaleCost,
+} from '@/lib/anlasCost';
 import { InpaintModal } from './InpaintModal';
 import { EditModal } from './EditModal';
 import { DirectorToolsModal } from './DirectorToolsModal';
 import { MetadataModal } from './MetadataModal';
+import { DEFAULT_IMPORT, ImportModal } from './ImportModal';
+import { metadataFromImage } from '@/lib/naiMetadata';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -32,7 +43,7 @@ export function ImageViewer() {
   const setSeed = useSettingsStore((s) => s.set);
   const form = useSettingsStore();
   const { subscription } = useSubscription();
-  const isOpus = subscription?.tier === 3;
+  const opus = opusStatus(subscription);
 
   const focusedImage = images.find((img) => img.id === focusedImageId) ?? null;
 
@@ -47,6 +58,12 @@ export function ImageViewer() {
   const [showDirectorTools, setShowDirectorTools] = useState(false);
   const [baseImageSet, setBaseImageSet] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showReuse, setShowReuse] = useState(false);
+  const [showChains, setShowChains] = useState(false);
+  const chains = useSettingsStore((s) => s.chains);
+  const launchChain = useChainLauncher();
+  // While a chain runs, other image actions wait so requests never overlap.
+  const chainBusy = useChainBusy();
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
@@ -57,28 +74,51 @@ export function ImageViewer() {
   const round64 = (n: number) => Math.round(n / 64) * 64;
   const enhanceCost = focusedImage
     ? calculateAnlasCost({
+        model: form.model,
         width: enhanceUpscale ? round64(focusedImage.parameters.width * 1.5) : focusedImage.parameters.width,
         height: enhanceUpscale ? round64(focusedImage.parameters.height * 1.5) : focusedImage.parameters.height,
         steps: form.steps,
         smea: false,
         smeaDyn: false,
-        isOpus,
+        strength: ENHANCE_LEVELS[enhanceLevel - 1].strength,
+        ...opus,
       })
     : 0;
   const variationsCost = focusedImage
     ? calculateAnlasCost({
+        model: focusedImage.model,
         width: focusedImage.parameters.width,
         height: focusedImage.parameters.height,
         steps: focusedImage.parameters.steps,
         smea: false,
         smeaDyn: false,
         nSamples: VARIATION_COUNT,
-        isOpus,
+        strength: VARIATION_STRENGTH,
+        ...opus,
       })
     : 0;
+  const upscalePrice = focusedImage ? upscaleCost(focusedImage.parameters.width, focusedImage.parameters.height) : null;
 
-  // Reset transient state whenever the focused image changes
-  useEffect(() => {
+  // NovelAI refuses renders past ~3.1 MP (Enhance, Variations, Inpaint, Edit
+  // all render at the image's size, Enhance ×1.5 larger) and only upscales
+  // images up to 1 MP. Explain instead of letting the request fail.
+  const imgW = focusedImage?.parameters.width ?? 0;
+  const imgH = focusedImage?.parameters.height ?? 0;
+  const enhanceW = enhanceUpscale ? round64(imgW * 1.5) : imgW;
+  const enhanceH = enhanceUpscale ? round64(imgH * 1.5) : imgH;
+  const tooLargeHint = (w: number, h: number) =>
+    `NovelAI can't render ${w}×${h}; its limit is about 3.1 megapixels.`;
+  const renderTooLarge = imgW * imgH > MAX_GENERATION_PIXELS ? tooLargeHint(imgW, imgH) : null;
+  const enhanceTooLarge = enhanceW * enhanceH > MAX_GENERATION_PIXELS ? tooLargeHint(enhanceW, enhanceH) : null;
+  const upscaleTooLarge =
+    imgW * imgH > UPSCALE_MAX_PIXELS ? `Upscale only takes images up to 1 megapixel; this one is ${imgW}×${imgH}.` : null;
+
+  // Reset transient state whenever the focused image changes. Done during
+  // render (React's pattern for state derived from a prop change) rather than
+  // in an effect, so the new image never renders with the old image's panels.
+  const [stateFor, setStateFor] = useState(focusedImageId);
+  if (stateFor !== focusedImageId) {
+    setStateFor(focusedImageId);
     setViewingOriginal(false);
     setShowEnhance(false);
     setShowInpaint(false);
@@ -86,7 +126,8 @@ export function ImageViewer() {
     setShowDirectorTools(false);
     setBaseImageSet(false);
     setShowMetadata(false);
-  }, [focusedImageId]);
+    setShowChains(false);
+  }
 
   const handleEnhance = async () => {
     if (!focusedImage) return;
@@ -121,6 +162,20 @@ export function ImageViewer() {
       )}
       {showDirectorTools && focusedImage && (
         <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
+      )}
+      {showReuse && focusedImage && (
+        <ImportModal
+          key={focusedImage.id}
+          title="Reuse this image"
+          importHeading="Load back into the sidebar:"
+          previewUrl={focusedImage.url}
+          metadata={metadataFromImage(focusedImage)}
+          // Your own image: bringing its settings back is the usual intent.
+          defaults={{ ...DEFAULT_IMPORT, settings: true }}
+          onViewMetadata={() => setShowMetadata(true)}
+          escapeDisabled={showMetadata}
+          onClose={() => setShowReuse(false)}
+        />
       )}
       {showMetadata && focusedImage && (
         <MetadataModal image={focusedImage} onClose={() => setShowMetadata(false)} />
@@ -201,16 +256,24 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={handleEnhance}
-              disabled={isEnhancing}
+              disabled={isEnhancing || chainBusy || !!enhanceTooLarge}
+              title={enhanceTooLarge ?? undefined}
               className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isEnhancing
                 ? 'Enhancing…'
-                : subscription
+                : subscription && !enhanceTooLarge
                   ? enhanceCost > 0 ? `Enhance — ~${enhanceCost} Anlas` : 'Enhance — Free'
                   : 'Enhance Image'}
             </button>
           </div>
+
+          {enhanceTooLarge && (
+            <p className="mt-2 text-xs text-amber-400">
+              {enhanceTooLarge}
+              {enhanceUpscale && !renderTooLarge && ' Untick Upscale ×1.5 to enhance at the current size.'}
+            </p>
+          )}
 
           {/* Enhance error */}
           {enhanceError && (
@@ -274,21 +337,26 @@ export function ImageViewer() {
             <button
               type="button"
               onClick={() => setShowEdit(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? undefined}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Edit
             </button>
             <button
               type="button"
               onClick={() => setShowInpaint(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? undefined}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Inpaint
             </button>
             <button
               type="button"
               onClick={() => setShowDirectorTools(true)}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+              disabled={chainBusy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Tools
             </button>
@@ -302,24 +370,33 @@ export function ImageViewer() {
             </button>
             <button
               type="button"
+              onClick={() => setShowReuse(true)}
+              title="Load this image's prompt and settings back into the sidebar"
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
+            >
+              Reuse
+            </button>
+            <button
+              type="button"
               onClick={() => { clearVariationsError(); generateVariations(focusedImage); }}
-              disabled={isGeneratingVariations}
-              title={subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined}
+              disabled={isGeneratingVariations || chainBusy || !!renderTooLarge}
+              title={renderTooLarge ?? (subscription ? `Generates ${VARIATION_COUNT} variants in one batch` : undefined)}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isGeneratingVariations
                 ? 'Generating…'
-                : subscription
+                : subscription && !renderTooLarge
                   ? variationsCost > 0 ? `Variations — ~${variationsCost} Anlas` : 'Variations — Free'
                   : 'Variations'}
             </button>
             <button
               type="button"
               onClick={() => { clearUpscaleError(); upscale(focusedImage); }}
-              disabled={isUpscaling}
+              disabled={isUpscaling || chainBusy || !!upscaleTooLarge}
+              title={upscaleTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isUpscaling ? 'Upscaling…' : 'Upscale'}
+              {isUpscaling ? 'Upscaling…' : upscalePrice && !upscaleTooLarge ? `Upscale — ~${upscalePrice} Anlas` : 'Upscale'}
             </button>
             <button
               type="button"
@@ -352,6 +429,42 @@ export function ImageViewer() {
             >
               Enhance
             </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowChains((v) => !v)}
+                disabled={chainBusy}
+                title="Run a saved chain of actions on this image"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  showChains ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                Chain
+              </button>
+              {showChains && (
+                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                  {chains.map((chain) => (
+                    <button
+                      key={chain.id}
+                      type="button"
+                      onClick={() => {
+                        setShowChains(false);
+                        launchChain(chain, [focusedImage]);
+                      }}
+                      className="flex flex-col items-start rounded px-2 py-1.5 text-left transition-colors hover:bg-slate-800"
+                    >
+                      <span className="text-xs font-semibold text-slate-200">{chain.name}</span>
+                      <span className="w-full truncate text-[10px] text-slate-500">{chainSummary(chain)}</span>
+                    </button>
+                  ))}
+                  {chains.length === 0 && (
+                    <p className="px-2 py-1.5 text-xs text-slate-500">
+                      No chains yet. Make one under Chains in the sidebar.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => downloadImage(focusedImage)}

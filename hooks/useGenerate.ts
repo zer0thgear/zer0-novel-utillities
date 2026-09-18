@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { extractImagesFromZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { GeneratedImage, NovelAIGenerateRequest } from '@/types/novelai';
+import { GeneratedImage, NovelAIGenerateRequest, PromptSource, SweepCellInfo, WildcardPicks } from '@/types/novelai';
 
 interface GenerateOptions {
   /** If this generation is an enhancement, the source image's ID and a fresh object URL. */
@@ -15,10 +15,17 @@ interface GenerateOptions {
    *  clump them visually — a true batch's own samples, or one call in a
    *  queued sequence of separate single-image calls. */
   batchId?: string;
+  /** Rolls that produced this request's prompts, stored on the resulting images. */
+  wildcardPicks?: WildcardPicks;
+  /** Grid cell this request fills, when it's part of an X/Y sweep. */
+  sweep?: SweepCellInfo;
+  /** The prompt as written, for Reuse (see PromptSource). */
+  source?: PromptSource;
 }
 
 interface UseGenerateReturn {
-  generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<boolean>;
+  /** The images added to the session, or null if the request failed. */
+  generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<GeneratedImage[] | null>;
   error: string | null;
   clearError: () => void;
 }
@@ -38,7 +45,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
 
-  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     try {
       const response = await fetch('https://image.novelai.net/ai/generate-image', {
@@ -72,19 +79,22 @@ export function useGenerate(): UseGenerateReturn {
         sourceImageId: opts?.sourceImageId,
         sourceImageUrl: opts?.sourceImageUrl,
         batchId: opts?.batchId,
+        wildcardPicks: opts?.wildcardPicks,
+        sweep: opts?.sweep,
+        source: opts?.source,
       }));
 
       addImages(images);
-      return true;
+      return images;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     }
   };
 
   // ── Streaming (SSE) generation ─────────────────────────────────────────────
 
-  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     try {
       const response = await fetch('https://image.novelai.net/ai/generate-image-stream', {
@@ -106,7 +116,7 @@ export function useGenerate(): UseGenerateReturn {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalImageAdded = false;
+      let finalImage: GeneratedImage | null = null;
 
       // Process one parsed SSE event.
       //
@@ -170,7 +180,7 @@ export function useGenerate(): UseGenerateReturn {
             imageBlob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
           }
 
-          addImages([{
+          finalImage = {
             id: crypto.randomUUID(),
             url: URL.createObjectURL(imageBlob),
             blob: imageBlob,
@@ -183,8 +193,11 @@ export function useGenerate(): UseGenerateReturn {
             sourceImageId: opts?.sourceImageId,
             sourceImageUrl: opts?.sourceImageUrl,
             batchId: opts?.batchId,
-          }]);
-          finalImageAdded = true;
+            wildcardPicks: opts?.wildcardPicks,
+            sweep: opts?.sweep,
+            source: opts?.source,
+          };
+          addImages([finalImage]);
           setStreamPreview(null);
 
         } else if (isError) {
@@ -220,25 +233,25 @@ export function useGenerate(): UseGenerateReturn {
         }
       }
 
-      if (!finalImageAdded) {
+      if (!finalImage) {
         // The stream closed without a recognised final event.
         // Surface as an error so the user knows something went wrong.
         throw new Error('Stream closed without delivering a final image. Check the browser console for raw SSE output.');
       }
-      return true;
+      return [finalImage];
     } catch (err) {
       setStreamPreview(null);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return false;
+      return null;
     }
   };
 
   // ── Public generate function ────────────────────────────────────────────────
 
-  const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<boolean> => {
+  const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     if (!apiKey) {
       setError('No API key set. Please enter your NovelAI API key.');
-      return false;
+      return null;
     }
     return streamingMode && !opts?.forceStandard
       ? generateStreaming(request, opts)

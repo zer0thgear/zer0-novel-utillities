@@ -1,16 +1,32 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { PromptForm } from '@/components/PromptForm';
 import { ImageViewer } from '@/components/ImageViewer';
 import { HistoryStrip } from '@/components/ImageGrid';
 import { DropZone } from '@/components/DropZone';
+import { ChainRunner } from '@/components/ChainRunner';
 import { useSessionStore } from '@/store/sessionStore';
 
 export default function Home() {
   const apiKey = useSessionStore((s) => s.apiKey);
   const setApiKey = useSessionStore((s) => s.setApiKey);
+  const hasImages = useSessionStore((s) => s.images.length > 0);
+  const isGenerating = useSessionStore((s) => s.isLoading);
+
+  // History is memory-only (like NovelAI's own), so a refresh or close loses
+  // it. Ask first, but only when there's something to lose: images in
+  // history, or a generation in flight. NovelAI doesn't warn on a fresh page.
+  useEffect(() => {
+    if (!hasImages && !isGenerating) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // still required by some Chromium versions to show the prompt
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasImages, isGenerating]);
 
   const [panelWidth, setPanelWidth] = useState(380);
 
@@ -34,13 +50,14 @@ export default function Home() {
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <ApiKeyModal />
       {apiKey && <DropZone />}
+      {apiKey && <ChainRunner />}
 
       {/* ── Left panel: generation form ── */}
       <aside
-        className="flex flex-shrink-0 flex-col bg-slate-900/40"
+        className="flex flex-shrink-0 flex-col bg-sidebar"
         style={{ width: panelWidth }}
       >
-        <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 bg-slate-900/80 px-5 py-4 backdrop-blur-sm">
+        <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 px-5 py-4">
           <h1 className="text-base font-bold tracking-tight">
             <span className="text-violet-400">NAI</span> Image Generator
           </h1>

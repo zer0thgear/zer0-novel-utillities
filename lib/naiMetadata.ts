@@ -1,4 +1,4 @@
-import { NovelAIModel } from '@/types/novelai';
+import { GeneratedImage, NovelAIModel, PromptSource } from '@/types/novelai';
 
 // NovelAI embeds generation metadata directly in PNG tEXt chunks on every
 // image its server returns (confirmed 2026-09-17 by reading the raw bytes of
@@ -11,6 +11,7 @@ import { NovelAIModel } from '@/types/novelai';
 
 export interface ParsedCharacter {
   prompt: string;
+  uc: string;
   center: { x: number; y: number };
 }
 
@@ -33,6 +34,35 @@ export interface ParsedNaiMetadata {
    *  confident guess could be made; callers should leave the current model
    *  selection untouched in that case rather than silently picking one. */
   guessedModel?: NovelAIModel;
+  /** Only known for this app's own history images (see metadataFromImage):
+   *  the sidebar modifiers that produced it, restored with Settings. */
+  modifiers?: PromptSource['modifiers'];
+}
+
+/** The same shape as a dropped PNG's metadata, but read from a history image,
+ *  which knows more: the prompt before modifiers were applied (so reusing it
+ *  doesn't double up quality tags or prefixes), the exact model, and the
+ *  modifiers themselves. Images from before that was recorded fall back to
+ *  the text that was actually sent. */
+export function metadataFromImage(image: GeneratedImage): ParsedNaiMetadata {
+  const p = image.parameters;
+  return {
+    prompt: image.source?.prompt ?? image.prompt,
+    negativePrompt: image.source?.negativePrompt ?? image.negativePrompt,
+    characters: (p.characterPrompts ?? []).map((c) => ({ prompt: c.prompt, uc: c.uc, center: c.center })),
+    seed: image.seed,
+    steps: p.steps,
+    scale: p.scale,
+    width: p.width,
+    height: p.height,
+    sampler: p.sampler,
+    noiseSchedule: p.noise_schedule,
+    smea: p.sm ?? false,
+    smeaDyn: p.sm_dyn ?? false,
+    cfgRescale: p.cfg_rescale,
+    guessedModel: image.model,
+    modifiers: image.source?.modifiers,
+  };
 }
 
 function readPngTextChunks(bytes: Uint8Array): Record<string, string> {
@@ -75,7 +105,7 @@ function guessModel(sourceOrModelName: string | undefined): NovelAIModel | undef
   if (s.includes('furry')) return 'nai-diffusion-furry-3';
   if (s.includes('v5')) return 'nai-diffusion-5-full';
   if (s.includes('v4.5') || s.includes('4-5')) return 'nai-diffusion-4-5-full';
-  if (s.includes('v4')) return 'nai-diffusion-4-full-preview';
+  if (s.includes('v4')) return 'nai-diffusion-4-full';
   if (s.includes('v3') || s.includes('diffusion 3')) return 'nai-diffusion-3';
   return undefined;
 }
@@ -95,15 +125,23 @@ export function extractNaiMetadata(buffer: ArrayBuffer): ParsedNaiMetadata | nul
   const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback);
   const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
 
-  const v4Prompt = data.v4_prompt as { caption?: { base_caption?: string; char_captions?: { char_caption: string; centers: { x: number; y: number }[] }[] } } | undefined;
+  type Captions = { caption?: { base_caption?: string; char_captions?: { char_caption: string; centers: { x: number; y: number }[] }[] } };
+  const v4Prompt = data.v4_prompt as Captions | undefined;
   const charCaptions = v4Prompt?.caption?.char_captions ?? [];
+  // Per-character negatives live in a parallel array, paired by index, so
+  // pair them up before filtering out empty characters.
+  const charNegatives = (data.v4_negative_prompt as Captions | undefined)?.caption?.char_captions ?? [];
 
   return {
     prompt: str(data.prompt, str(v4Prompt?.caption?.base_caption, '')),
     negativePrompt: str(data.uc, ''),
     characters: charCaptions
-      .filter((c) => c.char_caption?.trim())
-      .map((c) => ({ prompt: c.char_caption, center: c.centers?.[0] ?? { x: 0.5, y: 0.5 } })),
+      .map((c, i) => ({
+        prompt: c.char_caption,
+        uc: str(charNegatives[i]?.char_caption, ''),
+        center: c.centers?.[0] ?? { x: 0.5, y: 0.5 },
+      }))
+      .filter((c) => c.prompt?.trim()),
     seed: num(data.seed, 0),
     steps: num(data.steps, 28),
     scale: num(data.scale, 6),

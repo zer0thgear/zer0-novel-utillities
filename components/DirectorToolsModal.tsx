@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useAugment } from '@/hooks/useAugment';
 import { usePixelSnap } from '@/hooks/usePixelSnap';
+import { useSubscription } from '@/hooks/useSubscription';
+import { directorToolCost, opusStatus } from '@/lib/anlasCost';
 import { AugmentReqType, GeneratedImage } from '@/types/novelai';
 
 interface DirectorToolsModalProps {
@@ -41,7 +43,14 @@ export function DirectorToolsModal({ image, onClose }: DirectorToolsModalProps) 
   const { augment, isAugmenting, error: augmentError, clearError: clearAugmentError } = useAugment();
   const { snap, isSnapping, error: snapError, clearError: clearSnapError } = usePixelSnap();
 
+  const { subscription } = useSubscription();
   const activeTool = TOOLS.find((t) => t.key === tool)!;
+  const cost =
+    tool === 'pixel-snap'
+      ? 0
+      : subscription
+        ? directorToolCost(tool, image.parameters.width, image.parameters.height, opusStatus(subscription))
+        : null;
   const hasDefry = tool === 'colorize' || tool === 'emotion';
   const hasPrompt = tool === 'colorize';
   const isBusy = isAugmenting || isSnapping;
@@ -237,7 +246,13 @@ export function DirectorToolsModal({ image, onClose }: DirectorToolsModalProps) 
               disabled={isBusy}
               className="mt-auto rounded bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isBusy ? 'Transforming…' : 'Transform'}
+              {isBusy
+                ? 'Transforming…'
+                : cost === null
+                  ? 'Transform'
+                  : cost > 0
+                    ? `Transform — ~${cost} Anlas`
+                    : 'Transform — Free'}
             </button>
 
             {error && (

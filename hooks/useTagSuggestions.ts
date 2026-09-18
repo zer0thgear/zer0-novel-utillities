@@ -14,7 +14,12 @@ export interface TagSuggestion {
   confidence: number;
 }
 
-const DEBOUNCE_MS = 200;
+// NovelAI's own client waits ~500ms of typing inactivity before firing a
+// suggest-tags call (confirmed live 2026-09-17 by patching window.fetch and
+// timing keystroke-to-request latency on novelai.net itself: ~498ms and
+// ~501ms on two separate single-keystroke trials) — matched here rather
+// than guessed.
+const DEBOUNCE_MS = 500;
 const MIN_QUERY_LENGTH = 2;
 
 export function useTagSuggestions(query: string, model: NovelAIModel, apiKey: string) {
