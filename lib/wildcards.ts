@@ -107,6 +107,34 @@ export function resolveRequestPrompts(
   return { baseText, characters: resolvedCharacters, negativePrompt: resolvedNegative, picks };
 }
 
+/** Every library entry some text and tidbit links depend on, following
+ *  references inside entries, so an export can carry what its prompts need. */
+export function referencedEntries(
+  texts: string[],
+  linkedIds: string[],
+  library: LibraryTidbit[],
+): LibraryTidbit[] {
+  const index = labelIndex(library);
+  const found = new Map<string, LibraryTidbit>();
+  function visit(entry: LibraryTidbit) {
+    if (found.has(entry.id)) return;
+    found.set(entry.id, entry);
+    scan(entry.text);
+  }
+  function scan(text: string) {
+    for (const match of text.matchAll(new RegExp(REF_SOURCE, 'g'))) {
+      const entry = index.get(match[1].trim().toLowerCase());
+      if (entry) visit(entry);
+    }
+  }
+  texts.forEach(scan);
+  for (const id of linkedIds) {
+    const entry = library.find((l) => l.id === id);
+    if (entry) visit(entry);
+  }
+  return [...found.values()];
+}
+
 export interface WildcardAnalysis {
   /** References matching no library label, e.g. `__typo__`, as written. */
   unknown: string[];

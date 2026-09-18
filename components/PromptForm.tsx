@@ -17,6 +17,7 @@ import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
+import { TransferSection } from './TransferSection';
 import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
@@ -708,6 +709,8 @@ export function PromptForm() {
       <TidbitLibrarySection model={form.model} />
 
       <PresetsSection />
+
+      <TransferSection />
 
       {/* Generation settings — collapsible; open by default so nothing already
           relied upon disappears, but collapsible to cut down sidebar scroll

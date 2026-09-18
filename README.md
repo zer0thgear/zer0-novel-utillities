@@ -59,6 +59,9 @@ components/
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
   SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
   PresetsSection.tsx          # Save/load named setting presets
+  TransferModal.tsx / TransferSection.tsx  # Selective import/export to a JSON file
+  ImportModal.tsx             # Image import/reuse window (drop, paste, Reuse)
+  WeightBar.tsx               # Emphasis weight slider (Ctrl+↑/↓)
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
@@ -82,6 +85,9 @@ lib/
   sweeps.ts                     # X/Y sweep axes → per-image cells
   samplers.ts / models.ts       # Sampler and model lists shared across the UI
   presets.ts                    # Saved presets: which settings they capture
+  transfer.ts                   # Import/export file format, validation, re-linking
+  emphasis.ts                   # {}/[]/w::text:: emphasis parsing and stepping
+  imageRequest.ts               # Builds every /ai/generate-image request
   pixelSnap.ts                  # Client-side pixel-art filter
   imageUtils.ts / imageDb.ts
 types/
