@@ -16,8 +16,10 @@ interface PendingImage {
 
 // Mirrors NovelAI's own import dialog (checked live 2026-09-18): prompt, UC and
 // characters on by default; settings, seed, append and clean imports off.
+// appendPrompt is ours — NovelAI has a single prompt, but we have a list.
 const DEFAULT_IMPORT = {
   prompt: true,
+  appendPrompt: false,
   uc: true,
   characters: true,
   appendCharacters: false,
@@ -131,7 +133,14 @@ export function DropZone() {
   function importMetadata(metadata: ParsedNaiMetadata) {
     const tidy = (text: string) => (options.clean ? cleanText(text) : text);
 
-    if (options.prompt) {
+    if (options.prompt && options.appendPrompt) {
+      // Add as a new base prompt and select it, since importing implies you
+      // want to use it. Single mode allows one selection; Batch adds to it.
+      const imported = { id: crypto.randomUUID(), label: 'Imported', text: tidy(metadata.prompt), selected: true };
+      const existing =
+        form.promptMode === 'single' ? form.basePrompts.map((p) => ({ ...p, selected: false })) : form.basePrompts;
+      form.set('basePrompts', [...existing, imported]);
+    } else if (options.prompt) {
       const target = form.basePrompts.find((p) => p.selected) ?? form.basePrompts[0];
       if (target) {
         // Tidbits are a UI-only split of the prompt; an imported prompt is
@@ -180,7 +189,7 @@ export function DropZone() {
       <input
         type="checkbox"
         checked={options[key]}
-        disabled={key === 'appendCharacters' && !options.characters}
+        disabled={(key === 'appendCharacters' && !options.characters) || (key === 'appendPrompt' && !options.prompt)}
         onChange={(e) => setOptions((o) => ({ ...o, [key]: e.target.checked }))}
         className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 accent-violet-500 disabled:opacity-40"
       />
@@ -257,7 +266,14 @@ export function DropZone() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  {checkbox('prompt', 'Prompt', '(replaces the selected base prompt and its tidbits)')}
+                  {checkbox(
+                    'prompt',
+                    'Prompt',
+                    options.appendPrompt
+                      ? '(added as a new base prompt)'
+                      : '(replaces the selected base prompt and its tidbits)',
+                  )}
+                  {checkbox('appendPrompt', 'Append', '(keep existing prompts)', true)}
                   {checkbox('uc', 'Undesired Content')}
                   {checkbox('characters', 'Characters')}
                   {checkbox('appendCharacters', 'Append', '(keep existing characters)', true)}
