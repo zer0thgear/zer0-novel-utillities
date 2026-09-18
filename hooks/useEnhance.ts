@@ -79,6 +79,7 @@ export function useEnhance(): UseEnhanceReturn {
         action: 'img2img',
         characters: resolved.characters,
         useCoords: form.useCoords,
+        presets: { quality: form.qualityPreset, uc: form.ucPreset },
         parameters: {
           ...formSampling(form),
           ...EDIT_REQUEST_FLAGS,

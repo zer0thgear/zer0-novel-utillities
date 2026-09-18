@@ -80,6 +80,7 @@ export function useInpaint(): UseInpaintReturn {
         action: 'infill',
         characters: resolved.characters,
         useCoords: form.useCoords,
+        presets: { quality: form.qualityPreset, uc: form.ucPreset },
         parameters: {
           ...formSampling(form),
           ...EDIT_REQUEST_FLAGS,

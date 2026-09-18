@@ -48,6 +48,22 @@ One practical gotcha: this endpoint is only fetched once per page load in most i
 - The non-streaming response is a **ZIP file** (magic bytes `PK`), not a raw image — this is also true for `/ai/augment-image` and `/ai/upscale`. Always check for the ZIP signature before assuming the bytes are directly decodable as an image.
 - Determinism-critical parameters that are easy to get wrong because they don't correspond to any obvious UI control on NovelAI's basic interface: `skip_cfg_above_sigma` (must be `null` unless deliberately replicating NovelAI's opt-in "Variety+" feature — never hardcode a nonzero value), `prefer_brownian` (`true`) and `deliberate_euler_ancestral_bug` (`false`) affect the noise sampler for ancestral/SDE samplers. Getting any of these wrong doesn't error — it silently produces a different (but plausible-looking) image for the same seed.
 - **Don't send `qualityToggle`.** NovelAI's current client never sends it: it migrated the old boolean to `qualityPresetId` and composes quality tags client-side. The server still reads it, though. On 2026-09-18, with an otherwise identical request (V5 Full, seed 1234567, quality Standard, UC Heavy), `qualityToggle: true` gave an image about 2 levels brighter on average than novelai.net's (max 9/255 on an 8×12 block-mean grid). Leaving it out, or sending `false`, matched novelai.net's image exactly on that grid. Other fields its client sends that we don't made no measurable difference: `params_version: 4` (we send 3), `tag_hint_qt` / `tag_hint_uc_preset` (numeric preset hints), `straight_alpha`, and `stream: "msgpack"` on the stream endpoint.
+- **Request fields now mirror novelai.net's own (captured 2026-09-18).** This app sends:
+  - `params_version: 4`.
+  - The named presets `qualityPresetId` / `ucPresetId`, plus their numeric hints `tag_hint_qt` / `tag_hint_uc_preset` (none 0, standard 1, heavy 2, light 3, humanFocus 4, furryFocus 5). The preset *text* is still composed client-side.
+  - `straight_alpha: true` on V5, which is NovelAI's default setting.
+  - `autoSmea: false` and `normalize_reference_strength_multiple: true` on V4+, plus `legacy_v3_extend: false` everywhere.
+  - `inpaintImg2ImgStrength: 1` on V4+ generations, and `add_original_image: true`.
+
+  It no longer sends:
+  - `ucPreset` (numeric).
+  - `sm` / `sm_dyn` outside V3.
+  - Empty `reference_*_multiple` arrays.
+  - `skip_cfg_above_sigma` outside V3.
+
+  It skips the transport-only `stream: "msgpack"` / `image_format: "webp"`. None of these changed the image: identical output with the old and new field sets.
+- **V3 must not get the V4 caption fields.** `v4_prompt` or `v4_negative_prompt` on a `nai-diffusion-3` request gets a bare `500 Internal Server Error`. NovelAI omits both, along with `use_coords` and `legacy_uc`, for V3, and sends `skip_cfg_above_sigma: null` and `characterPrompts: []`.
+- **The same request can produce a different image on a different day.** On 2026-09-18 an identical V5 Full request (same seed, prompt and parameters, same `model_hash` 0ADF9AB7) produced a visibly different image in the evening than in the morning, on novelai.net and in this app alike. The two still matched each other exactly. Always regenerate the reference image on novelai.net just before comparing; never reuse an old one.
 - **Comparing images across runs:** exact pixel hashes now differ between two identical requests (tiny GPU-level noise), so compare downsampled grids instead: an 8×12 block mean, `imageSmoothingQuality: 'high'`. novelai.net also re-encodes the PNG it shows (one big IDAT, no `pHYs`, a larger file) from its msgpack stream. The pixels still compare fine, but file bytes and sizes won't match the API's PNG.
 - Every image NovelAI's server returns has full generation metadata embedded in the PNG file itself, as `tEXt` chunks: `Title`, `Description` (composed positive prompt), `Software`, `Source` (model name + hash — doesn't distinguish e.g. V5 Full vs Curated), `Generation_time`, and `Comment` (a JSON blob with the complete parameter set, including the same `v4_prompt`/`v4_negative_prompt` structure used in requests). No API call needed to read this — just parse the PNG chunks client-side.
 

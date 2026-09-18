@@ -47,6 +47,10 @@ export function useVariations(): UseVariationsReturn {
         action: 'img2img',
         characters: resolved.characters,
         useCoords: form.useCoords,
+        // The image's own preset levels, when this app made it.
+        presets: image.source
+          ? { quality: image.source.modifiers.qualityPreset, uc: image.source.modifiers.ucPreset }
+          : undefined,
         parameters: {
           ...EDIT_REQUEST_FLAGS,
           params_version: p.params_version,
@@ -58,7 +62,6 @@ export function useVariations(): UseVariationsReturn {
           n_samples: VARIATION_COUNT,
           strength: VARIATION_STRENGTH,
           noise: VARIATION_NOISE,
-          ucPreset: p.ucPreset,
           add_original_image: true,
           cfg_rescale: p.cfg_rescale,
           noise_schedule: p.noise_schedule,

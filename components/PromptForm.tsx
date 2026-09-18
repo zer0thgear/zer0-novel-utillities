@@ -128,12 +128,18 @@ export function PromptForm() {
       action: baseImageB64 ? 'img2img' : 'generate',
       characters: resolved.characters,
       useCoords: form.useCoords,
+      presets: { quality: form.qualityPreset, uc: form.ucPreset },
       parameters: {
         ...formSampling(form, overrides),
+        // NovelAI sends this default on V4+ generations only.
+        ...(form.model.startsWith('nai-diffusion-3') || form.model.startsWith('nai-diffusion-furry-3')
+          ? {}
+          : { inpaintImg2ImgStrength: 1 }),
         // An img2img base keeps its own size rather than the form's.
         ...(baseImageB64 && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : {}),
         n_samples: nSamples,
-        add_original_image: !!baseImageB64,
+        // NovelAI sends true for plain generations too.
+        add_original_image: true,
         seed,
         ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
       },

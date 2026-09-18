@@ -135,28 +135,41 @@ export interface NovelAIParameters {
   sampler: NovelAISampler;
   steps: number;
   n_samples: number;
-  ucPreset: number;
+  /** Legacy numeric UC preset. Not sent: NovelAI's client uses `ucPresetId`
+   *  (and applies the preset text itself). Older images' metadata may carry it. */
+  ucPreset?: number;
+  /** NovelAI's named presets and their numeric hints (none 0, standard 1,
+   *  heavy 2, light 3, humanFocus 4, furryFocus 5). The preset text itself is
+   *  already in the prompt; these mirror what NovelAI's client sends. */
+  qualityPresetId?: string;
+  ucPresetId?: string;
+  tag_hint_qt?: number;
+  tag_hint_uc_preset?: number;
+  /** V5 (transparency-capable) only; NovelAI's default setting is `true`. */
+  straight_alpha?: boolean;
   /** Never sent. NovelAI's client dropped it for `qualityPresetId`, and
    *  sending `true` measurably changes the image (see
    *  docs/REVERSE_ENGINEERING.md). Older images' metadata may still carry it. */
   qualityToggle?: boolean;
-  sm: boolean;
-  sm_dyn: boolean;
+  /** SMEA. Sent for V3 only (and as false on image edits), as NovelAI does. */
+  sm?: boolean;
+  sm_dyn?: boolean;
   dynamic_thresholding: boolean;
   controlnet_strength: number;
   legacy: boolean;
   add_original_image: boolean;
   cfg_rescale: number;
   noise_schedule: NovelAINoiseSchedule;
-  /** NovelAI's "Variety+" boost. Must be `null` to match the API's own default
-   *  (off) — a nonzero value forces increased output variance and is resolution/
+  /** NovelAI's "Variety+" boost. Omit (or null) for the API's default, off:
+   *  a nonzero value forces increased output variance and is resolution/
    *  model-dependent, so never hardcode a constant here. */
-  skip_cfg_above_sigma: number | null;
+  skip_cfg_above_sigma?: number | null;
   seed: number;
   negative_prompt: string;
-  reference_image_multiple: string[];
-  reference_information_extracted_multiple: number[];
-  reference_strength_multiple: number[];
+  /** Vibe Transfer inputs; omitted when there are none, as NovelAI does. */
+  reference_image_multiple?: string[];
+  reference_information_extracted_multiple?: number[];
+  reference_strength_multiple?: number[];
   // V4 fields — only included when using character prompts or v4 models
   params_version?: number;
   use_coords?: boolean;

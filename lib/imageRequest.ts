@@ -10,16 +10,27 @@ import {
 } from '@/types/novelai';
 import { resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
-import { composeNegativeWithUc, composeWithQuality } from '@/lib/naiPresets';
+import {
+  composeNegativeWithUc,
+  composeWithQuality,
+  getQualityText,
+  getUcText,
+  QualityLevel,
+  UcLevel,
+} from '@/lib/naiPresets';
 
 // Shared assembly for every /ai/generate-image request: main Generate (incl.
 // Copies, sweeps and img2img), Enhance, Inpaint, Edit and Variations. Each
 // flow supplies only what's specific to it; everything else lives here once.
-// The field set each flow sends is deliberately unchanged from before this was
-// shared: main Generate's matches NovelAI's own client pixel-for-pixel (see
-// docs/REVERSE_ENGINEERING.md), so don't add "harmless" extra fields to it.
+// Fields mirror what NovelAI's own client sends (captured from novelai.net,
+// 2026-09-18), and main Generate matches its images exactly (see
+// docs/REVERSE_ENGINEERING.md). Change fields only against a fresh capture:
+// some that look inert aren't (sending `qualityToggle` changed the image).
 
 export const randomSeed = () => Math.floor(Math.random() * 4294967295);
+
+const isV3Model = (model: NovelAIModel) =>
+  model.startsWith('nai-diffusion-3') || model.startsWith('nai-diffusion-furry-3');
 
 type PromptModifiers = Pick<
   FormSettings,
@@ -81,12 +92,10 @@ type SamplingKey =
   | 'scale'
   | 'sampler'
   | 'steps'
-  | 'ucPreset'
   | 'sm'
   | 'sm_dyn'
   | 'cfg_rescale'
-  | 'noise_schedule'
-  | 'skip_cfg_above_sigma';
+  | 'noise_schedule';
 
 /** Size and sampling fields as the form has them, with a sweep cell's values
  *  (if any) taking precedence. */
@@ -95,19 +104,17 @@ export function formSampling(
   overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
 ): Pick<NovelAIParameters, SamplingKey> {
   return {
-    params_version: 3,
+    params_version: 4,
     width: form.width,
     height: form.height,
     scale: overrides.scale ?? form.scale,
     sampler: overrides.sampler ?? form.sampler,
     steps: overrides.steps ?? form.steps,
-    ucPreset: 0,
-    sm: form.smea,
-    sm_dyn: form.smeaDyn,
+    // SMEA only exists on V3; NovelAI doesn't send it for newer models.
+    ...(isV3Model(form.model) ? { sm: form.smea, sm_dyn: form.smeaDyn } : {}),
     cfg_rescale: form.cfgRescale,
     noise_schedule: form.noiseSchedule,
-    // Must be null unless deliberately enabling "Variety+" (see NovelAIParameters).
-    skip_cfg_above_sigma: null,
+    // skip_cfg_above_sigma ("Variety+") is left out, i.e. off.
   };
 }
 
@@ -121,6 +128,29 @@ export const EDIT_REQUEST_FLAGS = {
   normalize_reference_strength_multiple: true,
 } as const;
 
+// NovelAI's numeric ids for preset levels (its `tag_hint_*` fields).
+const PRESET_HINT: Record<QualityLevel | UcLevel, number> = {
+  none: 0,
+  standard: 1,
+  heavy: 2,
+  light: 3,
+  humanFocus: 4,
+  furryFocus: 5,
+};
+
+/** The preset fields NovelAI's client sends alongside the composed text.
+ *  A level the model doesn't have counts as none, as in NovelAI. */
+function presetFields(model: NovelAIModel, presets: { quality: QualityLevel; uc: UcLevel }) {
+  const quality = getQualityText(model, presets.quality) ? presets.quality : 'none';
+  const uc = getUcText(model, presets.uc) ? presets.uc : 'none';
+  return {
+    qualityPresetId: quality,
+    ucPresetId: uc,
+    tag_hint_qt: PRESET_HINT[quality],
+    tag_hint_uc_preset: PRESET_HINT[uc],
+  };
+}
+
 type SharedKey =
   | 'dynamic_thresholding'
   | 'controlnet_strength'
@@ -130,16 +160,13 @@ type SharedKey =
   | 'prefer_brownian'
   | 'negative_prompt'
   | 'legacy_uc'
-  | 'reference_image_multiple'
-  | 'reference_information_extracted_multiple'
-  | 'reference_strength_multiple'
   | 'v4_prompt'
   | 'v4_negative_prompt'
   | 'characterPrompts';
 
 /** Wraps flow-specific parameters with the fields every request shares: the
- *  determinism-critical sampler flags, the V4+ caption structure, and the
- *  (currently empty) reference-image slots. */
+ *  defaults and preset fields NovelAI's client sends, the determinism-critical
+ *  sampler flags, and the V4+ caption structure. */
 export function buildImageRequest(args: {
   input: string;
   negativePrompt: string;
@@ -148,47 +175,60 @@ export function buildImageRequest(args: {
   /** Enabled characters with final text (see resolveRequestPrompts). */
   characters: CharacterPromptEntry[];
   useCoords: boolean;
+  /** The preset levels the text was composed with, for NovelAI's preset
+   *  fields. Omitted when unknown (e.g. Variations of an imported image). */
+  presets?: { quality: QualityLevel; uc: UcLevel };
   parameters: Omit<NovelAIParameters, SharedKey>;
 }): NovelAIGenerateRequest {
-  const { input, negativePrompt, model, action, characters, useCoords, parameters } = args;
+  const { input, negativePrompt, model, action, characters, useCoords, presets, parameters } = args;
+  const isV3 = isV3Model(model);
   return {
     input,
     model,
     action,
     parameters: {
+      // Defaults NovelAI's client always sends; flows may override them.
+      legacy_v3_extend: false,
+      ...(isV3 ? {} : { autoSmea: false, normalize_reference_strength_multiple: true }),
+      ...(model.startsWith('nai-diffusion-5') ? { straight_alpha: true } : {}),
+      ...(presets ? presetFields(model, presets) : {}),
       ...parameters,
       dynamic_thresholding: false,
       controlnet_strength: 1,
       legacy: false,
-      use_coords: useCoords,
       deliberate_euler_ancestral_bug: false,
       prefer_brownian: true,
       negative_prompt: negativePrompt,
-      legacy_uc: false,
-      reference_image_multiple: [],
-      reference_information_extracted_multiple: [],
-      reference_strength_multiple: [],
-      v4_prompt: {
-        caption: {
-          base_caption: input,
-          char_captions: characters.map((c) => ({ char_caption: c.prompt, centers: [c.center] })),
-        },
-        use_coords: useCoords,
-        use_order: true,
-      },
-      v4_negative_prompt: {
-        caption: {
-          base_caption: negativePrompt,
-          char_captions: characters.map((c) => ({ char_caption: c.uc, centers: [c.center] })),
-        },
-        legacy_uc: false,
-      },
-      characterPrompts: characters.map((c) => ({
-        prompt: c.prompt,
-        uc: c.uc,
-        center: c.center,
-        enabled: c.enabled,
-      })),
+      // V3 predates character prompts and the V4 caption format: the API
+      // answers V3 requests carrying v4_prompt/v4_negative_prompt with a 500,
+      // and NovelAI sends neither (verified live, 2026-09-18).
+      ...(isV3
+        ? { skip_cfg_above_sigma: null, characterPrompts: [] }
+        : {
+            use_coords: useCoords,
+            legacy_uc: false,
+            v4_prompt: {
+              caption: {
+                base_caption: input,
+                char_captions: characters.map((c) => ({ char_caption: c.prompt, centers: [c.center] })),
+              },
+              use_coords: useCoords,
+              use_order: true,
+            },
+            v4_negative_prompt: {
+              caption: {
+                base_caption: negativePrompt,
+                char_captions: characters.map((c) => ({ char_caption: c.uc, centers: [c.center] })),
+              },
+              legacy_uc: false,
+            },
+            characterPrompts: characters.map((c) => ({
+              prompt: c.prompt,
+              uc: c.uc,
+              center: c.center,
+              enabled: c.enabled,
+            })),
+          }),
     },
   };
 }
