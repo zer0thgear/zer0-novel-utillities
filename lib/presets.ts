@@ -18,7 +18,6 @@ export const PRESET_SETTINGS_KEYS = [
   'noiseSchedule',
   'smea',
   'smeaDyn',
-  'qualityToggle',
   'cfgRescale',
   'furMode',
   'nsfwMode',

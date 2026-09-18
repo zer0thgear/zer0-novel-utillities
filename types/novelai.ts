@@ -133,7 +133,10 @@ export interface NovelAIParameters {
   steps: number;
   n_samples: number;
   ucPreset: number;
-  qualityToggle: boolean;
+  /** Never sent. NovelAI's client dropped it for `qualityPresetId`, and
+   *  sending `true` measurably changes the image (see
+   *  docs/REVERSE_ENGINEERING.md). Older images' metadata may still carry it. */
+  qualityToggle?: boolean;
   sm: boolean;
   sm_dyn: boolean;
   dynamic_thresholding: boolean;

@@ -82,7 +82,6 @@ type SamplingKey =
   | 'sampler'
   | 'steps'
   | 'ucPreset'
-  | 'qualityToggle'
   | 'sm'
   | 'sm_dyn'
   | 'cfg_rescale'
@@ -103,7 +102,6 @@ export function formSampling(
     sampler: overrides.sampler ?? form.sampler,
     steps: overrides.steps ?? form.steps,
     ucPreset: 0,
-    qualityToggle: form.qualityToggle,
     sm: form.smea,
     sm_dyn: form.smeaDyn,
     cfg_rescale: form.cfgRescale,

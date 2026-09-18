@@ -33,7 +33,6 @@ export interface FormSettings {
   seed: number;
   smea: boolean;
   smeaDyn: boolean;
-  qualityToggle: boolean;
   cfgRescale: number;
   characters: CharacterPromptEntry[];
   useCoords: boolean;
@@ -75,7 +74,6 @@ const DEFAULTS: FormSettings = {
   seed: 0,
   smea: false,
   smeaDyn: false,
-  qualityToggle: true,
   cfgRescale: 0,
   characters: [],
   useCoords: false,
@@ -94,7 +92,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'novelai-settings',
-      version: 3,
+      version: 4,
       migrate(persistedState: unknown, version: number) {
         let s = persistedState as Record<string, unknown>;
         // v1 -> v2: single prompt: string -> basePrompts: BasePrompt[]
@@ -120,6 +118,11 @@ export const useSettingsStore = create<SettingsState>()(
             qualityTags: undefined,
             baseNegativeCaptions: undefined,
           };
+        }
+        // v3 -> v4: the Quality Toggle setting is gone (requests no longer send
+        // qualityToggle, matching NovelAI's own client).
+        if (version < 4) {
+          s = { ...s, qualityToggle: undefined };
         }
         return s as unknown as FormSettings;
       },

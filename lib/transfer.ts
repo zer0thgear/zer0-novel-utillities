@@ -131,7 +131,6 @@ const SETTING_CHECKS: Record<(typeof PRESET_SETTINGS_KEYS)[number], (v: unknown)
   noiseSchedule: (v) => ['native', 'karras', 'exponential', 'polyexponential'].includes(v as string),
   smea: (v) => typeof v === 'boolean',
   smeaDyn: (v) => typeof v === 'boolean',
-  qualityToggle: (v) => typeof v === 'boolean',
   cfgRescale: (v) => num(v) && v >= 0 && v <= 1,
   furMode: (v) => typeof v === 'boolean',
   nsfwMode: (v) => typeof v === 'boolean',

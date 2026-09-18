@@ -59,7 +59,6 @@ export function useVariations(): UseVariationsReturn {
           strength: VARIATION_STRENGTH,
           noise: VARIATION_NOISE,
           ucPreset: p.ucPreset,
-          qualityToggle: p.qualityToggle,
           add_original_image: true,
           cfg_rescale: p.cfg_rescale,
           noise_schedule: p.noise_schedule,

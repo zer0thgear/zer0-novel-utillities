@@ -930,17 +930,6 @@ export function PromptForm() {
 
       {showAdvanced && (
         <div className="flex flex-col gap-3 rounded-lg bg-slate-800/40 p-4 border border-slate-700/40">
-          {/* Quality Toggle */}
-          <label className="flex cursor-pointer items-center justify-between">
-            <span className="text-xs text-slate-400">Quality Toggle</span>
-            <input
-              type="checkbox"
-              checked={form.qualityToggle}
-              onChange={(e) => form.set('qualityToggle', e.target.checked)}
-              className="h-4 w-4 accent-violet-500"
-            />
-          </label>
-
           {/* SMEA */}
           <label className="flex cursor-pointer items-center justify-between">
             <span className="text-xs text-slate-400">SMEA</span>
