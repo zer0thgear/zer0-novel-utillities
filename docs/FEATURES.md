@@ -48,7 +48,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## Working with an image
 
 From the viewer:
-- **Enhance**: levels 1–5, optionally ×1.5 larger. Enhance, Inpaint and Edit render with the sidebar's prompt, as NovelAI does; in Batch mode they use the prompt the image was made from.
+- **Enhance**: levels 1–5, at the scales NovelAI offers for the image's size (1×, 1.5×, 2×, or Max on V5, which lets NovelAI upscale it to about 3 MP). Enhance, Inpaint and Edit render with the sidebar's prompt, as NovelAI does; in Batch mode they use the prompt the image was made from.
 - **Variations**: three variants in one batch.
 - **Upscale**: 2× (images up to 1 MP).
 - **Director Tools**: Remove background, Line art, Sketch, Colorize, Emotion, Declutter, and Pixel Snap (runs locally, free).
