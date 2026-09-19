@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { extractImagesFromZip } from '@/lib/imageUtils';
+import { extractImagesFromZip, getImageDimensions } from '@/lib/imageUtils';
+import { finalizeRequest } from '@/lib/requestImage';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest, PromptSource, SweepCellInfo, WildcardPicks } from '@/types/novelai';
@@ -40,7 +41,7 @@ function base64ToBytes(b64: string): Uint8Array {
 
 export function useGenerate(): UseGenerateReturn {
   const [error, setError] = useState<string | null>(null);
-  const { apiKey, addImages, setStreamPreview } = useSessionStore();
+  const { apiKey, addImages, updateImages, setStreamPreview } = useSessionStore();
   const streamingMode = useSettingsStore((s) => s.streamingMode);
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
@@ -253,9 +254,24 @@ export function useGenerate(): UseGenerateReturn {
       setError('No API key set. Please enter your NovelAI API key.');
       return null;
     }
-    return streamingMode && !opts?.forceStandard
-      ? generateStreaming(request, opts)
-      : generateStandard(request, opts);
+    // Prepare images and defaults exactly as NovelAI's client does.
+    const sent = await finalizeRequest(request);
+    const images = await (streamingMode && !opts?.forceStandard
+      ? generateStreaming(sent, opts)
+      : generateStandard(sent, opts));
+    // A Max enhance comes back larger than the size it asked for; record the
+    // real size, which later actions and size checks go by.
+    if (images && sent.parameters.upscaled_enhance) {
+      return Promise.all(
+        images.map(async (img) => {
+          const { width, height } = await getImageDimensions(img.blob);
+          const parameters = { ...img.parameters, width, height };
+          updateImages([img.id], { parameters });
+          return { ...img, parameters };
+        }),
+      );
+    }
+    return images;
   };
 
   return { generate, error, clearError: () => setError(null) };

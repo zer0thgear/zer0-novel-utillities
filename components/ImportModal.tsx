@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
-import { ParsedNaiMetadata } from '@/lib/naiMetadata';
+import { NOT_REPRODUCIBLE_TEXT, ParsedNaiMetadata } from '@/lib/naiMetadata';
 import { CharacterPromptEntry, NovelAINoiseSchedule, NovelAISampler } from '@/types/novelai';
 
 // Mirrors NovelAI's own import dialog (checked live 2026-09-18): prompt, UC and
@@ -177,7 +177,13 @@ export function ImportModal({
           </div>
         )}
 
-        {metadata && (
+        {metadata?.directorTool && (
+          <p className="border-t border-slate-800 pt-4 text-xs text-slate-500">
+            This is a Director Tools result, so there are no generation settings to import.
+          </p>
+        )}
+
+        {metadata && !metadata.directorTool && (
           <div className="flex flex-col gap-3 border-t border-slate-800 pt-4">
             <div>
               <p className="text-xs font-semibold text-slate-200">{importHeading}</p>
@@ -185,6 +191,13 @@ export function ImportModal({
                 Seed {metadata.seed} · {metadata.width}×{metadata.height} · {metadata.steps} steps
                 {metadata.characters.length > 0 && ` · ${metadata.characters.length} character(s)`}
               </p>
+              {metadata.notReproducible && (
+                <p className="mt-2 text-xs text-amber-400">
+                  {NOT_REPRODUCIBLE_TEXT[metadata.notReproducible]}
+                  {metadata.img2img &&
+                    ` (Strength ${metadata.img2img.strength}, noise ${metadata.img2img.noise}.)`}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

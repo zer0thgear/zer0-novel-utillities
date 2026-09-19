@@ -2,18 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSessionStore } from '@/store/sessionStore';
+import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 import { useSubscription } from '@/hooks/useSubscription';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { opusStatus } from '@/lib/anlasCost';
 import { defaultStep, DIRECTOR_TOOLS, EMOTIONS, planChain, STEP_KINDS } from '@/lib/chains';
+import { EnhanceScale, scaleLabel } from '@/lib/enhance';
 import { moveItem } from '@/lib/promptText';
-import { Chain, ChainStep } from '@/types/novelai';
+import { Chain, ChainStep, NovelAIModel } from '@/types/novelai';
 
 interface Props {
   /** The chain to edit, or null for a new one. */
   chain: Chain | null;
   onClose: () => void;
 }
+
+const ENHANCE_SCALE_CHOICES: EnhanceScale[] = [1, 1.5, 2, 'max'];
 
 const selectCls =
   'rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none border border-slate-700/60 focus:border-violet-500';
@@ -102,7 +107,7 @@ export function ChainEditorModal({ chain, onClose }: Props) {
                   </button>
                 </div>
 
-                <StepOptions step={step} onChange={(patch) => update(i, patch)} />
+                <StepOptions step={step} onChange={(patch) => update(i, patch)} model={form.model} />
                 {planned.problem && <p className="text-[11px] text-red-300">{planned.problem}</p>}
               </div>
             );
@@ -157,9 +162,36 @@ export function ChainEditorModal({ chain, onClose }: Props) {
 }
 
 /** The options for one step, matching the viewer's own panels. */
-function StepOptions({ step, onChange }: { step: ChainStep; onChange: (patch: Partial<ChainStep>) => void }) {
+function StepOptions({
+  step,
+  onChange,
+  model,
+}: {
+  step: ChainStep;
+  onChange: (patch: Partial<ChainStep>) => void;
+  model: NovelAIModel;
+}) {
+  const apiKey = useSessionStore((s) => s.apiKey);
   const row = 'flex flex-wrap items-center gap-2 pl-6 text-xs text-slate-400';
   switch (step.kind) {
+    case 'tags':
+      return (
+        <div className="flex flex-col gap-1 pl-6">
+          <TagAutocompleteField
+            as="input"
+            value={step.tags}
+            onChange={(tags) => onChange({ tags })}
+            model={model}
+            apiKey={apiKey}
+            placeholder="e.g. smile, looking at viewer"
+            className="w-full rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none border border-slate-700/60 focus:border-violet-500"
+          />
+          <p className="text-[11px] text-slate-500">
+            Added to the prompt for the Enhance and Variations steps after this one. Your prompt in the sidebar
+            isn&apos;t changed.
+          </p>
+        </div>
+      );
     case 'enhance':
       return (
         <div className={row}>
@@ -171,10 +203,19 @@ function StepOptions({ step, onChange }: { step: ChainStep; onChange: (patch: Pa
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={step.upscale} onChange={(e) => onChange({ upscale: e.target.checked })} className="accent-violet-500" />
-            Upscale ×1.5
-          </label>
+          Scale
+          <select
+            value={String(step.scale)}
+            onChange={(e) => onChange({ scale: e.target.value === 'max' ? 'max' : (Number(e.target.value) as 1 | 1.5 | 2) })}
+            title="NovelAI offers 1.5× for its standard 832×1216 size; other sizes get the scales that land on multiples of 64 within 3.1 MP. Max is V5 only."
+            className={selectCls}
+          >
+            {ENHANCE_SCALE_CHOICES.map((sc) => (
+              <option key={String(sc)} value={String(sc)}>
+                {scaleLabel(sc)}
+              </option>
+            ))}
+          </select>
         </div>
       );
     case 'director':

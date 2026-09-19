@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/sessionStore';
-import { extractNaiMetadata, ParsedNaiMetadata } from '@/lib/naiMetadata';
+import { ParsedNaiMetadata, readNaiMetadata } from '@/lib/naiMetadata';
 import { getImageDimensions } from '@/lib/imageUtils';
 import { MetadataModal } from './MetadataModal';
 import { ImportModal } from './ImportModal';
@@ -28,7 +28,9 @@ export function DropZone() {
 
   useEffect(() => {
     async function receive(file: File) {
-      const metadata = extractNaiMetadata(await file.arrayBuffer());
+      // Pasted images usually arrive with their PNG text chunks stripped;
+      // this falls back to the copy NovelAI hides in the alpha channel.
+      const { parsed: metadata } = await readNaiMetadata(file);
       setPending((prev) => {
         if (prev) URL.revokeObjectURL(prev.previewUrl);
         return { file, previewUrl: URL.createObjectURL(file), metadata };

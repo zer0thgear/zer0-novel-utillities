@@ -6,13 +6,20 @@ import {
   UPSCALE_MAX_PIXELS,
   upscaleCost,
 } from '@/lib/anlasCost';
+import { normalizePromptPart } from '@/lib/promptText';
+import {
+  ENHANCE_LEVELS,
+  EnhanceScale,
+  enhanceOutputSize,
+  enhancePriceSize,
+  enhanceScales,
+  scaleLabel,
+} from '@/lib/enhance';
 
 // Chained actions: a saved sequence of image actions, each step applied to the
 // previous step's result. Everything here is pure (labels, validation, cost
 // planning, parsing imports); ChainRunner does the actual running.
 
-// Mirrors ENHANCE_LEVELS in hooks/useEnhance.ts (strength drives the price).
-const ENHANCE_STRENGTH: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0.2, 2: 0.4, 3: 0.5, 4: 0.6, 5: 0.7 };
 // Mirrors hooks/useVariations.ts.
 const VARIATION_COUNT = 3;
 const VARIATION_STRENGTH = 0.8;
@@ -29,6 +36,7 @@ export const DIRECTOR_TOOLS: { value: ChainDirectorTool; label: string }[] = [
 export const EMOTIONS = ['Neutral', 'Happy', 'Sad', 'Angry', 'Scared', 'Surprised', 'Tired', 'Excited'];
 
 export const STEP_KINDS: { value: ChainStep['kind']; label: string }[] = [
+  { value: 'tags', label: 'Add Tags' },
   { value: 'enhance', label: 'Enhance' },
   { value: 'upscale', label: 'Upscale' },
   { value: 'director', label: 'Director Tool' },
@@ -41,11 +49,13 @@ export const STEP_KINDS: { value: ChainStep['kind']; label: string }[] = [
 export function defaultStep(kind: ChainStep['kind']): ChainStep {
   switch (kind) {
     case 'enhance':
-      return { kind, level: 3, upscale: false };
+      return { kind, level: 3, scale: 1 };
     case 'director':
       return { kind, tool: 'bg-removal' };
     case 'pixelSnap':
       return { kind, palettize: 'auto', upscale: true };
+    case 'tags':
+      return { kind, tags: '' };
     default:
       return { kind };
   }
@@ -54,7 +64,7 @@ export function defaultStep(kind: ChainStep['kind']): ChainStep {
 export function stepLabel(step: ChainStep): string {
   switch (step.kind) {
     case 'enhance':
-      return `Enhance L${step.level}${step.upscale ? ' ×1.5' : ''}`;
+      return `Enhance L${step.level}${step.scale === 1 ? '' : ` ${scaleLabel(step.scale)}`}`;
     case 'upscale':
       return 'Upscale ×2';
     case 'variations':
@@ -67,13 +77,21 @@ export function stepLabel(step: ChainStep): string {
       return 'Pixel Snap';
     case 'download':
       return 'Download';
+    case 'tags': {
+      const tags = normalizePromptPart(step.tags);
+      return tags ? `+ ${tags.length > 30 ? `${tags.slice(0, 30)}…` : tags}` : 'Add Tags';
+    }
   }
 }
 
+/** Steps that render from the prompt, so an Add Tags step before them counts. */
+const usesPrompt = (step: ChainStep) => step.kind === 'enhance' || step.kind === 'variations';
+
 export const chainSummary = (chain: Chain) => chain.steps.map(stepLabel).join(' → ') || 'No steps';
 
-/** Steps whose output is a new image (Download passes its input along). */
-export const producesImage = (step: ChainStep) => step.kind !== 'download';
+/** Steps whose output is a new image (Download passes its input along, and
+ *  Add Tags only changes the prompt for later steps). */
+export const producesImage = (step: ChainStep) => step.kind !== 'download' && step.kind !== 'tags';
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
@@ -101,7 +119,6 @@ export interface ChainPlan {
   problems: string[];
 }
 
-const round64 = (n: number) => Math.round(n / 64) * 64;
 const tooLarge = (w: number, h: number) =>
   w * h > MAX_GENERATION_PIXELS
     ? `NovelAI can't render ${w}×${h}; the limit is about 3.1 megapixels. Put this step before any upscaling.`
@@ -125,21 +142,25 @@ export function planChain(
     let problem: string | undefined;
     switch (step.kind) {
       case 'enhance': {
-        const w = step.upscale ? round64(width * 1.5) : width;
-        const h = step.upscale ? round64(height * 1.5) : height;
+        // Only the scales NovelAI offers for the image at this point.
+        const offered = enhanceScales(width, height, ctx.formModel);
+        if (!offered.includes(step.scale)) {
+          problem = offered.length
+            ? `NovelAI doesn't offer ${scaleLabel(step.scale)} for a ${width}×${height} image (it offers ${offered.map(scaleLabel).join(', ')}).`
+            : `NovelAI can't enhance a ${width}×${height} image.`;
+        }
+        const price = enhancePriceSize(width, height, step.scale);
         cost = calculateAnlasCost({
           model: ctx.formModel,
-          width: w,
-          height: h,
+          width: price.width,
+          height: price.height,
           steps: ctx.formSteps,
           smea: false,
           smeaDyn: false,
-          strength: ENHANCE_STRENGTH[step.level],
+          strength: ENHANCE_LEVELS[step.level - 1].strength,
           ...opus,
         });
-        problem = tooLarge(w, h);
-        width = w;
-        height = h;
+        ({ width, height } = enhanceOutputSize(width, height, step.scale));
         model = ctx.formModel;
         steps = ctx.formSteps;
         break;
@@ -185,6 +206,11 @@ export function planChain(
         break;
       case 'download':
         break;
+      case 'tags':
+        if (!step.tags.trim()) problem = 'Enter the tags to add.';
+        else if (!chain.steps.slice(i + 1).some(usesPrompt))
+          problem = 'Only Enhance and Variations use the prompt, and neither comes after this step.';
+        break;
     }
     planned.push({ label: stepLabel(step), cost, width, height, problem });
     if (problem) problems.push(`Step ${i + 1} (${stepLabel(step)}): ${problem}`);
@@ -203,13 +229,15 @@ function parseStep(v: unknown): ChainStep | null {
     case 'enhance': {
       const level = Number(v.level);
       return [1, 2, 3, 4, 5].includes(level)
-        ? { kind: 'enhance', level: level as 1 | 2 | 3 | 4 | 5, upscale: v.upscale === true }
+        ? { kind: 'enhance', level: level as 1 | 2 | 3 | 4 | 5, scale: parseEnhanceScale(v) }
         : null;
     }
     case 'upscale':
     case 'variations':
     case 'download':
       return { kind: v.kind };
+    case 'tags':
+      return typeof v.tags === 'string' ? { kind: 'tags', tags: v.tags } : null;
     case 'director': {
       if (!DIRECTOR_TOOLS.some((t) => t.value === v.tool)) return null;
       const defry = Number(v.defry);
@@ -235,6 +263,12 @@ function parseStep(v: unknown): ChainStep | null {
     default:
       return null;
   }
+}
+
+/** An enhance step's scale; older files have `upscale: true` for 1.5×. */
+function parseEnhanceScale(v: Record<string, unknown>): EnhanceScale {
+  if (v.scale === 'max' || v.scale === 1 || v.scale === 1.5 || v.scale === 2) return v.scale;
+  return v.upscale === true ? 1.5 : 1;
 }
 
 /** A chain from an import file, or null if it isn't one. Unknown steps are dropped. */

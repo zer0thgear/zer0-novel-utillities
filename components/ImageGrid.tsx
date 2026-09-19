@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { downloadSessionAsZip } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
+import { useChainBusy } from '@/store/chainStore';
 import { GeneratedImage } from '@/types/novelai';
 import { ImageCard } from './ImageCard';
 import { SweepGridModal } from './SweepGridModal';
 
-// Groups consecutive images sharing a batchId — a Copies batch/queue run
-// always lands adjacent in the array since nothing else generates mid-run.
+// Groups consecutive images sharing a batchId — a Copies batch/queue run or a
+// multi-prompt Batch run always lands adjacent in the array since nothing else
+// generates mid-run.
 function groupConsecutiveByBatch(images: GeneratedImage[]): GeneratedImage[][] {
   const groups: GeneratedImage[][] = [];
   for (const image of images) {
@@ -39,6 +41,9 @@ export function HistoryStrip() {
   const { images, focusedImageId, isLoading, streamPreview, clearImages } = useSessionStore();
   const [collapsed, setCollapsed] = useState(false);
   const [gridSweepId, setGridSweepId] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  // A running chain is still adding to (and reading from) the history.
+  const chainBusy = useChainBusy();
 
   // ── Collapsed state ──────────────────────────────────────────────────────
 
@@ -97,8 +102,10 @@ export function HistoryStrip() {
           </button>
           <button
             type="button"
-            onClick={clearImages}
-            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white"
+            onClick={() => setConfirmClear(true)}
+            disabled={isLoading || chainBusy}
+            title={isLoading || chainBusy ? 'Wait for the current generation to finish' : undefined}
+            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-700/80 disabled:hover:text-slate-400"
           >
             Clear Session
           </button>
@@ -139,7 +146,7 @@ export function HistoryStrip() {
           )}
 
           {/* Thumbnails — newest first, consecutive images sharing a batchId
-              (a "Copies" batch or queue run) are clumped into one 2-col grid
+              (Copies, a multi-prompt Batch, a sweep or a chain) are clumped into one 2-col grid
               so they read as one generation while staying individually
               clickable/removable. */}
           {groupConsecutiveByBatch(images).map((group) =>
@@ -191,6 +198,71 @@ export function HistoryStrip() {
       </div>
 
       {gridSweepId && <SweepGridModal sweepId={gridSweepId} onClose={() => setGridSweepId(null)} />}
+      {confirmClear && images.length > 0 && (
+        <ClearSessionModal images={images} onClear={clearImages} onClose={() => setConfirmClear(false)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Clear Session confirmation ───────────────────────────────────────────────
+
+function ClearSessionModal({
+  images,
+  onClear,
+  onClose,
+}: {
+  images: GeneratedImage[];
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const count = images.length;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="flex w-full max-w-sm flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+        <h2 className="text-sm font-bold text-slate-100">
+          Clear {count === 1 ? 'the 1 image' : `all ${count} images`} from this session?
+        </h2>
+        <p className="text-xs text-slate-400">
+          History is only kept in memory, so this can&apos;t be undone. Download a ZIP first to keep them.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadSessionAsZip(images)}
+            className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+          >
+            Download ZIP
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onClear();
+              onClose();
+            }}
+            className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

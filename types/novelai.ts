@@ -1,3 +1,4 @@
+import type { EnhanceScale } from '@/lib/enhance';
 import type { QualityLevel, UcLevel } from '@/lib/naiPresets';
 
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
@@ -182,6 +183,8 @@ export interface NovelAIParameters {
   autoSmea?: boolean;
   image?: string;
   extra_noise_seed?: number;
+  /** V5 "Max" enhance: re-render at the image's size, upscaled by the server. */
+  upscaled_enhance?: boolean;
   inpaintImg2ImgStrength?: number;
   color_correct?: boolean;
   deliberate_euler_ancestral_bug?: boolean;
@@ -250,7 +253,9 @@ export interface NovelAISubscription {
   usage: {
     percent: number; // 0-100+, clamped display-side; recovery pauses above 100
     isNegative: boolean;
-    timeUntilNextPercent: number; // seconds until the next 1% tick
+    /** Despite the name, seconds per 1% of refill (a rate, not a countdown):
+     *  NovelAI's client shows 86400 / this as "% per day". */
+    timeUntilNextPercent: number;
   };
   /** Despite the name, this is the Anlas balance — confirmed against NovelAI's own
    *  "Purchase Anlas" modal, which labels these two fields "Your Subscription Anlas"
@@ -296,7 +301,7 @@ export type ChainDirectorTool = 'bg-removal' | 'lineart' | 'sketch' | 'declutter
 
 /** One step of a chain. Each takes the previous step's image. */
 export type ChainStep =
-  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; upscale: boolean }
+  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; scale: EnhanceScale }
   | { kind: 'upscale' }
   | { kind: 'variations' }
   | {
@@ -310,7 +315,10 @@ export type ChainStep =
       emotion?: string;
     }
   | { kind: 'pixelSnap'; palettize: 'off' | 'auto' | 'custom'; colors?: number; avoidOverRefining?: boolean; upscale?: boolean }
-  | { kind: 'download' };
+  | { kind: 'download' }
+  /** Adds tags to the prompt for this run's later steps only (Enhance and
+   *  Variations); the sidebar's prompt is left alone. */
+  | { kind: 'tags'; tags: string };
 
 export interface Chain {
   id: string;

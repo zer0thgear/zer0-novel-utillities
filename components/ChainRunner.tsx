@@ -11,6 +11,7 @@ import { useVariations } from '@/hooks/useVariations';
 import { useSubscription } from '@/hooks/useSubscription';
 import { downloadImage } from '@/lib/imageUtils';
 import { producesImage, stepLabel } from '@/lib/chains';
+import { joinPromptParts } from '@/lib/promptText';
 import { ChainStep, GeneratedImage } from '@/types/novelai';
 
 // Pause between network steps, like queued Copies and sweeps.
@@ -36,14 +37,16 @@ export function ChainRunner() {
   const latestError = useRef<string | null>(null);
   latestError.current = enhanceError ?? upscaleError ?? augmentError ?? snapError ?? variationsError ?? null;
 
-  async function runStep(step: ChainStep, image: GeneratedImage): Promise<GeneratedImage[] | null> {
+  async function runStep(step: ChainStep, image: GeneratedImage, tags: string): Promise<GeneratedImage[] | null> {
     switch (step.kind) {
       case 'enhance':
-        return enhance(image, step.level, step.upscale);
+        return enhance(image, step.level, step.scale, tags);
       case 'upscale':
         return upscale(image);
       case 'variations':
-        return generateVariations(image);
+        return generateVariations(image, tags);
+      case 'tags':
+        return [image]; // runQueue collects these itself
       case 'director': {
         const options =
           step.tool === 'emotion'
@@ -77,6 +80,8 @@ export function ChainRunner() {
       let current = session().images.find((img) => img.id === job.imageId);
       if (!current) continue; // removed from history while queued
       const runId = crypto.randomUUID();
+      // From Add Tags steps, for this run's later steps only.
+      let tags = '';
       done++;
 
       for (let i = 0; i < chain.steps.length; i++) {
@@ -92,7 +97,11 @@ export function ChainRunner() {
           label,
         });
 
-        const result = await runStep(step, current);
+        if (step.kind === 'tags') {
+          tags = joinPromptParts(tags, step.tags);
+          continue;
+        }
+        const result = await runStep(step, current, tags);
         if (!result) {
           await sleep(0); // let the hook's error state render
           failure = `"${chain.name}" stopped at step ${i + 1} of ${chain.steps.length} (${label})${
@@ -109,7 +118,8 @@ export function ChainRunner() {
         current = result[0];
 
         const next = chain.steps[i + 1];
-        if (next && next.kind !== 'pixelSnap' && next.kind !== 'download' && !store().stopRequested) await sleep(STEP_GAP_MS);
+        const local = (s: ChainStep) => s.kind === 'pixelSnap' || s.kind === 'download' || s.kind === 'tags';
+        if (next && !local(next) && !store().stopRequested) await sleep(STEP_GAP_MS);
       }
       if (failure || store().stopRequested) break;
     }

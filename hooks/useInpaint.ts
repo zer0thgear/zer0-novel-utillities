@@ -10,9 +10,10 @@ import {
   formSampling,
   promptSource,
   randomSeed,
-  resolveSelectedPrompt,
+  resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { eraseStealthMarks } from '@/lib/requestImage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,18 +61,18 @@ export function useInpaint(): UseInpaintReturn {
     setIsLoading(true);
 
     try {
-      const imageB64 = await blobToBase64(image.blob);
+      // NovelAI's canvas erases stealth metadata from an image it loads.
+      const imageB64 = await blobToBase64(await eraseStealthMarks(image.blob));
       const maskB64 = await blobToBase64(maskBlob);
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      const resolved = resolveReworkPrompt(form, image);
       // Presets come from the model actually sent, as NovelAI does: V5 Curated
       // inpaints with V4.5 Curated's model, so it gets V4.5 Curated's presets
       // (verified against novelai.net's own request, 2026-09-18).
       const model = toInpaintingModel(form.model);
       const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
       const seed = randomSeed();
-      const extraNoiseSeed = randomSeed();
 
       const request = buildImageRequest({
         input,
@@ -92,7 +93,6 @@ export function useInpaint(): UseInpaintReturn {
           add_original_image: false,
           inpaintImg2ImgStrength: 0.69,
           seed,
-          extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           mask: maskB64,
           img2img: { strength: 0.69, color_correct: true },

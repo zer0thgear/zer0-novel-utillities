@@ -10,7 +10,7 @@ import {
   formSampling,
   promptSource,
   randomSeed,
-  resolveSelectedPrompt,
+  resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
 
@@ -42,10 +42,9 @@ export function useEdit(): UseEditReturn {
       const imageB64 = await blobToBase64(editedBlob);
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      const resolved = resolveReworkPrompt(form, image);
       const { input, negativePrompt } = composeFinalPrompts(form, resolved);
       const seed = randomSeed();
-      const extraNoiseSeed = randomSeed();
 
       const request = buildImageRequest({
         input,
@@ -66,7 +65,6 @@ export function useEdit(): UseEditReturn {
           add_original_image: true,
           inpaintImg2ImgStrength: 0.69,
           seed,
-          extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           color_correct: false,
         },

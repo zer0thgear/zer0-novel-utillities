@@ -10,7 +10,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 
 ## Writing prompts
 
-- **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**). Reorder them with the arrows.
+- **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
 - **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 22 at once on V5, 6 on V4/V4.5). **Use Coordinates** places them on a drag-and-drop position canvas.
 - **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own.
 - **Tidbits.** Small toggleable pieces attached to a prompt or character, appended when enabled. They're trimmed and joined with ", ", never producing double commas.
@@ -18,7 +18,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
   - **Link** an entry as a tidbit, or reference it inline by writing `__Label__`. Editing an entry updates every place that uses it.
   - **Random entries** hold one option per line and roll a new one for each request. The roll is remembered on the image, so Enhance or Inpaint on it later doesn't re-roll.
   - An unknown `__name__` is flagged before generating, with the choice to send it anyway as literal text.
-- **Tag autocomplete.** NovelAI's own tag suggestions appear as you type, with a relevance dot, in every prompt field. Library labels are suggested after `__`.
+- **Tag autocomplete.** NovelAI's own tag suggestions appear as you type, with a relevance dot, in every prompt field. Library labels are suggested after `__`. Only typing brings them up; moving the cursor, pasting or undoing doesn't.
 - **Emphasis.** Ctrl+↑ / Ctrl+↓ adds or removes `{}` / `[]` around the tag under the cursor or the selection. The weight bar sets an exact weight (`1.3::tag::`).
 - **Token counter.** A bar under each field shows how much of NovelAI's token limit you're using, counted exactly as NovelAI does:
   - V5: 1471 tokens (Full) or 703 (Curated). V4/V4.5: 512.
@@ -35,7 +35,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Copies:** 2–4 images from one prompt, as one **Batch** request or **Queued** one after another. Queued copies can each use the free Opus allowance and roll wildcards separately.
 - **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
 - **Streaming mode** shows live preview frames while the image renders.
-- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter sit at the top of the sidebar.
+- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter sit at the top of the sidebar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%.
 
 ## X/Y sweeps
 
@@ -48,7 +48,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## Working with an image
 
 From the viewer:
-- **Enhance**: levels 1–5, optionally ×1.5 larger.
+- **Enhance**: levels 1–5, at the scales NovelAI offers for the image's size (1×, 1.5×, 2×, or Max on V5, which lets NovelAI upscale it to about 3 MP). Enhance, Inpaint and Edit render with the sidebar's prompt, as NovelAI does; in Batch mode they use the prompt the image was made from.
 - **Variations**: three variants in one batch.
 - **Upscale**: 2× (images up to 1 MP).
 - **Director Tools**: Remove background, Line art, Sketch, Colorize, Emotion, Declutter, and Pixel Snap (runs locally, free).
@@ -63,6 +63,7 @@ Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, ar
 ## Chained actions
 
 A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Download), each applied to the previous step's result.
+- **Add Tags:** a step that adds tags to the prompt for the Enhance and Variations steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
 - **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included).
 - **Costs:** every run is priced step by step before it starts, and anything that isn't free asks first. Chains that can't work are caught up front, for example Upscale above 1 MP.
 - **While it runs:** steps go one at a time, with a Stop button and a clear message if a step fails. Generate waits until the chain is done.
@@ -74,12 +75,12 @@ Save the current settings and modifiers under a name, and load them back in one 
 
 ## Import & export
 
-- **Images.** Drop or paste an image anywhere to import its NovelAI metadata or use it as an img2img base. You pick which parts to load: prompt, characters, negative, settings or seed. Prompts and characters can be appended to what you have, instead of replacing it. **Clean Imports** strips `[]`/`{}` and tidies spacing.
+- **Images.** Drop or paste an image anywhere to import its NovelAI metadata or use it as an img2img base. Pasted images work too: when copying strips the metadata, it's read from the copy NovelAI hides in the image's transparency. Images made with Image2Image or Inpainting are flagged, as on NovelAI, since their metadata can't reproduce them. You pick which parts to load: prompt, characters, negative, settings or seed. Prompts and characters can be appended to what you have, instead of replacing it. **Clean Imports** strips `[]`/`{}` and tidies spacing.
 - **Files.** Import / Export saves any selection of prompts, characters, library entries, presets, chains and settings to a JSON file. On import, you choose per list whether to add to or replace what you have. Library links are kept intact, and duplicates are merged.
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
 
 ## Settings that persist
 

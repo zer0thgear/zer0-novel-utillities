@@ -30,6 +30,7 @@ import { MODELS, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { eraseStealthMarks } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
@@ -200,8 +201,14 @@ export function PromptForm() {
     offerAutoChain(made);
   }
 
+  /** The Img2Img base, stealth metadata erased as NovelAI's canvas does on
+   *  loading it (the rest of its preparation happens as it's sent). */
+  async function img2imgBaseB64() {
+    return img2imgSource ? blobToBase64(await eraseStealthMarks(img2imgSource.blob)) : undefined;
+  }
+
   async function generateAll(gen: typeof generate) {
-    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+    const baseImageB64 = await img2imgBaseB64();
 
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
@@ -252,12 +259,18 @@ export function PromptForm() {
 
       setIsLoading(true);
       setBatchStatus({ current: 0, total: selectedPrompts.length });
+      // One history group for the whole run, like Copies.
+      const batchId = crypto.randomUUID();
 
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
-        const ok = await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+        const ok = await gen(buildRequest(resolved, seed, baseImageB64), {
+          batchId,
+          wildcardPicks: resolved.picks,
+          source: promptSource(form, resolved),
+        });
         if (!ok) break; // stop batch on error
       }
 
@@ -287,7 +300,7 @@ export function PromptForm() {
     // Roll every wildcard once and replay that across the grid, so the only
     // thing changing between cells is what's being swept.
     const baseline = resolveFor(selected);
-    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+    const baseImageB64 = await img2imgBaseB64();
 
     const { made, gen } = collectingGenerate();
     sweepStopRef.current = false;

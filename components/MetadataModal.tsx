@@ -1,13 +1,29 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { extractNaiMetadata, extractRawPngText, ParsedNaiMetadata } from '@/lib/naiMetadata';
+import { ParsedNaiMetadata, readNaiMetadata } from '@/lib/naiMetadata';
 
 interface MetadataModalProps {
   /** Only `.blob` is read — accepts a GeneratedImage or any raw File/Blob,
    *  so this also works for a dropped image not yet in the session. */
   image: { blob: Blob };
   onClose: () => void;
+}
+
+// NovelAI's own labels for a Comment's request_type (its metadata inspector).
+const REQUEST_TYPES: Record<string, string> = {
+  PromptGenerateRequest: 'Text to Image',
+  Img2ImgRequest: 'Image to Image',
+  NativeInfillingRequest: 'Inpainting',
+};
+
+function requestType(comment: string | undefined): string | null {
+  try {
+    const type = comment ? (JSON.parse(comment) as { request_type?: unknown }).request_type : undefined;
+    return typeof type === 'string' ? (REQUEST_TYPES[type] ?? type) : null;
+  } catch {
+    return null;
+  }
 }
 
 const rowCls = 'flex items-start justify-between gap-4 border-b border-slate-800 py-2 text-xs';
@@ -21,6 +37,12 @@ function Row({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/** The text chunk is "Generation_time"; the alpha-channel copy says "Generation time". */
+function generationTime(raw: Record<string, string>): string {
+  const seconds = Number(raw.Generation_time ?? raw['Generation time']);
+  return Number.isFinite(seconds) && seconds > 0 ? `${seconds.toFixed(2)}s` : '—';
+}
+
 export function MetadataModal({ image, onClose }: MetadataModalProps) {
   const [parsed, setParsed] = useState<ParsedNaiMetadata | null>(null);
   const [raw, setRaw] = useState<Record<string, string> | null>(null);
@@ -29,10 +51,11 @@ export function MetadataModal({ image, onClose }: MetadataModalProps) {
 
   useEffect(() => {
     let cancelled = false;
-    image.blob.arrayBuffer().then((buf) => {
+    // Text chunks, or the alpha-channel copy when those were stripped.
+    readNaiMetadata(image.blob).then(({ parsed, raw }) => {
       if (cancelled) return;
-      setParsed(extractNaiMetadata(buf));
-      setRaw(extractRawPngText(buf));
+      setParsed(parsed);
+      setRaw(raw);
     });
     return () => { cancelled = true; };
   }, [image]);
@@ -63,12 +86,16 @@ export function MetadataModal({ image, onClose }: MetadataModalProps) {
             <p className="py-8 text-center text-xs text-slate-500">Reading…</p>
           ) : !parsed ? (
             <p className="py-8 text-center text-xs text-slate-500">
-              No NovelAI metadata found in this image (not a NovelAI-generated PNG, or it was stripped).
+              No NovelAI metadata found in this image (not made by NovelAI, or it was stripped).
             </p>
           ) : (
             <>
               {/* Structured view */}
               <div className="flex flex-col">
+                {requestType(raw.Comment) && <Row label="Request Type" value={requestType(raw.Comment)!} />}
+                {parsed.img2img && (
+                  <Row label="Img2Img" value={`strength ${parsed.img2img.strength}, noise ${parsed.img2img.noise}`} />
+                )}
                 <Row label="Prompt" value={parsed.prompt} />
                 <Row label="Negative Prompt" value={parsed.negativePrompt || '(none)'} />
                 {parsed.characters.map((c, i) => (
@@ -85,7 +112,7 @@ export function MetadataModal({ image, onClose }: MetadataModalProps) {
                 )}
                 <Row label="CFG Rescale" value={parsed.cfgRescale} />
                 <Row label="Source" value={raw.Source ?? '—'} />
-                <Row label="Generation Time" value={raw.Generation_time ? `${Number(raw.Generation_time).toFixed(2)}s` : '—'} />
+                <Row label="Generation Time" value={generationTime(raw)} />
               </div>
 
               {/* Raw JSON toggle */}
