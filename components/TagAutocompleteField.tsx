@@ -42,6 +42,18 @@ interface TagAutocompleteFieldProps {
   enterToSubmit?: boolean;
 }
 
+/** Input from typing or deleting at the keyboard, as opposed to pasting,
+ *  dropping, cutting, undo/redo or autocorrect. */
+function isTyping(inputType: string | undefined): boolean {
+  if (!inputType) return false;
+  return (
+    inputType === 'insertText' ||
+    inputType === 'insertCompositionText' ||
+    inputType.startsWith('deleteContent') ||
+    inputType.startsWith('deleteWord')
+  );
+}
+
 export function TagAutocompleteField({
   as = 'textarea',
   value,
@@ -56,9 +68,15 @@ export function TagAutocompleteField({
 }: TagAutocompleteFieldProps) {
   const [cursor, setCursor] = useState<number | null>(null);
   const [highlightIndex, setHighlightIndex] = useState(0);
-  // Decoupled from the raw suggestions array so a stray cursor/selection
-  // event right after Escape doesn't silently reopen the dropdown.
-  const [dismissed, setDismissed] = useState(false);
+  // Suggestions only follow typing. Moving the caret, pasting, dropping,
+  // undo, Escape or a weight change all switch them off until the next
+  // typed character or deletion.
+  const [active, setActive] = useState(false);
+  // Where typing left the caret, so the select event that follows a
+  // keystroke isn't mistaken for the caret being moved.
+  const typedCaret = useRef<{ start: number; end: number } | null>(null);
+  // Set while this component edits the text itself (weight changes).
+  const selfEdit = useRef(false);
   const fieldRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
   const [placement, setPlacement] = useState<{
     left: number;
@@ -69,14 +87,14 @@ export function TagAutocompleteField({
   } | null>(null);
 
   const library = useSettingsStore((s) => s.tidbitLibrary);
-  const query = cursor !== null ? currentSegment(value, cursor) : '';
+  const query = cursor !== null && active ? currentSegment(value, cursor) : '';
   // A segment starting with `__` is a library reference being typed, so
   // suggest labels locally instead of asking NovelAI for tags.
   const libraryQuery = query.startsWith('__') ? query.slice(2).replace(/_+$/, '').toLowerCase() : null;
   const { suggestions: tagSuggestions } = useTagSuggestions(libraryQuery === null ? query : '', model, apiKey);
   const rawSuggestions: Suggestion[] =
     libraryQuery === null ? tagSuggestions : librarySuggestions(libraryQuery);
-  const suggestions = dismissed ? [] : rawSuggestions;
+  const suggestions = active ? rawSuggestions : [];
 
   function librarySuggestions(q: string): Suggestion[] {
     const seen = new Set<string>();
@@ -143,6 +161,7 @@ export function TagAutocompleteField({
     const { text, cursor: newCursor } = applySegment(value, cursor, tag);
     onChange(text);
     setCursor(newCursor);
+    setActive(false);
     setHighlightIndex(0);
     // setTimeout rather than requestAnimationFrame, which the browser
     // pauses entirely while the tab is hidden/backgrounded.
@@ -167,11 +186,15 @@ export function TagAutocompleteField({
     const el = fieldRef.current;
     const newSpan = { start: span.start, end: span.start + next.length };
     setWeightSpan(newSpan);
+    setActive(false);
     // Editing through the browser keeps Ctrl+Z working. That needs the field
     // focused, which it isn't while the slider or number box is in use.
     if (el && document.activeElement === el) {
       el.setSelectionRange(span.start, span.end);
-      if (document.execCommand('insertText', false, next)) {
+      selfEdit.current = true;
+      const inserted = document.execCommand('insertText', false, next);
+      selfEdit.current = false;
+      if (inserted) {
         el.setSelectionRange(newSpan.start, newSpan.end);
         return;
       }
@@ -207,7 +230,7 @@ export function TagAutocompleteField({
     }
     if (dropdownOpen && e.key === 'Escape') {
       e.preventDefault();
-      setDismissed(true);
+      setActive(false);
       return;
     }
     if (dropdownOpen && (e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
@@ -224,15 +247,26 @@ export function TagAutocompleteField({
   const sharedProps = {
     value,
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-      onChange(e.target.value);
-      setCursor(e.target.selectionStart);
+      const el = e.target;
+      onChange(el.value);
+      setCursor(el.selectionStart);
       setHighlightIndex(0);
-      setDismissed(false);
-      trackWeightSpan(e.target);
+      const typed = !selfEdit.current && isTyping((e.nativeEvent as InputEvent).inputType);
+      setActive(typed);
+      typedCaret.current = typed ? { start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 } : null;
+      trackWeightSpan(el);
     },
     onSelect: (e: React.SyntheticEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-      setCursor(e.currentTarget.selectionStart);
-      trackWeightSpan(e.currentTarget);
+      const el = e.currentTarget;
+      setCursor(el.selectionStart);
+      // A select event where typing didn't just leave the caret means it moved
+      // (click, arrow keys, selecting text), so hide the suggestions.
+      const typed = typedCaret.current;
+      if (!typed || typed.start !== el.selectionStart || typed.end !== el.selectionEnd) {
+        typedCaret.current = null;
+        setActive(false);
+      }
+      trackWeightSpan(el);
     },
     onBlur: () => setTimeout(() => setCursor(null), 150),
     onKeyDown: handleKeyDown,
