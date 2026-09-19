@@ -1,6 +1,7 @@
 import type { FormSettings } from '@/store/settingsStore';
 import {
   CharacterPromptEntry,
+  GeneratedImage,
   NovelAIGenerateRequest,
   NovelAIModel,
   NovelAIParameters,
@@ -42,6 +43,27 @@ type PromptModifiers = Pick<
 export function resolveSelectedPrompt(form: FormSettings, replay?: WildcardPicks): ResolvedRequestPrompts {
   const selected = form.basePrompts.find((p) => p.selected);
   return resolveRequestPrompts(selected ?? { text: '' }, form.characters, form.negativePrompt, form.tidbitLibrary, replay);
+}
+
+/**
+ * The prompts for reworking an image (Enhance, Inpaint, Edit), replaying its
+ * rolls. Like NovelAI, that's the sidebar's prompt. In Batch mode several
+ * prompts are ticked, so it's the base prompt the image itself was made from
+ * (as written, with its tidbits and rolls); characters and the negative
+ * still come from the sidebar, which Batch shares across prompts.
+ */
+export function resolveReworkPrompt(form: FormSettings, image: GeneratedImage): ResolvedRequestPrompts {
+  if (form.promptMode !== 'batch' || !image.source) return resolveSelectedPrompt(form, image.wildcardPicks);
+  const resolved = resolveRequestPrompts(
+    { text: image.source.prompt },
+    form.characters,
+    form.negativePrompt,
+    form.tidbitLibrary,
+    image.wildcardPicks,
+  );
+  // Keep the image's base-prompt rolls too, so reworking the result again
+  // still doesn't re-roll.
+  return { ...resolved, picks: { ...image.wildcardPicks, ...resolved.picks } };
 }
 
 /** Applies the prompt modifiers to resolved text as NovelAI's client does:

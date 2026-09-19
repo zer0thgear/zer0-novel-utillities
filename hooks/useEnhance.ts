@@ -10,7 +10,7 @@ import {
   formSampling,
   promptSource,
   randomSeed,
-  resolveSelectedPrompt,
+  resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { addMissingTags } from '@/lib/naiPresets';
@@ -74,7 +74,7 @@ export function useEnhance(): UseEnhanceReturn {
       const height = upscale ? round64(image.parameters.height * 1.5) : image.parameters.height;
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const rolled = resolveSelectedPrompt(form, image.wildcardPicks);
+      const rolled = resolveReworkPrompt(form, image);
       const resolved = extraTags ? { ...rolled, baseText: addMissingTags(rolled.baseText, form.model, extraTags) } : rolled;
       // Enhance always nudges away from an upscaled/blurry look.
       const { input, negativePrompt } = composeFinalPrompts(form, resolved, '-2::upscaled, blurry::');

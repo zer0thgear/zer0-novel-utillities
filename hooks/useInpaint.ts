@@ -10,7 +10,7 @@ import {
   formSampling,
   promptSource,
   randomSeed,
-  resolveSelectedPrompt,
+  resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
 
@@ -64,7 +64,7 @@ export function useInpaint(): UseInpaintReturn {
       const maskB64 = await blobToBase64(maskBlob);
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      const resolved = resolveReworkPrompt(form, image);
       // Presets come from the model actually sent, as NovelAI does: V5 Curated
       // inpaints with V4.5 Curated's model, so it gets V4.5 Curated's presets
       // (verified against novelai.net's own request, 2026-09-18).
