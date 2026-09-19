@@ -310,7 +310,10 @@ export type ChainStep =
       emotion?: string;
     }
   | { kind: 'pixelSnap'; palettize: 'off' | 'auto' | 'custom'; colors?: number; avoidOverRefining?: boolean; upscale?: boolean }
-  | { kind: 'download' };
+  | { kind: 'download' }
+  /** Adds tags to the prompt for this run's later steps only (Enhance and
+   *  Variations); the sidebar's prompt is left alone. */
+  | { kind: 'tags'; tags: string };
 
 export interface Chain {
   id: string;

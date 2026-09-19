@@ -6,6 +6,7 @@ import {
   UPSCALE_MAX_PIXELS,
   upscaleCost,
 } from '@/lib/anlasCost';
+import { normalizePromptPart } from '@/lib/promptText';
 
 // Chained actions: a saved sequence of image actions, each step applied to the
 // previous step's result. Everything here is pure (labels, validation, cost
@@ -29,6 +30,7 @@ export const DIRECTOR_TOOLS: { value: ChainDirectorTool; label: string }[] = [
 export const EMOTIONS = ['Neutral', 'Happy', 'Sad', 'Angry', 'Scared', 'Surprised', 'Tired', 'Excited'];
 
 export const STEP_KINDS: { value: ChainStep['kind']; label: string }[] = [
+  { value: 'tags', label: 'Add Tags' },
   { value: 'enhance', label: 'Enhance' },
   { value: 'upscale', label: 'Upscale' },
   { value: 'director', label: 'Director Tool' },
@@ -46,6 +48,8 @@ export function defaultStep(kind: ChainStep['kind']): ChainStep {
       return { kind, tool: 'bg-removal' };
     case 'pixelSnap':
       return { kind, palettize: 'auto', upscale: true };
+    case 'tags':
+      return { kind, tags: '' };
     default:
       return { kind };
   }
@@ -67,13 +71,21 @@ export function stepLabel(step: ChainStep): string {
       return 'Pixel Snap';
     case 'download':
       return 'Download';
+    case 'tags': {
+      const tags = normalizePromptPart(step.tags);
+      return tags ? `+ ${tags.length > 30 ? `${tags.slice(0, 30)}…` : tags}` : 'Add Tags';
+    }
   }
 }
 
+/** Steps that render from the prompt, so an Add Tags step before them counts. */
+const usesPrompt = (step: ChainStep) => step.kind === 'enhance' || step.kind === 'variations';
+
 export const chainSummary = (chain: Chain) => chain.steps.map(stepLabel).join(' → ') || 'No steps';
 
-/** Steps whose output is a new image (Download passes its input along). */
-export const producesImage = (step: ChainStep) => step.kind !== 'download';
+/** Steps whose output is a new image (Download passes its input along, and
+ *  Add Tags only changes the prompt for later steps). */
+export const producesImage = (step: ChainStep) => step.kind !== 'download' && step.kind !== 'tags';
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
@@ -185,6 +197,11 @@ export function planChain(
         break;
       case 'download':
         break;
+      case 'tags':
+        if (!step.tags.trim()) problem = 'Enter the tags to add.';
+        else if (!chain.steps.slice(i + 1).some(usesPrompt))
+          problem = 'Only Enhance and Variations use the prompt, and neither comes after this step.';
+        break;
     }
     planned.push({ label: stepLabel(step), cost, width, height, problem });
     if (problem) problems.push(`Step ${i + 1} (${stepLabel(step)}): ${problem}`);
@@ -210,6 +227,8 @@ function parseStep(v: unknown): ChainStep | null {
     case 'variations':
     case 'download':
       return { kind: v.kind };
+    case 'tags':
+      return typeof v.tags === 'string' ? { kind: 'tags', tags: v.tags } : null;
     case 'director': {
       if (!DIRECTOR_TOOLS.some((t) => t.value === v.tool)) return null;
       const defry = Number(v.defry);

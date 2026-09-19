@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSessionStore } from '@/store/sessionStore';
+import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 import { useSubscription } from '@/hooks/useSubscription';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { opusStatus } from '@/lib/anlasCost';
 import { defaultStep, DIRECTOR_TOOLS, EMOTIONS, planChain, STEP_KINDS } from '@/lib/chains';
 import { moveItem } from '@/lib/promptText';
-import { Chain, ChainStep } from '@/types/novelai';
+import { Chain, ChainStep, NovelAIModel } from '@/types/novelai';
 
 interface Props {
   /** The chain to edit, or null for a new one. */
@@ -102,7 +104,7 @@ export function ChainEditorModal({ chain, onClose }: Props) {
                   </button>
                 </div>
 
-                <StepOptions step={step} onChange={(patch) => update(i, patch)} />
+                <StepOptions step={step} onChange={(patch) => update(i, patch)} model={form.model} />
                 {planned.problem && <p className="text-[11px] text-red-300">{planned.problem}</p>}
               </div>
             );
@@ -157,9 +159,36 @@ export function ChainEditorModal({ chain, onClose }: Props) {
 }
 
 /** The options for one step, matching the viewer's own panels. */
-function StepOptions({ step, onChange }: { step: ChainStep; onChange: (patch: Partial<ChainStep>) => void }) {
+function StepOptions({
+  step,
+  onChange,
+  model,
+}: {
+  step: ChainStep;
+  onChange: (patch: Partial<ChainStep>) => void;
+  model: NovelAIModel;
+}) {
+  const apiKey = useSessionStore((s) => s.apiKey);
   const row = 'flex flex-wrap items-center gap-2 pl-6 text-xs text-slate-400';
   switch (step.kind) {
+    case 'tags':
+      return (
+        <div className="flex flex-col gap-1 pl-6">
+          <TagAutocompleteField
+            as="input"
+            value={step.tags}
+            onChange={(tags) => onChange({ tags })}
+            model={model}
+            apiKey={apiKey}
+            placeholder="e.g. smile, looking at viewer"
+            className="w-full rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none border border-slate-700/60 focus:border-violet-500"
+          />
+          <p className="text-[11px] text-slate-500">
+            Added to the prompt for the Enhance and Variations steps after this one. Your prompt in the sidebar
+            isn&apos;t changed.
+          </p>
+        </div>
+      );
     case 'enhance':
       return (
         <div className={row}>

@@ -179,10 +179,20 @@ export function composeWithQuality(
   level: QualityLevel,
   transparentBg = false,
 ): string {
-  const suffix = joinPromptParts(
+  const quality = joinPromptParts(
     transparentBg && supportsTransparency(model) ? 'transparent background' : '',
     getQualityText(model, level),
   );
+  return insertTags(text, model, quality);
+}
+
+/**
+ * Adds tags to the end of a prompt, placed the way NovelAI places quality
+ * tags: on V4+ before a `text:` section (so they aren't rendered as text) and
+ * before any prompt-mix `|`; on V3, onto every mix part ahead of its weight.
+ */
+export function insertTags(text: string, model: NovelAIModel, tags: string): string {
+  const suffix = joinPromptParts(tags);
   if (!suffix) return text;
   if (!hasCharacterPrompts(model)) {
     return text
@@ -200,6 +210,26 @@ export function composeWithQuality(
     ? joinPromptParts(head.slice(0, textSection.index), suffix, head.slice(textSection.index))
     : joinPromptParts(head, suffix);
   return composed + text.slice(cut);
+}
+
+/**
+ * Adds whichever of `tags` (comma-separated) the prompt doesn't already
+ * have, placed like insertTags. For a chain's Add Tags step: its tags apply
+ * to every later render in the run, and a later step may start from an image
+ * whose prompt already has them.
+ */
+export function addMissingTags(text: string, model: NovelAIModel, tags: string): string {
+  const have = new Set(text.split(/[,|]/).map((t) => t.trim().toLowerCase()));
+  const missing = tags
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => {
+      const key = t.toLowerCase();
+      if (!t || have.has(key)) return false;
+      have.add(key);
+      return true;
+    });
+  return insertTags(text, model, missing.join(', '));
 }
 
 /**

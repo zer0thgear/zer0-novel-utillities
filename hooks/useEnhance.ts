@@ -13,6 +13,7 @@ import {
   resolveSelectedPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { addMissingTags } from '@/lib/naiPresets';
 
 // ─── Enhance level config ─────────────────────────────────────────────────────
 
@@ -35,7 +36,13 @@ export type EnhanceLevelNum = 1 | 2 | 3 | 4 | 5;
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 interface UseEnhanceReturn {
-  enhance: (image: GeneratedImage, level: EnhanceLevelNum, upscale: boolean) => Promise<GeneratedImage[] | null>;
+  /** `extraTags` (from a chain's Add Tags step) go into this request only. */
+  enhance: (
+    image: GeneratedImage,
+    level: EnhanceLevelNum,
+    upscale: boolean,
+    extraTags?: string,
+  ) => Promise<GeneratedImage[] | null>;
   isEnhancing: boolean;
   error: string | null;
   clearError: () => void;
@@ -52,6 +59,7 @@ export function useEnhance(): UseEnhanceReturn {
     image: GeneratedImage,
     levelNum: EnhanceLevelNum,
     upscale: boolean,
+    extraTags?: string,
   ): Promise<GeneratedImage[] | null> => {
     setIsEnhancing(true);
     setIsLoading(true); // shows gallery progress indicator / streaming preview
@@ -66,7 +74,8 @@ export function useEnhance(): UseEnhanceReturn {
       const height = upscale ? round64(image.parameters.height * 1.5) : image.parameters.height;
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
-      const resolved = resolveSelectedPrompt(form, image.wildcardPicks);
+      const rolled = resolveSelectedPrompt(form, image.wildcardPicks);
+      const resolved = extraTags ? { ...rolled, baseText: addMissingTags(rolled.baseText, form.model, extraTags) } : rolled;
       // Enhance always nudges away from an upscaled/blurry look.
       const { input, negativePrompt } = composeFinalPrompts(form, resolved, '-2::upscaled, blurry::');
       const seed = randomSeed();

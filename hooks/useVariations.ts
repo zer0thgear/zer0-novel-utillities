@@ -6,6 +6,7 @@ import { GeneratedImage } from '@/types/novelai';
 import { resolveRequestPrompts } from '@/lib/wildcards';
 import { buildImageRequest, EDIT_REQUEST_FLAGS, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { addMissingTags } from '@/lib/naiPresets';
 
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
@@ -14,7 +15,8 @@ export const VARIATION_STRENGTH = 0.8;
 const VARIATION_NOISE = 0.1;
 
 interface UseVariationsReturn {
-  generateVariations: (image: GeneratedImage) => Promise<GeneratedImage[] | null>;
+  /** `extraTags` (from a chain's Add Tags step) go into this request only. */
+  generateVariations: (image: GeneratedImage, extraTags?: string) => Promise<GeneratedImage[] | null>;
   isGeneratingVariations: boolean;
   error: string | null;
   clearError: () => void;
@@ -26,7 +28,7 @@ export function useVariations(): UseVariationsReturn {
   const { setIsLoading } = useSessionStore();
   const form = useSettingsStore();
 
-  const generateVariations = async (image: GeneratedImage): Promise<GeneratedImage[] | null> => {
+  const generateVariations = async (image: GeneratedImage, extraTags?: string): Promise<GeneratedImage[] | null> => {
     setIsGeneratingVariations(true);
     setIsLoading(true);
 
@@ -40,8 +42,15 @@ export function useVariations(): UseVariationsReturn {
 
       // Settings come from the image itself, not the current form.
       const p = image.parameters;
+      // Extra tags the prompt lacks go where NovelAI puts quality tags, and
+      // into the saved as-written prompt too, so Reuse brings them back.
+      const input = extraTags ? addMissingTags(image.prompt, image.model, extraTags) : image.prompt;
+      const source =
+        extraTags && image.source
+          ? { ...image.source, prompt: addMissingTags(image.source.prompt, image.model, extraTags) }
+          : image.source;
       const request = buildImageRequest({
-        input: image.prompt,
+        input,
         negativePrompt: image.negativePrompt,
         model: image.model,
         action: 'img2img',
@@ -82,7 +91,7 @@ export function useVariations(): UseVariationsReturn {
         // Keep the source's base-prompt rolls alongside the characters' so a
         // variation can itself be enhanced without re-rolling.
         wildcardPicks: { ...image.wildcardPicks, ...resolved.picks },
-        source: image.source,
+        source,
       });
     } catch (err) {
       console.error('Variations setup error:', err);
