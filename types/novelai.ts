@@ -250,7 +250,9 @@ export interface NovelAISubscription {
   usage: {
     percent: number; // 0-100+, clamped display-side; recovery pauses above 100
     isNegative: boolean;
-    timeUntilNextPercent: number; // seconds until the next 1% tick
+    /** Despite the name, seconds per 1% of refill (a rate, not a countdown):
+     *  NovelAI's client shows 86400 / this as "% per day". */
+    timeUntilNextPercent: number;
   };
   /** Despite the name, this is the Anlas balance — confirmed against NovelAI's own
    *  "Purchase Anlas" modal, which labels these two fields "Your Subscription Anlas"
