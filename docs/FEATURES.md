@@ -35,6 +35,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Copies:** 2–4 images from one prompt, as one **Batch** request or **Queued** one after another. Queued copies can each use the free Opus allowance and roll wildcards separately.
 - **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
 - **Streaming mode** shows live preview frames while the image renders.
+- **Tab title:** like NovelAI's, it spins (◰◳◲◱) while images generate and shows ✓ when a run finishes while you're on another tab.
 - **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter sit at the top of the sidebar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%.
 
 ## X/Y sweeps
@@ -43,7 +44,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **What can vary:** CFG, CFG rescale, steps, sampler, seed, or the options of a random wildcard.
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
-- **Afterwards:** the results open as a labelled grid, which you can save as one PNG.
+- **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
 
 ## Working with an image
 
