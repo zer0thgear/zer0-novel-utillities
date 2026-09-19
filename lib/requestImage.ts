@@ -11,6 +11,9 @@ import { NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
 //   4. blend any transparency onto a background: white, black for masks,
 //      none on V5 (which supports transparency);
 //   5. re-encode it as PNG.
+// Then the request's width and height are rounded to multiples of 64, after
+// the image was sized, so an Enhance at 1.5× of 832×1216 sends a 1248×1824
+// image in a 1280×1856 request (the server can't render 1248×1824).
 // Its canvas (Img2Img base, Inpaint, Edit) also erases the stealth bits when
 // it loads an image, which eraseStealthMarks mirrors.
 
@@ -324,17 +327,28 @@ export async function eraseStealthMarks(blob: Blob): Promise<Blob> {
   }
 }
 
+// Every model's size step.
+const SIZE_STEP = 64;
+
+/** The nearest multiple of 64, ties going up (NovelAI's rounding). */
+export function roundToSizeStep(n: number): number {
+  const down = Math.floor(n / SIZE_STEP) * SIZE_STEP;
+  const up = Math.ceil(n / SIZE_STEP) * SIZE_STEP;
+  const r = n - down < up - n ? down : up;
+  return r <= 0 ? SIZE_STEP : r;
+}
+
 /** Only V5 supports transparency, so only V5 keeps it. */
 const keepsTransparency = (model: NovelAIModel) => model.startsWith('nai-diffusion-5');
 
 /**
- * The last step before sending, as NovelAI's client does it for any request
- * with an image: prepares the image and mask, turns SMEA off, and gives
- * extra_noise_seed its default of seed − 1.
+ * The last step before sending, as NovelAI's client does it: for a request
+ * with an image, prepares the image and mask, turns SMEA off and gives
+ * extra_noise_seed its default of seed − 1; then, for any request, rounds
+ * the size to multiples of 64.
  */
-export async function finalizeImageRequest(request: NovelAIGenerateRequest): Promise<NovelAIGenerateRequest> {
+export async function finalizeRequest(request: NovelAIGenerateRequest): Promise<NovelAIGenerateRequest> {
   const p = request.parameters;
-  if (!p.image && !p.mask) return request;
   const parameters = { ...p };
   if (p.image) {
     parameters.image = await prepareRequestImage(p.image, {
@@ -349,5 +363,7 @@ export async function finalizeImageRequest(request: NovelAIGenerateRequest): Pro
   if (p.mask) {
     parameters.mask = await prepareRequestImage(p.mask, { width: p.width, height: p.height, background: 'black', smooth: false });
   }
+  if (p.width % SIZE_STEP !== 0) parameters.width = roundToSizeStep(p.width);
+  if (p.height % SIZE_STEP !== 0) parameters.height = roundToSizeStep(p.height);
   return { ...request, parameters };
 }

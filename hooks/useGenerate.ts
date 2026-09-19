@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { extractImagesFromZip, getImageDimensions } from '@/lib/imageUtils';
-import { finalizeImageRequest } from '@/lib/requestImage';
+import { finalizeRequest } from '@/lib/requestImage';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest, PromptSource, SweepCellInfo, WildcardPicks } from '@/types/novelai';
@@ -255,7 +255,7 @@ export function useGenerate(): UseGenerateReturn {
       return null;
     }
     // Prepare images and defaults exactly as NovelAI's client does.
-    const sent = await finalizeImageRequest(request);
+    const sent = await finalizeRequest(request);
     const images = await (streamingMode && !opts?.forceStandard
       ? generateStreaming(sent, opts)
       : generateStandard(sent, opts));

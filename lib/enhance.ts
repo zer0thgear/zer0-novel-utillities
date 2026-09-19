@@ -1,6 +1,7 @@
 import { NovelAIModel } from '@/types/novelai';
 import { MAX_GENERATION_PIXELS } from '@/lib/anlasCost';
 import { TEXT_SECTION } from '@/lib/naiPresets';
+import { roundToSizeStep } from '@/lib/requestImage';
 
 // Enhance as NovelAI's client does it (from its bundle, 2026-09-18).
 
@@ -45,20 +46,14 @@ export function enhanceScales(width: number, height: number, model: NovelAIModel
 
 export const scaleLabel = (scale: EnhanceScale) => (scale === 'max' ? 'Max' : `${scale}×`);
 
-/** The size NovelAI requests: plain multiplication, rounded down (1.5× of
- *  832×1216 is 1248×1824). Max requests the image's own size. */
+/** The size NovelAI resizes the image to: plain multiplication, rounded
+ *  down (1.5× of 832×1216 is 1248×1824). The request itself then goes out
+ *  at the nearest multiples of 64 (1280×1856; see finalizeRequest). Max uses
+ *  the image's own size. */
 export function enhanceRequestSize(width: number, height: number, scale: EnhanceScale) {
   return scale === 'max'
     ? { width, height }
     : { width: Math.floor(width * scale), height: Math.floor(height * scale) };
-}
-
-/** Nearest multiple of 64, ties going up. */
-function nearestStep(n: number) {
-  const down = Math.floor(n / STEP) * STEP;
-  const up = Math.ceil(n / STEP) * STEP;
-  const r = n - down < up - n ? down : up;
-  return r <= 0 ? STEP : r;
 }
 
 /** The server's size for a Max enhance, as NovelAI's client prices it: 2× on
@@ -76,18 +71,19 @@ function maxEnhancePriceSize(width: number, height: number) {
   return { width: w, height: h };
 }
 
-/** The size NovelAI prices an enhance at (its estimate, not the request). */
+/** The size NovelAI prices an enhance at: the size it's rendered at, or for
+ *  Max the server's size as NovelAI's client estimates it. */
 export function enhancePriceSize(width: number, height: number, scale: EnhanceScale) {
   if (scale === 'max') return maxEnhancePriceSize(width, height);
   const size = enhanceRequestSize(width, height, scale);
-  return { width: nearestStep(size.width), height: nearestStep(size.height) };
+  return { width: roundToSizeStep(size.width), height: roundToSizeStep(size.height) };
 }
 
-/** The result's size: the request's, or for Max the size NovelAI's client
- *  expects back (up to 2×, within 3.1 MP). The real size is read from the
- *  image once it arrives. */
+/** The result's size: the rendered size, or for Max the size NovelAI's
+ *  client expects back (up to 2×, within 3.1 MP). The real size is read
+ *  from the image once it arrives. */
 export function enhanceOutputSize(width: number, height: number, scale: EnhanceScale) {
-  if (scale !== 'max') return enhanceRequestSize(width, height, scale);
+  if (scale !== 'max') return enhancePriceSize(width, height, scale);
   const k = Math.min(2, Math.sqrt(MAX_GENERATION_PIXELS / (width * height)));
   return { width: Math.floor(width * k), height: Math.floor(height * k) };
 }
