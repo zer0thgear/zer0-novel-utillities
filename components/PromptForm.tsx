@@ -252,12 +252,18 @@ export function PromptForm() {
 
       setIsLoading(true);
       setBatchStatus({ current: 0, total: selectedPrompts.length });
+      // One history group for the whole run, like Copies.
+      const batchId = crypto.randomUUID();
 
       for (let i = 0; i < selectedPrompts.length; i++) {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
-        const ok = await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+        const ok = await gen(buildRequest(resolved, seed, baseImageB64), {
+          batchId,
+          wildcardPicks: resolved.picks,
+          source: promptSource(form, resolved),
+        });
         if (!ok) break; // stop batch on error
       }
 
