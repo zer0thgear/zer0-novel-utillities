@@ -8,6 +8,11 @@ import { GeneratedImage, NovelAIModel, PromptSource } from '@/types/novelai';
 //   Comment — a JSON blob with the full generation parameters, including the
 //   same v4_prompt/v4_negative_prompt caption structure this codebase already
 //   builds requests with.
+//
+// The same fields are also hidden in the alpha channel ("stealth" metadata,
+// see readStealthText). That copy survives what strips PNG text chunks, such
+// as copying the image to the clipboard, which is how NovelAI's own site still
+// finds the metadata of a pasted image.
 
 export interface ParsedCharacter {
   prompt: string;
@@ -37,7 +42,25 @@ export interface ParsedNaiMetadata {
   /** Only known for this app's own history images (see metadataFromImage):
    *  the sidebar modifiers that produced it, restored with Settings. */
   modifiers?: PromptSource['modifiers'];
+  /** Set when the image can't be remade from its metadata alone, for the
+   *  same reasons (and in the same order) NovelAI's import dialog checks. */
+  notReproducible?: NotReproducibleReason;
+  /** Img2Img strength and noise, when that's how the image was made. */
+  img2img?: { strength: number; noise: number };
+  /** A Director Tools result. NovelAI offers no import for these. */
+  directorTool?: boolean;
 }
+
+export type NotReproducibleReason = 'img2img' | 'inpainting' | 'vibeTransferNoEncoding' | 'characterReference';
+
+/** NovelAI's wording, from its import dialog. */
+export const NOT_REPRODUCIBLE_TEXT: Record<NotReproducibleReason, string> = {
+  img2img: 'This image was generated using Image2Image and cannot be reproduced from its metadata.',
+  inpainting: 'This image was generated using Inpainting and cannot be reproduced from its metadata.',
+  vibeTransferNoEncoding:
+    'This image was generated using Vibe Transfer and contains no encodings, it cannot be reproduced from its metadata.',
+  characterReference: 'This image was generated using Precise Reference and cannot be reproduced from its metadata.',
+};
 
 /** The same shape as a dropped PNG's metadata, but read from a history image,
  *  which knows more: the prompt before modifiers were applied (so reusing it
@@ -110,9 +133,103 @@ function guessModel(sourceOrModelName: string | undefined): NovelAIModel | undef
   return undefined;
 }
 
-export function extractNaiMetadata(buffer: ArrayBuffer): ParsedNaiMetadata | null {
-  const bytes = new Uint8Array(buffer);
-  const chunks = readPngTextChunks(bytes);
+// ─── Stealth (alpha channel) metadata ────────────────────────────────────────
+
+export const STEALTH_MAGIC = 'stealth_pngcomp';
+// NovelAI's client skips images larger than this.
+export const MAX_STEALTH_PIXELS = 0x1000000;
+
+/**
+ * Reads NovelAI's "stealth" metadata: one bit per pixel in the lowest bit of
+ * alpha, running down each column in turn. It holds the "stealth_pngcomp"
+ * marker, a 32-bit big-endian length in bits, then gzipped JSON with the same
+ * fields as the text chunks. Mirrors the reader in NovelAI's own client.
+ * Needs lossless alpha (PNG, or WebP with its alpha intact).
+ */
+async function readStealthText(blob: Blob): Promise<Record<string, string> | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  } catch {
+    return null; // not an image the browser can decode
+  }
+  const { width, height } = bitmap;
+  const total = width * height;
+  if (total > MAX_STEALTH_PIXELS || total < (STEALTH_MAGIC.length + 4) * 8) {
+    bitmap.close();
+    return null;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    bitmap.close();
+    return null;
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const { data } = ctx.getImageData(0, 0, width, height);
+
+  let bit = 0;
+  const readByte = () => {
+    let byte = 0;
+    for (let i = 0; i < 8; i++, bit++) {
+      const pixel = (bit % height) * width + Math.floor(bit / height);
+      byte |= (data[pixel * 4 + 3] & 1) << (7 - i);
+    }
+    return byte;
+  };
+
+  for (let i = 0; i < STEALTH_MAGIC.length; i++) {
+    if (readByte() !== STEALTH_MAGIC.charCodeAt(i)) return null;
+  }
+  const bits = ((readByte() << 24) | (readByte() << 16) | (readByte() << 8) | readByte()) >>> 0;
+  if (bits === 0 || bits > total - bit) return null;
+  const payload = new Uint8Array(Math.ceil(bits / 8));
+  for (let i = 0; i < payload.length; i++) payload[i] = readByte();
+
+  try {
+    const stream = new Blob([payload]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const fields: unknown = JSON.parse(await new Response(stream).text());
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
+    return Object.fromEntries(
+      Object.entries(fields).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** The metadata text fields of an image: its PNG text chunks, or failing
+ *  that its stealth metadata (as NovelAI checks them). Empty if neither. */
+export async function readNaiText(blob: Blob): Promise<Record<string, string>> {
+  const chunks = readPngTextChunks(new Uint8Array(await blob.arrayBuffer()));
+  if (chunks.Comment) return chunks;
+  return (await readStealthText(blob)) ?? chunks;
+}
+
+/** An image's NovelAI metadata, parsed, plus the raw text fields it came from. */
+export async function readNaiMetadata(
+  blob: Blob,
+): Promise<{ parsed: ParsedNaiMetadata | null; raw: Record<string, string> }> {
+  const raw = await readNaiText(blob);
+  return { parsed: parseNaiText(raw), raw };
+}
+
+/** NovelAI's import-dialog checks, in its order. */
+function notReproducibleReason(data: Record<string, unknown>): NotReproducibleReason | undefined {
+  const nonEmpty = (v: unknown) => Array.isArray(v) && v.length > 0;
+  if (data.request_type === 'Img2ImgRequest') return 'img2img';
+  if (data.request_type === 'NativeInfillingRequest') return 'inpainting';
+  if (nonEmpty(data.reference_strength_multiple) && !nonEmpty(data.reference_image_multiple)) {
+    return 'vibeTransferNoEncoding';
+  }
+  if (nonEmpty(data.director_reference_strengths)) return 'characterReference';
+  return undefined;
+}
+
+function parseNaiText(chunks: Record<string, string>): ParsedNaiMetadata | null {
   if (!chunks.Comment) return null;
 
   let data: Record<string, unknown>;
@@ -153,12 +270,10 @@ export function extractNaiMetadata(buffer: ArrayBuffer): ParsedNaiMetadata | nul
     smeaDyn: data.sm_dyn === true,
     cfgRescale: num(data.cfg_rescale, 0),
     guessedModel: guessModel(str(data.model_name, chunks.Source)),
+    notReproducible: notReproducibleReason(data),
+    ...(data.request_type === 'Img2ImgRequest'
+      ? { img2img: { strength: num(data.strength, 0), noise: num(data.noise, 0) } }
+      : {}),
+    ...(data.req_type !== undefined ? { directorTool: true } : {}),
   };
-}
-
-/** Raw chunk text, for a metadata-inspection view (item 7) — includes fields
- *  extractNaiMetadata() doesn't surface (Title, Software, Source, Generation_time,
- *  and the full unparsed Comment JSON). */
-export function extractRawPngText(buffer: ArrayBuffer): Record<string, string> {
-  return readPngTextChunks(new Uint8Array(buffer));
 }
