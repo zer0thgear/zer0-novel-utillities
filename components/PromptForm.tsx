@@ -143,7 +143,7 @@ export function PromptForm() {
     baseImageB64?: string,
     nSamples = 1,
     // A sweep cell's values, replacing the form's for this one request.
-    overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
+    overrides: { scale?: number; cfgRescale?: number; steps?: number; sampler?: NovelAISampler } = {},
   ): NovelAIGenerateRequest {
     const { input, negativePrompt } = composeFinalPrompts(form, resolved);
     return buildImageRequest({
@@ -316,6 +316,7 @@ export function PromptForm() {
       const ok = await gen(
         buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
           scale: cell.scale,
+          cfgRescale: cell.cfgRescale,
           steps: cell.steps,
           sampler: cell.sampler,
         }),
@@ -1095,7 +1096,7 @@ export function PromptForm() {
 
       {showSweep && (
         <SweepModal
-          defaults={{ scale: form.scale, steps: form.steps, sampler: form.sampler, seed: form.seed }}
+          defaults={{ scale: form.scale, cfgRescale: form.cfgRescale, steps: form.steps, sampler: form.sampler, seed: form.seed }}
           randomEntries={wildcards.randomEntries}
           unknownRefs={wildcards.unknown}
           costFor={sweepCostFor}

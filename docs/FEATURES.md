@@ -40,7 +40,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## X/Y sweeps
 
 **Sweep** generates a grid that varies one or two things:
-- **What can vary:** CFG, steps, sampler, seed, or the options of a random wildcard.
+- **What can vary:** CFG, CFG rescale, steps, sampler, seed, or the options of a random wildcard.
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
 - **Afterwards:** the results open as a labelled grid, which you can save as one PNG.
