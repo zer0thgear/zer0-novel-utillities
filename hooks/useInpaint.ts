@@ -13,6 +13,7 @@ import {
   resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { clearStealthMarks } from '@/lib/stealthAlpha';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,8 @@ export function useInpaint(): UseInpaintReturn {
     setIsLoading(true);
 
     try {
-      const imageB64 = await blobToBase64(image.blob);
+      // NovelAI erases stealth metadata from an image it loads to inpaint.
+      const imageB64 = await blobToBase64(await clearStealthMarks(image.blob));
       const maskB64 = await blobToBase64(maskBlob);
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.

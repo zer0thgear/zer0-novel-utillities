@@ -30,6 +30,7 @@ import { MODELS, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
+import { clearStealthMarks } from '@/lib/stealthAlpha';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
@@ -200,8 +201,13 @@ export function PromptForm() {
     offerAutoChain(made);
   }
 
+  /** The Img2Img base as NovelAI sends it (stealth metadata erased). */
+  async function img2imgBaseB64() {
+    return img2imgSource ? blobToBase64(await clearStealthMarks(img2imgSource.blob)) : undefined;
+  }
+
   async function generateAll(gen: typeof generate) {
-    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+    const baseImageB64 = await img2imgBaseB64();
 
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
@@ -293,7 +299,7 @@ export function PromptForm() {
     // Roll every wildcard once and replay that across the grid, so the only
     // thing changing between cells is what's being swept.
     const baseline = resolveFor(selected);
-    const baseImageB64 = img2imgSource ? await blobToBase64(img2imgSource.blob) : undefined;
+    const baseImageB64 = await img2imgBaseB64();
 
     const { made, gen } = collectingGenerate();
     sweepStopRef.current = false;
