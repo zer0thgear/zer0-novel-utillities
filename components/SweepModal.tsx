@@ -8,6 +8,7 @@ import { randomSeed } from '@/lib/imageRequest';
 import {
   MAX_SWEEP_CELLS,
   NUMERIC_LIMITS,
+  NumericAxisKind,
   parseNumberList,
   SweepAxis,
   sweepCells,
@@ -15,6 +16,7 @@ import {
 
 interface Defaults {
   scale: number;
+  cfgRescale: number;
   steps: number;
   sampler: NovelAISampler;
   /** 0 means "random", same as the form's seed field. */
@@ -42,11 +44,20 @@ interface AxisDraft {
 }
 
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
+// CFG Rescale moves in steps of 0.02.
+const fmt2 = (n: number) => String(Math.round(n * 100) / 100);
+
+const isNumericKind = (key: string): key is NumericAxisKind => key in NUMERIC_LIMITS;
 
 function draftFor(key: string, d: Defaults, randomEntries: LibraryTidbit[]): AxisDraft {
   if (key === 'cfg') {
     const vals = [d.scale - 1, d.scale, d.scale + 1].filter((v) => v >= 0 && v <= 10);
     return { key, text: vals.map(fmt).join(', '), picked: [] };
+  }
+  if (key === 'cfgRescale') {
+    // Off, a moderate and a strong rescale, plus the current value.
+    const vals = [...new Set([0, 0.3, 0.6, Number(fmt2(d.cfgRescale))])].sort((a, b) => a - b);
+    return { key, text: vals.map(fmt2).join(', '), picked: [] };
   }
   if (key === 'steps') {
     return { key, text: [...new Set([Math.max(1, d.steps - 8), d.steps])].join(', '), picked: [] };
@@ -68,7 +79,7 @@ function draftFor(key: string, d: Defaults, randomEntries: LibraryTidbit[]): Axi
 /** Turns a draft into an axis, or explains why it can't be used yet. */
 function toAxis(draft: AxisDraft): { axis?: SweepAxis; problem?: string } {
   if (draft.key === 'none') return {};
-  if (draft.key === 'cfg' || draft.key === 'steps' || draft.key === 'seed') {
+  if (isNumericKind(draft.key)) {
     const { values, invalid } = parseNumberList(draft.text, NUMERIC_LIMITS[draft.key]);
     const { min, max } = NUMERIC_LIMITS[draft.key];
     if (invalid.length) return { problem: `Not valid (${min}–${max}): ${invalid.join(', ')}` };
@@ -102,6 +113,7 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
 
   const kinds: { key: string; label: string }[] = [
     { key: 'cfg', label: 'CFG scale' },
+    { key: 'cfgRescale', label: 'CFG Rescale' },
     { key: 'steps', label: 'Steps' },
     { key: 'sampler', label: 'Sampler' },
     { key: 'seed', label: 'Seed' },

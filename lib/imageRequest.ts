@@ -123,7 +123,7 @@ type SamplingKey =
  *  (if any) taking precedence. */
 export function formSampling(
   form: FormSettings,
-  overrides: { scale?: number; steps?: number; sampler?: NovelAISampler } = {},
+  overrides: { scale?: number; cfgRescale?: number; steps?: number; sampler?: NovelAISampler } = {},
 ): Pick<NovelAIParameters, SamplingKey> {
   return {
     params_version: 4,
@@ -134,7 +134,7 @@ export function formSampling(
     steps: overrides.steps ?? form.steps,
     // SMEA only exists on V3; NovelAI doesn't send it for newer models.
     ...(isV3Model(form.model) ? { sm: form.smea, sm_dyn: form.smeaDyn } : {}),
-    cfg_rescale: form.cfgRescale,
+    cfg_rescale: overrides.cfgRescale ?? form.cfgRescale,
     noise_schedule: form.noiseSchedule,
     // skip_cfg_above_sigma ("Variety+") is left out, i.e. off.
   };

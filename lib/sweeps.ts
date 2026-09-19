@@ -5,7 +5,7 @@ import { SAMPLERS } from '@/lib/samplers';
 // held constant (including the seed, unless it's an axis), so differences in
 // the grid come from the swept parameter.
 
-export type SweepAxisKind = 'cfg' | 'steps' | 'sampler' | 'seed' | 'wildcard';
+export type SweepAxisKind = 'cfg' | 'cfgRescale' | 'steps' | 'sampler' | 'seed' | 'wildcard';
 
 /** One axis. `values` are raw strings for every kind: numbers as typed,
  *  sampler ids, or a wildcard entry's options. */
@@ -21,6 +21,7 @@ export interface SweepCell {
   xIndex: number;
   yIndex?: number;
   scale?: number;
+  cfgRescale?: number;
   steps?: number;
   sampler?: NovelAISampler;
   seed?: number;
@@ -32,8 +33,11 @@ export interface SweepCell {
  *  still sensible to confirm and wait for. */
 export const MAX_SWEEP_CELLS = 64;
 
-export const NUMERIC_LIMITS: Record<'cfg' | 'steps' | 'seed', { integer: boolean; min: number; max: number }> = {
+export type NumericAxisKind = 'cfg' | 'cfgRescale' | 'steps' | 'seed';
+
+export const NUMERIC_LIMITS: Record<NumericAxisKind, { integer: boolean; min: number; max: number }> = {
   cfg: { integer: false, min: 0, max: 10 },
+  cfgRescale: { integer: false, min: 0, max: 1 },
   steps: { integer: true, min: 1, max: 50 },
   seed: { integer: true, min: 0, max: 4294967295 },
 };
@@ -41,6 +45,7 @@ export const NUMERIC_LIMITS: Record<'cfg' | 'steps' | 'seed', { integer: boolean
 export function axisInfo(axis: SweepAxis, library: LibraryTidbit[]): SweepAxisInfo {
   const names: Record<SweepAxisKind, string> = {
     cfg: 'CFG',
+    cfgRescale: 'CFG Rescale',
     steps: 'Steps',
     sampler: 'Sampler',
     seed: 'Seed',
@@ -54,6 +59,7 @@ export function axisInfo(axis: SweepAxis, library: LibraryTidbit[]): SweepAxisIn
 function apply(cell: SweepCell, axis: SweepAxis, value: string) {
   switch (axis.kind) {
     case 'cfg': cell.scale = Number(value); break;
+    case 'cfgRescale': cell.cfgRescale = Number(value); break;
     case 'steps': cell.steps = Number(value); break;
     case 'sampler': cell.sampler = value as NovelAISampler; break;
     case 'seed': cell.seed = Number(value); break;
