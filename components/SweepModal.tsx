@@ -1,30 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LibraryTidbit, NovelAISampler } from '@/types/novelai';
-import { SAMPLERS } from '@/lib/samplers';
-import { randomOptions } from '@/lib/wildcards';
-import { randomSeed } from '@/lib/imageRequest';
+import { LibraryTidbit } from '@/types/novelai';
 import {
+  draftFor,
   MAX_SWEEP_CELLS,
-  NUMERIC_LIMITS,
-  NumericAxisKind,
-  parseNumberList,
+  NO_AXIS,
   SweepAxis,
+  SweepAxisDraft,
   sweepCells,
+  SweepDefaults,
+  toAxis,
 } from '@/lib/sweeps';
-
-interface Defaults {
-  scale: number;
-  cfgRescale: number;
-  steps: number;
-  sampler: NovelAISampler;
-  /** 0 means "random", same as the form's seed field. */
-  seed: number;
-}
+import { SweepAxisEditor } from './SweepAxisEditor';
 
 interface Props {
-  defaults: Defaults;
+  defaults: SweepDefaults;
   /** Random library entries the current prompts actually use. */
   randomEntries: LibraryTidbit[];
   unknownRefs: string[];
@@ -35,65 +26,9 @@ interface Props {
   onClose: () => void;
 }
 
-/** Editor state for one axis. `key` is a kind, `wildcard:<entryId>`, or
- *  (Y only) `none`; `text` backs the numeric kinds and `picked` the chip kinds. */
-interface AxisDraft {
-  key: string;
-  text: string;
-  picked: string[];
-}
-
-const fmt = (n: number) => String(Math.round(n * 10) / 10);
-// CFG Rescale moves in steps of 0.02.
-const fmt2 = (n: number) => String(Math.round(n * 100) / 100);
-
-const isNumericKind = (key: string): key is NumericAxisKind => key in NUMERIC_LIMITS;
-
-function draftFor(key: string, d: Defaults, randomEntries: LibraryTidbit[]): AxisDraft {
-  if (key === 'cfg') {
-    const vals = [d.scale - 1, d.scale, d.scale + 1].filter((v) => v >= 0 && v <= 10);
-    return { key, text: vals.map(fmt).join(', '), picked: [] };
-  }
-  if (key === 'cfgRescale') {
-    // Off, a moderate and a strong rescale, plus the current value.
-    const vals = [...new Set([0, 0.3, 0.6, Number(fmt2(d.cfgRescale))])].sort((a, b) => a - b);
-    return { key, text: vals.map(fmt2).join(', '), picked: [] };
-  }
-  if (key === 'steps') {
-    return { key, text: [...new Set([Math.max(1, d.steps - 8), d.steps])].join(', '), picked: [] };
-  }
-  if (key === 'seed') {
-    return { key, text: Array.from({ length: 4 }, randomSeed).join(', '), picked: [] };
-  }
-  if (key === 'sampler') {
-    const others = SAMPLERS.map((s) => s.value).filter((v) => v !== d.sampler);
-    return { key, text: '', picked: [d.sampler, ...others.slice(0, 2)] };
-  }
-  if (key.startsWith('wildcard:')) {
-    const entry = randomEntries.find((e) => `wildcard:${e.id}` === key);
-    return { key, text: '', picked: entry ? randomOptions(entry) : [] };
-  }
-  return { key: 'none', text: '', picked: [] };
-}
-
-/** Turns a draft into an axis, or explains why it can't be used yet. */
-function toAxis(draft: AxisDraft): { axis?: SweepAxis; problem?: string } {
-  if (draft.key === 'none') return {};
-  if (isNumericKind(draft.key)) {
-    const { values, invalid } = parseNumberList(draft.text, NUMERIC_LIMITS[draft.key]);
-    const { min, max } = NUMERIC_LIMITS[draft.key];
-    if (invalid.length) return { problem: `Not valid (${min}–${max}): ${invalid.join(', ')}` };
-    if (!values.length) return { problem: 'Enter at least one value' };
-    return { axis: { kind: draft.key, values } };
-  }
-  if (!draft.picked.length) return { problem: 'Pick at least one' };
-  if (draft.key === 'sampler') return { axis: { kind: 'sampler', values: draft.picked } };
-  return { axis: { kind: 'wildcard', entryId: draft.key.slice('wildcard:'.length), values: draft.picked } };
-}
-
 export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRun, onClose }: Props) {
-  const [x, setX] = useState<AxisDraft>(() => draftFor('cfg', defaults, randomEntries));
-  const [y, setY] = useState<AxisDraft>({ key: 'none', text: '', picked: [] });
+  const [x, setX] = useState<SweepAxisDraft>(() => draftFor('cfg', defaults, randomEntries));
+  const [y, setY] = useState<SweepAxisDraft>(NO_AXIS);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -110,102 +45,6 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
   const canRun = !!xr.axis && !yr.problem && cells.length > 0 && !tooMany;
   const seedIsAxis = x.key === 'seed' || y.key === 'seed';
   const sweptEntries = [x.key, y.key].filter((k) => k.startsWith('wildcard:')).length;
-
-  const kinds: { key: string; label: string }[] = [
-    { key: 'cfg', label: 'CFG scale' },
-    { key: 'cfgRescale', label: 'CFG Rescale' },
-    { key: 'steps', label: 'Steps' },
-    { key: 'sampler', label: 'Sampler' },
-    { key: 'seed', label: 'Seed' },
-    ...randomEntries.map((e) => ({ key: `wildcard:${e.id}`, label: `⚄ ${e.label.trim() || 'Untitled'}` })),
-  ];
-
-  function axisEditor(
-    title: string,
-    draft: AxisDraft,
-    setDraft: (d: AxisDraft) => void,
-    other: AxisDraft,
-    problem: string | undefined,
-    optional: boolean,
-  ) {
-    const chips =
-      draft.key === 'sampler'
-        ? SAMPLERS.map((s) => ({ value: s.value as string, label: s.label }))
-        : draft.key.startsWith('wildcard:')
-          ? (() => {
-              const entry = randomEntries.find((e) => `wildcard:${e.id}` === draft.key);
-              return (entry ? randomOptions(entry) : []).map((o) => ({ value: o, label: o }));
-            })()
-          : null;
-
-    return (
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</span>
-          <select
-            value={draft.key}
-            onChange={(e) => setDraft(draftFor(e.target.value, defaults, randomEntries))}
-            className="min-w-0 rounded bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none border border-slate-700 focus:border-violet-500"
-          >
-            {optional && <option value="none">None</option>}
-            {kinds.map((k) => (
-              <option key={k.key} value={k.key} disabled={k.key === other.key}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {draft.key === 'none' ? null : chips ? (
-          <div className="flex flex-wrap gap-1">
-            {chips.map((c) => {
-              const on = draft.picked.includes(c.value);
-              return (
-                <button
-                  key={c.value}
-                  type="button"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      // Keep the chips' own order, whatever order they're toggled in.
-                      picked: chips
-                        .map((ch) => ch.value)
-                        .filter((v) => (v === c.value ? !on : draft.picked.includes(v))),
-                    })
-                  }
-                  className={`rounded px-2 py-1 text-xs transition-colors ${
-                    on ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-500 hover:text-slate-300'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex gap-1.5">
-            <input
-              type="text"
-              value={draft.text}
-              onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-              placeholder="Comma-separated values"
-              className="min-w-0 flex-1 rounded bg-slate-900/60 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700 focus:border-violet-500"
-            />
-            {draft.key === 'seed' && (
-              <button
-                type="button"
-                onClick={() => setDraft({ ...draft, text: Array.from({ length: 4 }, randomSeed).join(', ') })}
-                className="flex-shrink-0 rounded bg-slate-800 px-2 text-xs text-slate-400 hover:text-slate-200"
-              >
-                Reroll
-              </button>
-            )}
-          </div>
-        )}
-        {problem && <p className="text-[11px] text-amber-400">{problem}</p>}
-      </div>
-    );
-  }
 
   const count = cells.length;
   const runLabel =
@@ -231,8 +70,25 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
           </button>
         </div>
 
-        {axisEditor('X axis', x, setX, y, xr.problem, false)}
-        {axisEditor('Y axis', y, setY, x, yr.problem, true)}
+        <SweepAxisEditor
+          title="X axis"
+          draft={x}
+          onChange={setX}
+          other={y}
+          problem={xr.problem}
+          defaults={defaults}
+          randomEntries={randomEntries}
+        />
+        <SweepAxisEditor
+          title="Y axis"
+          draft={y}
+          onChange={setY}
+          other={x}
+          problem={yr.problem}
+          optional
+          defaults={defaults}
+          randomEntries={randomEntries}
+        />
 
         <div className="flex flex-col gap-1 rounded-lg bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
           <p>

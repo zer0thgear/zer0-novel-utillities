@@ -38,6 +38,7 @@ import { TokenMeter } from './TokenMeter';
 import {
   getAvailableQualityLevels,
   getAvailableUcLevels,
+  insertTags,
   QUALITY_LEVEL_LABELS,
   UC_LEVEL_LABELS,
   QualityLevel,
@@ -310,9 +311,12 @@ export function PromptForm() {
       if (sweepStopRef.current) break;
       const cell = cells[i];
       setBatchStatus({ current: i + 1, total: cells.length });
-      const resolved = resolveRequestPrompts(
+      const rolled = resolveRequestPrompts(
         selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
       );
+      // A tags axis adds its value where quality tags go (and it's kept in
+      // the as-written prompt, so Reuse brings it back).
+      const resolved = cell.tags ? { ...rolled, baseText: insertTags(rolled.baseText, form.model, cell.tags) } : rolled;
       const ok = await gen(
         buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
           scale: cell.scale,
