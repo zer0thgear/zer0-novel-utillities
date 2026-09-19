@@ -41,6 +41,22 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number, maxLin
   return kept;
 }
 
+/** The seed every image in a sweep shares, or null when they differ (seed is
+ *  an axis) or there are none. */
+export function sweepSeed(images: GeneratedImage[]): number | null {
+  const seeds = new Set(images.map((img) => img.seed));
+  return seeds.size === 1 ? [...seeds][0] : null;
+}
+
+/** "Sweep · X × Y". */
+export const sweepAxesTitle = (info: SweepCellInfo) => `Sweep · ${info.x.name}${info.y ? ` × ${info.y.name}` : ''}`;
+
+/** "Sweep · X × Y · Seed N", when the images share a seed. */
+export function sweepTitle(info: SweepCellInfo, images: GeneratedImage[]): string {
+  const seed = sweepSeed(images);
+  return `${sweepAxesTitle(info)}${seed !== null ? ` · Seed ${seed}` : ''}`;
+}
+
 export async function renderSweepGrid(info: SweepCellInfo, images: GeneratedImage[]): Promise<Blob> {
   const cols = info.x.values.length;
   const rows = info.y ? info.y.values.length : 1;
@@ -63,7 +79,9 @@ export async function renderSweepGrid(info: SweepCellInfo, images: GeneratedImag
   const gap = Math.max(4, Math.round(font * 0.4));
   const pad = font;
   const lineH = Math.round(font * 1.25);
-  const titleH = Math.round(font * 1.6) + gap;
+  // The shared seed gets its own line, so a narrow grid still fits the title.
+  const seed = sweepSeed(images);
+  const titleH = Math.round(font * 1.6) + gap + (seed !== null ? lineH : 0);
   const headerH = lineH * 2 + gap;
   // The row-label column fits its widest label (short values like "4" stay
   // narrow), capped so long wildcard options wrap instead of eating the grid.
@@ -91,11 +109,17 @@ export async function renderSweepGrid(info: SweepCellInfo, images: GeneratedImag
   ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = 'top';
 
-  // Title: axis names.
+  // Title: axis names, then the shared seed. Squeezed if it's still too wide.
+  const textW = width - pad * 2;
   ctx.font = `600 ${Math.round(font * 1.15)}px system-ui, sans-serif`;
   ctx.fillStyle = TEXT;
   ctx.textAlign = 'left';
-  ctx.fillText(`Sweep · ${info.x.name}${info.y ? ` × ${info.y.name}` : ''}`, pad, pad);
+  ctx.fillText(sweepAxesTitle(info), pad, pad, textW);
+  if (seed !== null) {
+    ctx.font = `${Math.round(font * 0.85)}px system-ui, sans-serif`;
+    ctx.fillStyle = MUTED;
+    ctx.fillText(`Seed ${seed}`, pad, pad + Math.round(font * 1.6), textW);
+  }
 
   const gridLeft = pad + sideW + (info.y ? gap : 0);
   const gridTop = pad + titleH + headerH;
@@ -124,8 +148,9 @@ export async function renderSweepGrid(info: SweepCellInfo, images: GeneratedImag
     });
     ctx.fillStyle = MUTED;
     ctx.font = `${Math.round(font * 0.85)}px system-ui, sans-serif`;
-    ctx.fillText(`${info.y.name} ↓`, pad + sideW, gridTop - gap - lineH * 2);
-    ctx.fillText(`${info.x.name} →`, pad + sideW, gridTop - gap - lineH);
+    // X on top, nearest its labels along the top; Y below it.
+    ctx.fillText(`${info.x.name} →`, pad + sideW, gridTop - gap - lineH * 2);
+    ctx.fillText(`${info.y.name} ↓`, pad + sideW, gridTop - gap - lineH);
   }
 
   // Cells: the image scaled to fit, or a placeholder where none was made.

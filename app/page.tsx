@@ -7,6 +7,7 @@ import { ImageViewer } from '@/components/ImageViewer';
 import { HistoryStrip } from '@/components/ImageGrid';
 import { DropZone } from '@/components/DropZone';
 import { ChainRunner } from '@/components/ChainRunner';
+import { TitleStatus } from '@/components/TitleStatus';
 import { useSessionStore } from '@/store/sessionStore';
 
 export default function Home() {
@@ -49,6 +50,7 @@ export default function Home() {
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <ApiKeyModal />
+      <TitleStatus />
       {apiKey && <DropZone />}
       {apiKey && <ChainRunner />}
 
