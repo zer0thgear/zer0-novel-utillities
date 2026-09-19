@@ -1,4 +1,5 @@
 import { GeneratedImage, NovelAIModel, PromptSource } from '@/types/novelai';
+import { stripAutoText } from '@/lib/autoText';
 
 // NovelAI embeds generation metadata directly in PNG tEXt chunks on every
 // image its server returns (confirmed 2026-09-17 by reading the raw bytes of
@@ -70,7 +71,9 @@ export const NOT_REPRODUCIBLE_TEXT: Record<NotReproducibleReason, string> = {
 export function metadataFromImage(image: GeneratedImage): ParsedNaiMetadata {
   const p = image.parameters;
   return {
-    prompt: image.source?.prompt ?? image.prompt,
+    prompt:
+      image.source?.prompt ??
+      stripAutoText(image.prompt, p.characterPrompts ?? [], p.v4_prompt?.use_coords ?? p.use_coords ?? false),
     negativePrompt: image.source?.negativePrompt ?? image.negativePrompt,
     characters: (p.characterPrompts ?? []).map((c) => ({ prompt: c.prompt, uc: c.uc, center: c.center })),
     seed: image.seed,
@@ -249,8 +252,11 @@ function parseNaiText(chunks: Record<string, string>): ParsedNaiMetadata | null 
   // pair them up before filtering out empty characters.
   const charNegatives = (data.v4_negative_prompt as Captions | undefined)?.caption?.char_captions ?? [];
 
+  // Like NovelAI's import, drop the "teXt:" section V5 added from quoted text.
+  const useCoords = (data.v4_prompt as { use_coords?: unknown } | undefined)?.use_coords === true;
+  const captionChars = charCaptions.map((c) => ({ prompt: c.char_caption ?? '', center: c.centers?.[0] ?? { x: 0.5, y: 0.5 } }));
   return {
-    prompt: str(data.prompt, str(v4Prompt?.caption?.base_caption, '')),
+    prompt: stripAutoText(str(data.prompt, str(v4Prompt?.caption?.base_caption, '')), captionChars, useCoords),
     negativePrompt: str(data.uc, ''),
     characters: charCaptions
       .map((c, i) => ({

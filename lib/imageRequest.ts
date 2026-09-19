@@ -11,6 +11,7 @@ import {
 } from '@/types/novelai';
 import { resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
+import { addAutoText, hasAutoText } from '@/lib/autoText';
 import {
   composeNegativeWithUc,
   composeWithQuality,
@@ -202,8 +203,11 @@ export function buildImageRequest(args: {
   presets?: { quality: QualityLevel; uc: UcLevel };
   parameters: Omit<NovelAIParameters, SharedKey>;
 }): NovelAIGenerateRequest {
-  const { input, negativePrompt, model, action, characters, useCoords, presets, parameters } = args;
+  const { negativePrompt, model, action, characters, useCoords, presets, parameters } = args;
   const isV3 = isV3Model(model);
+  // V5 gathers quoted text into a "teXt:" section, as NovelAI's client does
+  // just before sending (after quality tags and any Enhance addition).
+  const input = hasAutoText(model) ? addAutoText(args.input, characters, useCoords) : args.input;
   return {
     input,
     model,

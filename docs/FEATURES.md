@@ -27,7 +27,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 
 ## Prompt modifiers
 
-Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets** (Light, Heavy, Human Focus and so on). They're applied exactly as NovelAI's own site applies them, including placement before a `text:` section and the automatic `nsfw` negative on Full models.
+Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets** (Light, Heavy, Human Focus and so on). They're applied exactly as NovelAI's own site applies them, including placement before a `text:` section and the automatic `nsfw` negative on Full models. On V5, text in quotes (`holding a sign that says "Hello World"`) is added as a text section automatically, as on NovelAI's site, unless you've written a `text:` section yourself.
 
 ## Generating
 

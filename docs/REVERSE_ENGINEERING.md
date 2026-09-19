@@ -127,6 +127,21 @@ cost       = perSample * (n_samples - (free ? 1 : 0))
 - **Upscale** (`/ai/upscale`) is a flat price by input size, with no Opus discount: ≤1 MP 1, ≤1.75 MP 2, ≤2.45 MP 3, ≤3.1 MP 4. NovelAI's own UI doesn't offer Upscale above 1 MP.
 - **Director Tools** are priced as a 28-step V3 generation at the image's size clamped to 1–3.1 MP, so Opus gets them free at ≤1 MP. Background removal is 3× that plus 5, and never discounted. Pixel Snap is free.
 
+### V5's automatic text section
+
+"Put text in quotes" is done by novelai.net's **client**, not the server. Its last step before sending (after quality tags, the fur prefix and any Enhance addition) runs this when the model's `autoText` flag is set, which is **V5 only**:
+1. **Collect** the quoted strings in the prompt's first mix part, then in each enabled character prompt. Characters go in reading order when `use_coords` is on: rows top to bottom, split where y jumps more than 0.1 or the row spans more than 0.15, then left to right. The quote pairs are `"…"`, `“…”`, `「…」`, `‘…’` and `'…'`. A `'` only opens after a space, comma, full stop or the start, and a closing `'` or `’` followed by a letter or digit is an apostrophe.
+2. **Reverse for CJK:** if the gathered text is more than 30% CJK, each group's order is reversed.
+3. **Append** `, teXt: <strings joined by blank lines>` to the first mix part.
+4. **Skip entirely** if the prompt or any character prompt already has a `text:` section in any case, or nothing was quoted.
+
+The capital X marks the section as automatic. The client's import strips a `teXt:` section again when it's exactly what would have been generated.
+
+This app mirrors it in `lib/autoText.ts`, applied in `buildImageRequest` and stripped on import. Checked on 2026-09-19 in three ways:
+- **Against NovelAI's own functions:** 20,000 random prompts through both, with 0 differences in adding or stripping.
+- **Requests:** a captured novelai.net request matched this app's field for field (`…, no text, teXt: Hello World`).
+- **Images:** same-seed generations on both sites (quoted and unquoted prompts) matched exactly on the block-mean grid.
+
 ### Tag autocomplete
 
 `GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores. `model` genuinely changes the result set/order, not just a vocabulary filter on one shared list — double-check you're passing the exact model string the live UI is set to before comparing, a mismatch (e.g. `nai-diffusion-4-5-curated` vs `nai-diffusion-5-curated`) silently gives a different-looking but plausible result.
