@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { saveAs } from 'file-saver';
 import { useSessionStore } from '@/store/sessionStore';
-import { renderSweepGrid } from '@/lib/sweepGridImage';
+import { renderSweepGrid, sweepTitle } from '@/lib/sweepGridImage';
 
 interface Props {
   sweepId: string;
@@ -55,8 +55,7 @@ export function SweepGridModal({ sweepId, onClose }: Props) {
       <div className="flex max-h-full max-w-full flex-col gap-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-sm font-bold text-slate-100">
-            Sweep · {info.x.name}
-            {info.y && ` × ${info.y.name}`}
+            {sweepTitle(info, cells)}
             <span className="ml-2 font-normal text-slate-500">
               {cells.length} of {cols * rows} images · click one to open it
             </span>
@@ -88,8 +87,8 @@ export function SweepGridModal({ sweepId, onClose }: Props) {
             {/* Column headers: X values, after an axis-name corner if there's a Y axis */}
             {info.y && (
               <div className="self-end pb-1 text-right text-[10px] leading-tight text-slate-500">
-                {info.y.name} ↓<br />
-                {info.x.name} →
+                {info.x.name} →<br />
+                {info.y.name} ↓
               </div>
             )}
             {info.x.values.map((v, xi) => (
