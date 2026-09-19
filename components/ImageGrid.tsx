@@ -38,7 +38,7 @@ function Spinner({ className }: { className?: string }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function HistoryStrip() {
-  const { images, focusedImageId, isLoading, streamPreview, clearImages } = useSessionStore();
+  const { images, focusedImageId, isLoading, streamPreview, clearImages, focusedGroupId, showGroup } = useSessionStore();
   const [collapsed, setCollapsed] = useState(false);
   const [gridSweepId, setGridSweepId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -155,15 +155,25 @@ export function HistoryStrip() {
             group.length === 1 && !group[0].sweep && !group[0].chain ? (
               <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
             ) : (
-              <div key={group[0].batchId} className="rounded-lg border border-violet-700/30 bg-violet-950/10 p-1.5">
+              <div
+                key={group[0].batchId}
+                className={`rounded-lg border p-1.5 transition-colors ${
+                  focusedGroupId === group[0].batchId && !focusedImageId
+                    ? 'border-violet-500 bg-violet-950/30'
+                    : 'border-violet-700/30 bg-violet-950/10'
+                }`}
+              >
+                {/* Each header opens the whole group on the canvas, as NovelAI does. */}
                 {group[0].chain ? (
                   <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5">
-                    <p
-                      className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
-                      title={`Chain "${group[0].chain.name}": each image is one step, oldest last`}
+                    <button
+                      type="button"
+                      onClick={() => showGroup(group[0].batchId!)}
+                      className="min-w-0 truncate text-left text-[10px] font-semibold uppercase tracking-wider text-violet-400/80 transition-colors hover:text-violet-200"
+                      title={`Chain "${group[0].chain.name}": show every step's image together (oldest first)`}
                     >
                       Chain · {group[0].chain.name}
-                    </p>
+                    </button>
                     {/* A chain ending in a Sweep step can open that sweep's grid. */}
                     {group.some((img) => img.sweep) && (
                       <button
@@ -178,13 +188,15 @@ export function HistoryStrip() {
                   </div>
                 ) : group[0].sweep ? (
                   <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5">
-                    <p
-                      className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
-                      title={`Sweep: ${group[0].sweep.x.name}${group[0].sweep.y ? ` × ${group[0].sweep.y.name}` : ''}`}
+                    <button
+                      type="button"
+                      onClick={() => showGroup(group[0].batchId!)}
+                      className="min-w-0 truncate text-left text-[10px] font-semibold uppercase tracking-wider text-violet-400/80 transition-colors hover:text-violet-200"
+                      title={`Sweep: ${group[0].sweep.x.name}${group[0].sweep.y ? ` × ${group[0].sweep.y.name}` : ''}. Show every image together`}
                     >
                       Sweep · {group[0].sweep.x.name}
                       {group[0].sweep.y && ` × ${group[0].sweep.y.name}`}
-                    </p>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setGridSweepId(group[0].sweep!.id)}
@@ -195,9 +207,14 @@ export function HistoryStrip() {
                     </button>
                   </div>
                 ) : (
-                  <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
+                  <button
+                    type="button"
+                    onClick={() => showGroup(group[0].batchId!)}
+                    className="mb-1.5 block w-full px-0.5 min-w-0 truncate text-left text-[10px] font-semibold uppercase tracking-wider text-violet-400/80 transition-colors hover:text-violet-200"
+                    title="Show the whole batch on the canvas"
+                  >
                     Batch of {group.length}
-                  </p>
+                  </button>
                 )}
                 <div className="grid grid-cols-2 gap-1.5">
                   {group.map((image) => (

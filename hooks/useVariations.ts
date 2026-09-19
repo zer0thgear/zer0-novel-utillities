@@ -88,6 +88,8 @@ export function useVariations(): UseVariationsReturn {
         sourceImageId: image.id,
         sourceImageUrl,
         forceStandard: true,
+        // One group, shown together on the canvas like NovelAI's variations.
+        batchId: crypto.randomUUID(),
         // Keep the source's base-prompt rolls alongside the characters' so a
         // variation can itself be enhanced without re-rolling.
         wildcardPicks: { ...image.wildcardPicks, ...resolved.picks },

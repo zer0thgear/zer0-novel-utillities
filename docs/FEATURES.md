@@ -83,7 +83,7 @@ Save the current settings and modifiers under a name, and load them back in one 
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc** or **← Batch of N** goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
 
 ## Settings that persist
 
