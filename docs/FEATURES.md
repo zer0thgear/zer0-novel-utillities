@@ -27,7 +27,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 
 ## Prompt modifiers
 
-Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets** (Light, Heavy, Human Focus and so on). They're applied exactly as NovelAI's own site applies them, including placement before a `text:` section and the automatic `nsfw` negative on Full models.
+Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets** (Light, Heavy, Human Focus and so on). They're applied exactly as NovelAI's own site applies them, including placement before a `text:` section and the automatic `nsfw` negative on Full models. On V5, text in quotes (`holding a sign that says "Hello World"`) is added as a text section automatically, as on NovelAI's site, unless you've written a `text:` section yourself.
 
 ## Generating
 
@@ -41,7 +41,8 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## X/Y sweeps
 
 **Sweep** generates a grid that varies one or two things:
-- **What can vary:** CFG, CFG rescale, steps, sampler, seed, or the options of a random wildcard.
+- **What can vary:** CFG, CFG rescale, steps, sampler, seed, tags, or the options of a random wildcard.
+- **Tags:** a comma-separated list of tags to try, each added where quality tags go. A weighted group stays one value: `{open mouth, teeth}`, `[blush]` or `1.3::looking at viewer, wink::`. A "(none)" baseline (on by default) keeps the prompt as-is for comparison.
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
 - **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
@@ -63,8 +64,9 @@ Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, ar
 
 ## Chained actions
 
-A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Download), each applied to the previous step's result.
-- **Add Tags:** a step that adds tags to the prompt for the Enhance and Variations steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
+A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Sweep, Download), each applied to the previous step's result.
+- **Sweep:** regenerates the image from its own prompt, seed and settings, one image per combination of the step's axes (any sweep axis except wildcards), so you can see what changing each would do. It must be the last step, and its images open as a grid.
+- **Add Tags:** a step that adds tags to the prompt for the Enhance, Variations and Sweep steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
 - **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included).
 - **Costs:** every run is priced step by step before it starts, and anything that isn't free asks first. Chains that can't work are caught up front, for example Upscale above 1 MP.
 - **While it runs:** steps go one at a time, with a Stop button and a clear message if a step fails. Generate waits until the chain is done.
@@ -81,7 +83,7 @@ Save the current settings and modifiers under a name, and load them back in one 
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc** or **← Batch of N** goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
 
 ## Settings that persist
 

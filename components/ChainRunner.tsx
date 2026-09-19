@@ -8,6 +8,7 @@ import { useUpscale } from '@/hooks/useUpscale';
 import { useAugment } from '@/hooks/useAugment';
 import { usePixelSnap } from '@/hooks/usePixelSnap';
 import { useVariations } from '@/hooks/useVariations';
+import { useSweepAround } from '@/hooks/useSweepAround';
 import { useSubscription } from '@/hooks/useSubscription';
 import { downloadImage } from '@/lib/imageUtils';
 import { producesImage, stepLabel } from '@/lib/chains';
@@ -30,14 +31,20 @@ export function ChainRunner() {
   const { augment, error: augmentError } = useAugment();
   const { snap, error: snapError } = usePixelSnap();
   const { generateVariations, error: variationsError } = useVariations();
+  const { sweepAround, error: sweepError } = useSweepAround();
   const running = useRef(false);
 
   // The action hooks report failures through their own error state, which is
   // only visible after a re-render; this keeps the latest one reachable.
   const latestError = useRef<string | null>(null);
-  latestError.current = enhanceError ?? upscaleError ?? augmentError ?? snapError ?? variationsError ?? null;
+  latestError.current = enhanceError ?? upscaleError ?? augmentError ?? snapError ?? variationsError ?? sweepError ?? null;
 
-  async function runStep(step: ChainStep, image: GeneratedImage, tags: string): Promise<GeneratedImage[] | null> {
+  async function runStep(
+    step: ChainStep,
+    image: GeneratedImage,
+    tags: string,
+    onCell: (index: number, total: number) => void,
+  ): Promise<GeneratedImage[] | null> {
     switch (step.kind) {
       case 'enhance':
         return enhance(image, step.level, step.scale, tags);
@@ -47,6 +54,11 @@ export function ChainRunner() {
         return generateVariations(image, tags);
       case 'tags':
         return [image]; // runQueue collects these itself
+      case 'sweep':
+        return sweepAround(image, step.x, step.y, tags, {
+          shouldStop: () => useChainStore.getState().stopRequested,
+          onCell,
+        });
       case 'director': {
         const options =
           step.tool === 'emotion'
@@ -88,20 +100,24 @@ export function ChainRunner() {
         if (store().stopRequested) break;
         const step = chain.steps[i];
         const label = stepLabel(step);
-        store().setProgress({
+        const progress = {
           name: chain.name,
           image: done,
           images: Math.max(store().queuedTotal, done),
           step: i + 1,
           steps: chain.steps.length,
           label,
-        });
+        };
+        store().setProgress(progress);
+        // A sweep reports each of its images as it goes.
+        const onCell = (index: number, total: number) =>
+          store().setProgress({ ...progress, label: `${label} (${index} of ${total})` });
 
         if (step.kind === 'tags') {
           tags = joinPromptParts(tags, step.tags);
           continue;
         }
-        const result = await runStep(step, current, tags);
+        const result = await runStep(step, current, tags, onCell);
         if (!result) {
           await sleep(0); // let the hook's error state render
           failure = `"${chain.name}" stopped at step ${i + 1} of ${chain.steps.length} (${label})${

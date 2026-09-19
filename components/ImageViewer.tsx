@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -33,6 +33,8 @@ import { DirectorToolsModal } from './DirectorToolsModal';
 import { MetadataModal } from './MetadataModal';
 import { DEFAULT_IMPORT, ImportModal } from './ImportModal';
 import { metadataFromImage } from '@/lib/naiMetadata';
+import { BatchGrid } from './BatchGrid';
+import { GeneratedImage } from '@/types/novelai';
 
 // ─── Spinner SVG ──────────────────────────────────────────────────────────────
 
@@ -68,14 +70,30 @@ function rememberScale(pixels: number, scale: EnhanceScale) {
   }
 }
 
+/** What a group is: "Batch of 4", a sweep's axes, or a chain's name. */
+function groupTitle(group: GeneratedImage[]): string {
+  const sweep = group.find((img) => img.sweep)?.sweep;
+  const chain = group[0]?.chain;
+  if (chain) return `Chain · ${chain.name}`;
+  if (sweep) return `Sweep · ${sweep.x.name}${sweep.y ? ` × ${sweep.y.name}` : ''}`;
+  return `Batch of ${group.length}`;
+}
+
 export function ImageViewer() {
   const { images, focusedImageId, isLoading, streamPreview, setImg2imgSource } = useSessionStore();
+  const focusedGroupId = useSessionStore((s) => s.focusedGroupId);
+  const backToGroup = useSessionStore((s) => s.backToGroup);
   const setSeed = useSettingsStore((s) => s.set);
   const form = useSettingsStore();
   const { subscription } = useSubscription();
   const opus = opusStatus(subscription);
 
   const focusedImage = images.find((img) => img.id === focusedImageId) ?? null;
+  // A group shown as a grid (no image open), or the group an open image came from.
+  const groupImages = focusedGroupId
+    ? images.filter((img) => img.batchId === focusedGroupId).sort((a, b) => a.timestamp - b.timestamp)
+    : [];
+  const inGroup = !!focusedImage && groupImages.some((img) => img.id === focusedImage.id);
 
   const [showEnhance, setShowEnhance] = useState(false);
   const [enhanceLevel, setEnhanceLevel] = useState<EnhanceLevelNum>(3);
@@ -95,6 +113,21 @@ export function ImageViewer() {
   const launchChain = useChainLauncher();
   // While a chain runs, other image actions wait so requests never overlap.
   const chainBusy = useChainBusy();
+
+  // Escape goes from one of a group's images back to its grid, as NovelAI's
+  // canvas does, unless a field or an open dialog has the key.
+  useEffect(() => {
+    if (!inGroup) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (document.querySelector('.fixed.inset-0')) return;
+      backToGroup();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inGroup, backToGroup]);
 
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
@@ -226,7 +259,17 @@ export function ImageViewer() {
       )}
 
       {/* ── Main image area ── */}
-      <div className="flex flex-1 min-h-0 items-center justify-center">
+      <div className="relative flex flex-1 min-h-0 items-center justify-center">
+        {inGroup && !isLoading && (
+          <button
+            type="button"
+            onClick={backToGroup}
+            title="Back to the whole group (Esc)"
+            className="absolute left-3 top-3 z-10 rounded-lg bg-slate-900/80 px-2.5 py-1 text-xs font-semibold text-slate-200 backdrop-blur-sm transition-colors hover:bg-violet-600"
+          >
+            ← {groupTitle(groupImages)}
+          </button>
+        )}
         {isLoading && streamPreview ? (
           /* Streaming: show live preview full-size */
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -249,6 +292,8 @@ export function ImageViewer() {
             alt={focusedImage.prompt}
             className="max-h-full max-w-full object-contain"
           />
+        ) : groupImages.length > 0 ? (
+          <BatchGrid images={groupImages} title={groupTitle(groupImages)} />
         ) : (
           /* Empty state */
           <div className="text-center text-slate-700">

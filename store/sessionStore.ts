@@ -29,6 +29,14 @@ interface SessionState {
   focusedImageId: string | null;
   setFocusedImageId: (id: string | null) => void;
 
+  /** A group (batchId) shown on the canvas as a grid, like NovelAI shows a
+   *  multi-image generation. While one of its images is open it stays set,
+   *  so the viewer can go back to the grid. */
+  focusedGroupId: string | null;
+  showGroup: (batchId: string) => void;
+  /** From one of the group's images back to its grid. */
+  backToGroup: () => void;
+
   // A past result loaded as the base image for the next img2img generation
   // ("Use as Base Image"). Cleared after use or on explicit removal.
   img2imgSource: { blob: Blob; url: string; width: number; height: number } | null;
@@ -65,11 +73,20 @@ export const useSessionStore = create<SessionState>((set) => ({
   images: [],
 
   addImages: (newImages) =>
-    set((state) => ({
-      images: [...newImages, ...state.images],
-      // Auto-focus the newest image
-      focusedImageId: newImages[0]?.id ?? state.focusedImageId,
-    })),
+    set((state) => {
+      const images = [...newImages, ...state.images];
+      const batchId = newImages[0]?.batchId;
+      const focused = state.images.find((img) => img.id === state.focusedImageId);
+      const viewingGroup =
+        !!batchId && (state.focusedGroupId === batchId || focused?.batchId === batchId);
+      // A multi-image generation opens as a grid, as on NovelAI; a queued run,
+      // sweep or batch you're watching grows its grid as images arrive.
+      if (batchId && (newImages.length > 1 || viewingGroup)) {
+        return { images, focusedGroupId: batchId, focusedImageId: null };
+      }
+      // Otherwise the newest image.
+      return { images, focusedImageId: newImages[0]?.id ?? state.focusedImageId, focusedGroupId: null };
+    }),
 
   updateImages: (ids, patch) =>
     set((state) => ({
@@ -84,10 +101,13 @@ export const useSessionStore = create<SessionState>((set) => ({
         if (target.sourceImageUrl) URL.revokeObjectURL(target.sourceImageUrl);
       }
       const newImages = state.images.filter((img) => img.id !== id);
-      // If we removed the focused image, focus the first remaining one
-      const focusedImageId =
-        state.focusedImageId === id ? (newImages[0]?.id ?? null) : state.focusedImageId;
-      return { images: newImages, focusedImageId };
+      const groupLeft = state.focusedGroupId && newImages.some((img) => img.batchId === state.focusedGroupId);
+      const focusedGroupId = groupLeft ? state.focusedGroupId : null;
+      // Removing the open image goes back to its group's grid if any of it is
+      // left, else to the newest image.
+      let focusedImageId = state.focusedImageId === id ? null : state.focusedImageId;
+      if (!focusedImageId && !focusedGroupId) focusedImageId = newImages[0]?.id ?? null;
+      return { images: newImages, focusedImageId, focusedGroupId };
     }),
 
   clearImages: () =>
@@ -96,11 +116,21 @@ export const useSessionStore = create<SessionState>((set) => ({
         URL.revokeObjectURL(img.url);
         if (img.sourceImageUrl) URL.revokeObjectURL(img.sourceImageUrl);
       });
-      return { images: [], focusedImageId: null };
+      return { images: [], focusedImageId: null, focusedGroupId: null };
     }),
 
   focusedImageId: null,
-  setFocusedImageId: (id) => set({ focusedImageId: id }),
+  setFocusedImageId: (id) =>
+    set((state) => {
+      // Opening one of the shown group's images keeps the way back to its grid.
+      const image = state.images.find((img) => img.id === id);
+      const keepGroup = !!state.focusedGroupId && image?.batchId === state.focusedGroupId;
+      return { focusedImageId: id, focusedGroupId: keepGroup ? state.focusedGroupId : null };
+    }),
+
+  focusedGroupId: null,
+  showGroup: (batchId) => set({ focusedGroupId: batchId, focusedImageId: null }),
+  backToGroup: () => set((state) => (state.focusedGroupId ? { focusedImageId: null } : {})),
 
   img2imgSource: null,
   setImg2imgSource: (source) =>

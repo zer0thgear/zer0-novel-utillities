@@ -51,8 +51,9 @@ export function ImageCard({ image, focused }: ImageCardProps) {
         </div>
       )}
 
-      {/* Chain step caption, e.g. "2/3 · Upscale ×2" */}
-      {image.chain && (
+      {/* Chain step caption, e.g. "2/3 · Upscale ×2" (a sweep cell shows its
+          values instead) */}
+      {image.chain && !image.sweep && (
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1 pb-0.5 pt-2 text-[9px] font-semibold text-slate-200"
           title={`Chain "${image.chain.name}", step ${image.chain.step} of ${image.chain.total}: ${image.chain.label}`}

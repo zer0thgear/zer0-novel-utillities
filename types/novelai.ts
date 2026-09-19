@@ -1,4 +1,5 @@
 import type { EnhanceScale } from '@/lib/enhance';
+import type { SweepAxisDraft } from '@/lib/sweeps';
 import type { QualityLevel, UcLevel } from '@/lib/naiPresets';
 
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
@@ -318,7 +319,10 @@ export type ChainStep =
   | { kind: 'download' }
   /** Adds tags to the prompt for this run's later steps only (Enhance and
    *  Variations); the sidebar's prompt is left alone. */
-  | { kind: 'tags'; tags: string };
+  | { kind: 'tags'; tags: string }
+  /** Regenerates the image from its own prompt, seed and settings, one image
+   *  per combination of the axes' values. Saved as the editor's drafts. */
+  | { kind: 'sweep'; x: SweepAxisDraft; y: SweepAxisDraft };
 
 export interface Chain {
   id: string;
