@@ -4,7 +4,16 @@ import { useState } from 'react';
 import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useEnhance, ENHANCE_LEVELS, EnhanceLevelNum } from '@/hooks/useEnhance';
+import { useEnhance } from '@/hooks/useEnhance';
+import {
+  ENHANCE_LEVELS,
+  EnhanceLevelNum,
+  EnhanceScale,
+  enhanceOutputSize,
+  enhancePriceSize,
+  enhanceScales,
+  scaleLabel,
+} from '@/lib/enhance';
 import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useVariations';
 import { useChainLauncher } from '@/hooks/useChainLauncher';
 import { useChainBusy } from '@/store/chainStore';
@@ -38,6 +47,27 @@ function Spinner({ className }: { className?: string }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// The last Enhance scale picked for images of each size, as NovelAI keeps it.
+const SCALE_MEMORY_KEY = 'enhance-scale-by-size';
+
+function rememberedScale(pixels: number, options: EnhanceScale[]): EnhanceScale | null {
+  try {
+    const saved = (JSON.parse(localStorage.getItem(SCALE_MEMORY_KEY) ?? '{}') as Record<string, EnhanceScale>)[pixels];
+    return saved !== undefined && options.includes(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberScale(pixels: number, scale: EnhanceScale) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SCALE_MEMORY_KEY) ?? '{}') as Record<string, EnhanceScale>;
+    localStorage.setItem(SCALE_MEMORY_KEY, JSON.stringify({ ...saved, [pixels]: scale }));
+  } catch {
+    // Storage unavailable: the pick still applies until the image changes.
+  }
+}
+
 export function ImageViewer() {
   const { images, focusedImageId, isLoading, streamPreview, setImg2imgSource } = useSessionStore();
   const setSeed = useSettingsStore((s) => s.set);
@@ -49,7 +79,8 @@ export function ImageViewer() {
 
   const [showEnhance, setShowEnhance] = useState(false);
   const [enhanceLevel, setEnhanceLevel] = useState<EnhanceLevelNum>(3);
-  const [enhanceUpscale, setEnhanceUpscale] = useState(false);
+  // Null until picked, then NovelAI's default applies (see enhanceScale below).
+  const [enhanceScaleChoice, setEnhanceScaleChoice] = useState<EnhanceScale | null>(null);
   const [seedCopied, setSeedCopied] = useState(false);
   // True while the "view original" button is held down
   const [viewingOriginal, setViewingOriginal] = useState(false);
@@ -69,14 +100,26 @@ export function ImageViewer() {
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
   const { upscale, isUpscaling, error: upscaleError, clearError: clearUpscaleError } = useUpscale();
 
-  // Mirrors useEnhance.ts's own dimension math so the displayed cost matches
-  // what it will actually request.
-  const round64 = (n: number) => Math.round(n / 64) * 64;
-  const enhanceCost = focusedImage
+  const imgW = focusedImage?.parameters.width ?? 0;
+  const imgH = focusedImage?.parameters.height ?? 0;
+
+  // Enhance offers NovelAI's scales for this size. Like NovelAI, the last
+  // pick for an image of this size is remembered, else the largest applies.
+  const enhanceOptions = focusedImage ? enhanceScales(imgW, imgH, form.model) : [];
+  const enhanceScale: EnhanceScale | null =
+    enhanceScaleChoice !== null && enhanceOptions.includes(enhanceScaleChoice)
+      ? enhanceScaleChoice
+      : (rememberedScale(imgW * imgH, enhanceOptions) ?? enhanceOptions[0] ?? null);
+  const pickEnhanceScale = (scale: EnhanceScale) => {
+    setEnhanceScaleChoice(scale);
+    rememberScale(imgW * imgH, scale);
+  };
+  const enhancePrice = enhanceScale !== null ? enhancePriceSize(imgW, imgH, enhanceScale) : null;
+  const enhanceCost = enhancePrice
     ? calculateAnlasCost({
         model: form.model,
-        width: enhanceUpscale ? round64(focusedImage.parameters.width * 1.5) : focusedImage.parameters.width,
-        height: enhanceUpscale ? round64(focusedImage.parameters.height * 1.5) : focusedImage.parameters.height,
+        width: enhancePrice.width,
+        height: enhancePrice.height,
         steps: form.steps,
         smea: false,
         smeaDyn: false,
@@ -99,17 +142,16 @@ export function ImageViewer() {
     : 0;
   const upscalePrice = focusedImage ? upscaleCost(focusedImage.parameters.width, focusedImage.parameters.height) : null;
 
-  // NovelAI refuses renders past ~3.1 MP (Enhance, Variations, Inpaint, Edit
-  // all render at the image's size, Enhance ×1.5 larger) and only upscales
-  // images up to 1 MP. Explain instead of letting the request fail.
-  const imgW = focusedImage?.parameters.width ?? 0;
-  const imgH = focusedImage?.parameters.height ?? 0;
-  const enhanceW = enhanceUpscale ? round64(imgW * 1.5) : imgW;
-  const enhanceH = enhanceUpscale ? round64(imgH * 1.5) : imgH;
+  // NovelAI refuses renders past ~3.1 MP (Variations, Inpaint and Edit render
+  // at the image's size) and only upscales images up to 1 MP. Explain instead
+  // of letting the request fail. Enhance's limits are in its scale options.
   const tooLargeHint = (w: number, h: number) =>
     `NovelAI can't render ${w}×${h}; its limit is about 3.1 megapixels.`;
   const renderTooLarge = imgW * imgH > MAX_GENERATION_PIXELS ? tooLargeHint(imgW, imgH) : null;
-  const enhanceTooLarge = enhanceW * enhanceH > MAX_GENERATION_PIXELS ? tooLargeHint(enhanceW, enhanceH) : null;
+  const cantEnhance =
+    focusedImage && enhanceOptions.length === 0
+      ? `NovelAI can't enhance a ${imgW}×${imgH} image: no scale stays within 3.1 megapixels on multiples of 64.`
+      : null;
   const upscaleTooLarge =
     imgW * imgH > UPSCALE_MAX_PIXELS ? `Upscale only takes images up to 1 megapixel; this one is ${imgW}×${imgH}.` : null;
 
@@ -127,12 +169,14 @@ export function ImageViewer() {
     setBaseImageSet(false);
     setShowMetadata(false);
     setShowChains(false);
+    setEnhanceScaleChoice(null);
   }
 
   const handleEnhance = async () => {
     if (!focusedImage) return;
     setShowEnhance(false);
-    await enhance(focusedImage, enhanceLevel, enhanceUpscale);
+    if (enhanceScale === null) return;
+    await enhance(focusedImage, enhanceLevel, enhanceScale);
   };
 
   const handleUseAsBase = async () => {
@@ -242,38 +286,52 @@ export function ImageViewer() {
             </div>
           </div>
 
-          {/* Upscale + action row */}
+          {/* Scale + action row */}
           <div className="flex items-center gap-3">
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
-              <input
-                type="checkbox"
-                checked={enhanceUpscale}
-                onChange={(e) => setEnhanceUpscale(e.target.checked)}
-                className="h-3.5 w-3.5 accent-violet-500"
-              />
-              Upscale ×1.5
-            </label>
+            {enhanceOptions.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Scale
+                </span>
+                {/* Smallest first, as NovelAI lists them. */}
+                {[...enhanceOptions].reverse().map((scale) => {
+                  const out = enhanceOutputSize(imgW, imgH, scale);
+                  return (
+                    <button
+                      key={String(scale)}
+                      type="button"
+                      onClick={() => pickEnhanceScale(scale)}
+                      title={
+                        scale === 'max'
+                          ? `Re-renders at this size, then NovelAI upscales it (to about ${out.width}×${out.height})`
+                          : `${out.width}×${out.height}`
+                      }
+                      className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+                        enhanceScale === scale ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {scaleLabel(scale)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <button
               type="button"
               onClick={handleEnhance}
-              disabled={isEnhancing || chainBusy || !!enhanceTooLarge}
-              title={enhanceTooLarge ?? undefined}
+              disabled={isEnhancing || chainBusy || enhanceScale === null}
+              title={cantEnhance ?? undefined}
               className="ml-auto rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isEnhancing
                 ? 'Enhancing…'
-                : subscription && !enhanceTooLarge
+                : subscription && enhanceScale !== null
                   ? enhanceCost > 0 ? `Enhance — ~${enhanceCost} Anlas` : 'Enhance — Free'
                   : 'Enhance Image'}
             </button>
           </div>
 
-          {enhanceTooLarge && (
-            <p className="mt-2 text-xs text-amber-400">
-              {enhanceTooLarge}
-              {enhanceUpscale && !renderTooLarge && ' Untick Upscale ×1.5 to enhance at the current size.'}
-            </p>
-          )}
+          {cantEnhance && <p className="mt-2 text-xs text-amber-400">{cantEnhance}</p>}
 
           {/* Enhance error */}
           {enhanceError && (

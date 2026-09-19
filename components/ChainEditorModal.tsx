@@ -8,6 +8,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { opusStatus } from '@/lib/anlasCost';
 import { defaultStep, DIRECTOR_TOOLS, EMOTIONS, planChain, STEP_KINDS } from '@/lib/chains';
+import { EnhanceScale, scaleLabel } from '@/lib/enhance';
 import { moveItem } from '@/lib/promptText';
 import { Chain, ChainStep, NovelAIModel } from '@/types/novelai';
 
@@ -16,6 +17,8 @@ interface Props {
   chain: Chain | null;
   onClose: () => void;
 }
+
+const ENHANCE_SCALE_CHOICES: EnhanceScale[] = [1, 1.5, 2, 'max'];
 
 const selectCls =
   'rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none border border-slate-700/60 focus:border-violet-500';
@@ -200,10 +203,19 @@ function StepOptions({
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={step.upscale} onChange={(e) => onChange({ upscale: e.target.checked })} className="accent-violet-500" />
-            Upscale ×1.5
-          </label>
+          Scale
+          <select
+            value={String(step.scale)}
+            onChange={(e) => onChange({ scale: e.target.value === 'max' ? 'max' : (Number(e.target.value) as 1 | 1.5 | 2) })}
+            title="NovelAI offers 1.5× for its standard 832×1216 size; other sizes get the scales that land on multiples of 64 within 3.1 MP. Max is V5 only."
+            className={selectCls}
+          >
+            {ENHANCE_SCALE_CHOICES.map((sc) => (
+              <option key={String(sc)} value={String(sc)}>
+                {scaleLabel(sc)}
+              </option>
+            ))}
+          </select>
         </div>
       );
     case 'director':

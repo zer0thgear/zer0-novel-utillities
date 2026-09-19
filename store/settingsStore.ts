@@ -99,7 +99,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'novelai-settings',
-      version: 5,
+      version: 6,
       migrate(persistedState: unknown, version: number) {
         let s = persistedState as Record<string, unknown>;
         // v1 -> v2: single prompt: string -> basePrompts: BasePrompt[]
@@ -145,6 +145,25 @@ export const useSettingsStore = create<SettingsState>()(
                     : p,
                 )
               : s.presets,
+          };
+        }
+        // v5 -> v6: enhance chain steps pick NovelAI's scales instead of an
+        // "Upscale ×1.5" checkbox.
+        if (version < 6 && Array.isArray(s.chains)) {
+          s = {
+            ...s,
+            chains: s.chains.map((c) =>
+              c && typeof c === 'object' && Array.isArray((c as { steps?: unknown }).steps)
+                ? {
+                    ...c,
+                    steps: (c as { steps: Record<string, unknown>[] }).steps.map((st) => {
+                      if (st?.kind !== 'enhance' || 'scale' in st) return st;
+                      const { upscale, ...rest } = st;
+                      return { ...rest, scale: upscale === true ? 1.5 : 1 };
+                    }),
+                  }
+                : c,
+            ),
           };
         }
         return s as unknown as FormSettings;

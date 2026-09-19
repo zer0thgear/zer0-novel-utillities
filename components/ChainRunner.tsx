@@ -40,7 +40,7 @@ export function ChainRunner() {
   async function runStep(step: ChainStep, image: GeneratedImage, tags: string): Promise<GeneratedImage[] | null> {
     switch (step.kind) {
       case 'enhance':
-        return enhance(image, step.level, step.upscale, tags);
+        return enhance(image, step.level, step.scale, tags);
       case 'upscale':
         return upscale(image);
       case 'variations':

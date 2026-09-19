@@ -152,7 +152,7 @@ const supportsTransparency = (model: NovelAIModel) => model.startsWith('nai-diff
 const isCuratedModel = (model: NovelAIModel) => model.includes('curated');
 
 // Where a text-rendering section starts ("…, text: Hello"), as NovelAI finds it.
-const TEXT_SECTION = /(?:^|\s|[,.:[\]{}、。])text:(?!:)/i;
+export const TEXT_SECTION = /(?:^|\s|[,.:[\]{}、。])text:(?!:)/i;
 
 /** Index of the first prompt-mix `|` (outside `||a|b||` random groups), or
  *  the end of the text. On V4+ NovelAI applies presets to the first part only. */

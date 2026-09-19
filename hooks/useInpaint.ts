@@ -13,7 +13,7 @@ import {
   resolveReworkPrompt,
 } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
-import { clearStealthMarks } from '@/lib/stealthAlpha';
+import { eraseStealthMarks } from '@/lib/requestImage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,8 +61,8 @@ export function useInpaint(): UseInpaintReturn {
     setIsLoading(true);
 
     try {
-      // NovelAI erases stealth metadata from an image it loads to inpaint.
-      const imageB64 = await blobToBase64(await clearStealthMarks(image.blob));
+      // NovelAI's canvas erases stealth metadata from an image it loads.
+      const imageB64 = await blobToBase64(await eraseStealthMarks(image.blob));
       const maskB64 = await blobToBase64(maskBlob);
 
       // Replays the source image's wildcard rolls, so reworking it doesn't re-roll.
@@ -73,7 +73,6 @@ export function useInpaint(): UseInpaintReturn {
       const model = toInpaintingModel(form.model);
       const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
       const seed = randomSeed();
-      const extraNoiseSeed = randomSeed();
 
       const request = buildImageRequest({
         input,
@@ -94,7 +93,6 @@ export function useInpaint(): UseInpaintReturn {
           add_original_image: false,
           inpaintImg2ImgStrength: 0.69,
           seed,
-          extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           mask: maskB64,
           img2img: { strength: 0.69, color_correct: true },

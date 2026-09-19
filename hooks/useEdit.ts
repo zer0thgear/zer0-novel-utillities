@@ -45,7 +45,6 @@ export function useEdit(): UseEditReturn {
       const resolved = resolveReworkPrompt(form, image);
       const { input, negativePrompt } = composeFinalPrompts(form, resolved);
       const seed = randomSeed();
-      const extraNoiseSeed = randomSeed();
 
       const request = buildImageRequest({
         input,
@@ -66,7 +65,6 @@ export function useEdit(): UseEditReturn {
           add_original_image: true,
           inpaintImg2ImgStrength: 0.69,
           seed,
-          extra_noise_seed: extraNoiseSeed,
           image: imageB64,
           color_correct: false,
         },

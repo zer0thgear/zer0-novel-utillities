@@ -1,3 +1,4 @@
+import type { EnhanceScale } from '@/lib/enhance';
 import type { QualityLevel, UcLevel } from '@/lib/naiPresets';
 
 // ─── Base prompt / mode types ─────────────────────────────────────────────────
@@ -182,6 +183,8 @@ export interface NovelAIParameters {
   autoSmea?: boolean;
   image?: string;
   extra_noise_seed?: number;
+  /** V5 "Max" enhance: re-render at the image's size, upscaled by the server. */
+  upscaled_enhance?: boolean;
   inpaintImg2ImgStrength?: number;
   color_correct?: boolean;
   deliberate_euler_ancestral_bug?: boolean;
@@ -298,7 +301,7 @@ export type ChainDirectorTool = 'bg-removal' | 'lineart' | 'sketch' | 'declutter
 
 /** One step of a chain. Each takes the previous step's image. */
 export type ChainStep =
-  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; upscale: boolean }
+  | { kind: 'enhance'; level: 1 | 2 | 3 | 4 | 5; scale: EnhanceScale }
   | { kind: 'upscale' }
   | { kind: 'variations' }
   | {

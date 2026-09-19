@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useEdit } from '@/hooks/useEdit';
 import { GeneratedImage } from '@/types/novelai';
-import { clearStealthMarks } from '@/lib/stealthAlpha';
+import { eraseStealthMarks } from '@/lib/requestImage';
 
 interface EditModalProps {
   image: GeneratedImage;
@@ -154,7 +154,7 @@ export function EditModal({ image, onClose }: EditModalProps) {
     const mCtx = mergedCanvas.getContext('2d')!;
 
     // Load the original, with stealth metadata erased as NovelAI's canvas does
-    const original = await createImageBitmap(await clearStealthMarks(image.blob));
+    const original = await createImageBitmap(await eraseStealthMarks(image.blob));
 
     mCtx.drawImage(original, 0, 0);
     original.close();

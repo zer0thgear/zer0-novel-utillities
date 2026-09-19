@@ -7,13 +7,19 @@ import {
   upscaleCost,
 } from '@/lib/anlasCost';
 import { normalizePromptPart } from '@/lib/promptText';
+import {
+  ENHANCE_LEVELS,
+  EnhanceScale,
+  enhanceOutputSize,
+  enhancePriceSize,
+  enhanceScales,
+  scaleLabel,
+} from '@/lib/enhance';
 
 // Chained actions: a saved sequence of image actions, each step applied to the
 // previous step's result. Everything here is pure (labels, validation, cost
 // planning, parsing imports); ChainRunner does the actual running.
 
-// Mirrors ENHANCE_LEVELS in hooks/useEnhance.ts (strength drives the price).
-const ENHANCE_STRENGTH: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0.2, 2: 0.4, 3: 0.5, 4: 0.6, 5: 0.7 };
 // Mirrors hooks/useVariations.ts.
 const VARIATION_COUNT = 3;
 const VARIATION_STRENGTH = 0.8;
@@ -43,7 +49,7 @@ export const STEP_KINDS: { value: ChainStep['kind']; label: string }[] = [
 export function defaultStep(kind: ChainStep['kind']): ChainStep {
   switch (kind) {
     case 'enhance':
-      return { kind, level: 3, upscale: false };
+      return { kind, level: 3, scale: 1 };
     case 'director':
       return { kind, tool: 'bg-removal' };
     case 'pixelSnap':
@@ -58,7 +64,7 @@ export function defaultStep(kind: ChainStep['kind']): ChainStep {
 export function stepLabel(step: ChainStep): string {
   switch (step.kind) {
     case 'enhance':
-      return `Enhance L${step.level}${step.upscale ? ' ×1.5' : ''}`;
+      return `Enhance L${step.level}${step.scale === 1 ? '' : ` ${scaleLabel(step.scale)}`}`;
     case 'upscale':
       return 'Upscale ×2';
     case 'variations':
@@ -113,7 +119,6 @@ export interface ChainPlan {
   problems: string[];
 }
 
-const round64 = (n: number) => Math.round(n / 64) * 64;
 const tooLarge = (w: number, h: number) =>
   w * h > MAX_GENERATION_PIXELS
     ? `NovelAI can't render ${w}×${h}; the limit is about 3.1 megapixels. Put this step before any upscaling.`
@@ -137,21 +142,25 @@ export function planChain(
     let problem: string | undefined;
     switch (step.kind) {
       case 'enhance': {
-        const w = step.upscale ? round64(width * 1.5) : width;
-        const h = step.upscale ? round64(height * 1.5) : height;
+        // Only the scales NovelAI offers for the image at this point.
+        const offered = enhanceScales(width, height, ctx.formModel);
+        if (!offered.includes(step.scale)) {
+          problem = offered.length
+            ? `NovelAI doesn't offer ${scaleLabel(step.scale)} for a ${width}×${height} image (it offers ${offered.map(scaleLabel).join(', ')}).`
+            : `NovelAI can't enhance a ${width}×${height} image.`;
+        }
+        const price = enhancePriceSize(width, height, step.scale);
         cost = calculateAnlasCost({
           model: ctx.formModel,
-          width: w,
-          height: h,
+          width: price.width,
+          height: price.height,
           steps: ctx.formSteps,
           smea: false,
           smeaDyn: false,
-          strength: ENHANCE_STRENGTH[step.level],
+          strength: ENHANCE_LEVELS[step.level - 1].strength,
           ...opus,
         });
-        problem = tooLarge(w, h);
-        width = w;
-        height = h;
+        ({ width, height } = enhanceOutputSize(width, height, step.scale));
         model = ctx.formModel;
         steps = ctx.formSteps;
         break;
@@ -220,7 +229,7 @@ function parseStep(v: unknown): ChainStep | null {
     case 'enhance': {
       const level = Number(v.level);
       return [1, 2, 3, 4, 5].includes(level)
-        ? { kind: 'enhance', level: level as 1 | 2 | 3 | 4 | 5, upscale: v.upscale === true }
+        ? { kind: 'enhance', level: level as 1 | 2 | 3 | 4 | 5, scale: parseEnhanceScale(v) }
         : null;
     }
     case 'upscale':
@@ -254,6 +263,12 @@ function parseStep(v: unknown): ChainStep | null {
     default:
       return null;
   }
+}
+
+/** An enhance step's scale; older files have `upscale: true` for 1.5×. */
+function parseEnhanceScale(v: Record<string, unknown>): EnhanceScale {
+  if (v.scale === 'max' || v.scale === 1 || v.scale === 1.5 || v.scale === 2) return v.scale;
+  return v.upscale === true ? 1.5 : 1;
 }
 
 /** A chain from an import file, or null if it isn't one. Unknown steps are dropped. */

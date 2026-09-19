@@ -30,7 +30,7 @@ import { MODELS, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
-import { clearStealthMarks } from '@/lib/stealthAlpha';
+import { eraseStealthMarks } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
@@ -201,9 +201,10 @@ export function PromptForm() {
     offerAutoChain(made);
   }
 
-  /** The Img2Img base as NovelAI sends it (stealth metadata erased). */
+  /** The Img2Img base, stealth metadata erased as NovelAI's canvas does on
+   *  loading it (the rest of its preparation happens as it's sent). */
   async function img2imgBaseB64() {
-    return img2imgSource ? blobToBase64(await clearStealthMarks(img2imgSource.blob)) : undefined;
+    return img2imgSource ? blobToBase64(await eraseStealthMarks(img2imgSource.blob)) : undefined;
   }
 
   async function generateAll(gen: typeof generate) {

@@ -38,7 +38,6 @@ export function useVariations(): UseVariationsReturn {
       // characters come from the current form, replaying the image's rolls.
       const resolved = resolveRequestPrompts({ text: '' }, form.characters, '', form.tidbitLibrary, image.wildcardPicks);
       const seed = randomSeed();
-      const extraNoiseSeed = randomSeed();
 
       // Settings come from the image itself, not the current form.
       const p = image.parameters;
@@ -77,7 +76,8 @@ export function useVariations(): UseVariationsReturn {
           skip_cfg_above_sigma: p.skip_cfg_above_sigma,
           inpaintImg2ImgStrength: 0,
           seed,
-          extra_noise_seed: extraNoiseSeed,
+          // NovelAI reuses the source's own, if it has one (else seed − 1).
+          extra_noise_seed: p.extra_noise_seed,
           image: imageB64,
           color_correct: false,
         },
