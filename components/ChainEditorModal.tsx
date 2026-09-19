@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
+import { SweepAxisEditor } from '@/components/SweepAxisEditor';
+import { SweepDefaults } from '@/lib/sweeps';
 import { useSubscription } from '@/hooks/useSubscription';
 import { ReorderArrows } from '@/components/ReorderArrows';
 import { opusStatus } from '@/lib/anlasCost';
@@ -107,7 +109,12 @@ export function ChainEditorModal({ chain, onClose }: Props) {
                   </button>
                 </div>
 
-                <StepOptions step={step} onChange={(patch) => update(i, patch)} model={form.model} />
+                <StepOptions
+                  step={step}
+                  onChange={(patch) => update(i, patch)}
+                  model={form.model}
+                  sweepDefaults={{ scale: form.scale, cfgRescale: form.cfgRescale, steps: form.steps, sampler: form.sampler, seed: form.seed }}
+                />
                 {planned.problem && <p className="text-[11px] text-red-300">{planned.problem}</p>}
               </div>
             );
@@ -166,14 +173,43 @@ function StepOptions({
   step,
   onChange,
   model,
+  sweepDefaults,
 }: {
   step: ChainStep;
   onChange: (patch: Partial<ChainStep>) => void;
   model: NovelAIModel;
+  /** Starting values for a new sweep axis. */
+  sweepDefaults: SweepDefaults;
 }) {
   const apiKey = useSessionStore((s) => s.apiKey);
   const row = 'flex flex-wrap items-center gap-2 pl-6 text-xs text-slate-400';
   switch (step.kind) {
+    case 'sweep':
+      return (
+        <div className="flex flex-col gap-2 pl-6">
+          <SweepAxisEditor
+            title="X axis"
+            draft={step.x}
+            onChange={(x) => onChange({ x })}
+            other={step.y}
+            defaults={sweepDefaults}
+            randomEntries={[]}
+          />
+          <SweepAxisEditor
+            title="Y axis"
+            draft={step.y}
+            onChange={(y) => onChange({ y })}
+            other={step.x}
+            optional
+            defaults={sweepDefaults}
+            randomEntries={[]}
+          />
+          <p className="text-[11px] text-slate-500">
+            Regenerates the image from its own prompt, seed and settings, one image per combination, so you can
+            see what changing each value would do. Must be the last step.
+          </p>
+        </div>
+      );
     case 'tags':
       return (
         <div className="flex flex-col gap-1 pl-6">
@@ -187,7 +223,7 @@ function StepOptions({
             className="w-full rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200 outline-none border border-slate-700/60 focus:border-violet-500"
           />
           <p className="text-[11px] text-slate-500">
-            Added to the prompt for the Enhance and Variations steps after this one. Your prompt in the sidebar
+            Added to the prompt for the Enhance, Variations and Sweep steps after this one. Your prompt in the sidebar
             isn&apos;t changed.
           </p>
         </div>

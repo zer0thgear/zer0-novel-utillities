@@ -41,7 +41,8 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## X/Y sweeps
 
 **Sweep** generates a grid that varies one or two things:
-- **What can vary:** CFG, CFG rescale, steps, sampler, seed, or the options of a random wildcard.
+- **What can vary:** CFG, CFG rescale, steps, sampler, seed, tags, or the options of a random wildcard.
+- **Tags:** a comma-separated list of tags to try, each added where quality tags go. A weighted group stays one value: `{open mouth, teeth}`, `[blush]` or `1.3::looking at viewer, wink::`. A "(none)" baseline (on by default) keeps the prompt as-is for comparison.
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
 - **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
@@ -63,8 +64,9 @@ Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, ar
 
 ## Chained actions
 
-A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Download), each applied to the previous step's result.
-- **Add Tags:** a step that adds tags to the prompt for the Enhance and Variations steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
+A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Sweep, Download), each applied to the previous step's result.
+- **Sweep:** regenerates the image from its own prompt, seed and settings, one image per combination of the step's axes (any sweep axis except wildcards), so you can see what changing each would do. It must be the last step, and its images open as a grid.
+- **Add Tags:** a step that adds tags to the prompt for the Enhance, Variations and Sweep steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
 - **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included).
 - **Costs:** every run is priced step by step before it starts, and anything that isn't free asks first. Chains that can't work are caught up front, for example Upscale above 1 MP.
 - **While it runs:** steps go one at a time, with a Stop button and a clear message if a step fails. Generate waits until the chain is done.

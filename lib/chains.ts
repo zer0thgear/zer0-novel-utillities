@@ -7,6 +7,8 @@ import {
   upscaleCost,
 } from '@/lib/anlasCost';
 import { normalizePromptPart } from '@/lib/promptText';
+import { roundToSizeStep } from '@/lib/requestImage';
+import { AXIS_NAMES, MAX_SWEEP_CELLS, NO_AXIS, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
 import {
   ENHANCE_LEVELS,
   EnhanceScale,
@@ -42,6 +44,7 @@ export const STEP_KINDS: { value: ChainStep['kind']; label: string }[] = [
   { value: 'director', label: 'Director Tool' },
   { value: 'pixelSnap', label: 'Pixel Snap' },
   { value: 'variations', label: 'Variations' },
+  { value: 'sweep', label: 'Sweep' },
   { value: 'download', label: 'Download' },
 ];
 
@@ -56,6 +59,8 @@ export function defaultStep(kind: ChainStep['kind']): ChainStep {
       return { kind, palettize: 'auto', upscale: true };
     case 'tags':
       return { kind, tags: '' };
+    case 'sweep':
+      return { kind, x: { key: 'tags', text: '', picked: [], baseline: true }, y: NO_AXIS };
     default:
       return { kind };
   }
@@ -81,11 +86,16 @@ export function stepLabel(step: ChainStep): string {
       const tags = normalizePromptPart(step.tags);
       return tags ? `+ ${tags.length > 30 ? `${tags.slice(0, 30)}…` : tags}` : 'Add Tags';
     }
+    case 'sweep':
+      return `Sweep · ${axisName(step.x)}${step.y.key === 'none' ? '' : ` × ${axisName(step.y)}`}`;
   }
 }
 
+const axisName = (draft: SweepAxisDraft) =>
+  draft.key in AXIS_NAMES ? AXIS_NAMES[draft.key as keyof typeof AXIS_NAMES] : 'Wildcard';
+
 /** Steps that render from the prompt, so an Add Tags step before them counts. */
-const usesPrompt = (step: ChainStep) => step.kind === 'enhance' || step.kind === 'variations';
+const usesPrompt = (step: ChainStep) => step.kind === 'enhance' || step.kind === 'variations' || step.kind === 'sweep';
 
 export const chainSummary = (chain: Chain) => chain.steps.map(stepLabel).join(' → ') || 'No steps';
 
@@ -206,10 +216,39 @@ export function planChain(
         break;
       case 'download':
         break;
+      case 'sweep': {
+        const xr = toAxis(step.x);
+        const yr = toAxis(step.y);
+        const cells = xr.axis && !yr.problem ? sweepCells(xr.axis, yr.axis) : [];
+        if (i !== chain.steps.length - 1) problem = 'A sweep makes a grid of images, so it can only be the last step.';
+        else if ([step.x.key, step.y.key].some((k) => k.startsWith('wildcard:')))
+          problem = "Wildcard axes aren't available here: the sweep starts from the image's already-rolled prompt.";
+        else if (xr.problem || !xr.axis) problem = `X axis: ${xr.problem ?? 'pick an axis'}.`;
+        else if (yr.problem) problem = `Y axis: ${yr.problem}.`;
+        else if (cells.length > MAX_SWEEP_CELLS) problem = `That's ${cells.length} images; the limit is ${MAX_SWEEP_CELLS}.`;
+        else problem = tooLarge(width, height);
+        // Text-to-image at the image's size (rounded as it's sent), per cell.
+        const sweepModel = model.replace(/-inpainting$/, '') as NovelAIModel;
+        cost = cells.reduce(
+          (sum, cell) =>
+            sum +
+            calculateAnlasCost({
+              model: sweepModel,
+              width: roundToSizeStep(width),
+              height: roundToSizeStep(height),
+              steps: cell.steps ?? steps,
+              smea: false,
+              smeaDyn: false,
+              ...opus,
+            }),
+          0,
+        );
+        break;
+      }
       case 'tags':
         if (!step.tags.trim()) problem = 'Enter the tags to add.';
         else if (!chain.steps.slice(i + 1).some(usesPrompt))
-          problem = 'Only Enhance and Variations use the prompt, and neither comes after this step.';
+          problem = 'Only Enhance, Variations and Sweep use the prompt, and none comes after this step.';
         break;
     }
     planned.push({ label: stepLabel(step), cost, width, height, problem });
@@ -238,6 +277,11 @@ function parseStep(v: unknown): ChainStep | null {
       return { kind: v.kind };
     case 'tags':
       return typeof v.tags === 'string' ? { kind: 'tags', tags: v.tags } : null;
+    case 'sweep': {
+      const x = parseAxisDraft(v.x);
+      const y = v.y === undefined ? NO_AXIS : parseAxisDraft(v.y);
+      return x && y ? { kind: 'sweep', x, y } : null;
+    }
     case 'director': {
       if (!DIRECTOR_TOOLS.some((t) => t.value === v.tool)) return null;
       const defry = Number(v.defry);
@@ -263,6 +307,12 @@ function parseStep(v: unknown): ChainStep | null {
     default:
       return null;
   }
+}
+
+function parseAxisDraft(v: unknown): SweepAxisDraft | null {
+  if (!isObj(v) || typeof v.key !== 'string' || typeof v.text !== 'string') return null;
+  const picked = Array.isArray(v.picked) ? v.picked.filter((p): p is string => typeof p === 'string') : [];
+  return { key: v.key, text: v.text, picked, ...(typeof v.baseline === 'boolean' ? { baseline: v.baseline } : {}) };
 }
 
 /** An enhance step's scale; older files have `upscale: true` for 1.5×. */

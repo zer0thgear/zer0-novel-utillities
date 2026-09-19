@@ -156,7 +156,27 @@ export function HistoryStrip() {
               <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
             ) : (
               <div key={group[0].batchId} className="rounded-lg border border-violet-700/30 bg-violet-950/10 p-1.5">
-                {group[0].sweep ? (
+                {group[0].chain ? (
+                  <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5">
+                    <p
+                      className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
+                      title={`Chain "${group[0].chain.name}": each image is one step, oldest last`}
+                    >
+                      Chain · {group[0].chain.name}
+                    </p>
+                    {/* A chain ending in a Sweep step can open that sweep's grid. */}
+                    {group.some((img) => img.sweep) && (
+                      <button
+                        type="button"
+                        onClick={() => setGridSweepId(group.find((img) => img.sweep)!.sweep!.id)}
+                        title="Open the sweep as a labelled grid"
+                        className="flex-shrink-0 rounded bg-violet-600/30 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200 transition-colors hover:bg-violet-600"
+                      >
+                        Grid
+                      </button>
+                    )}
+                  </div>
+                ) : group[0].sweep ? (
                   <div className="mb-1.5 flex items-center justify-between gap-1 px-0.5">
                     <p
                       className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
@@ -174,13 +194,6 @@ export function HistoryStrip() {
                       Grid
                     </button>
                   </div>
-                ) : group[0].chain ? (
-                  <p
-                    className="mb-1.5 truncate px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80"
-                    title={`Chain "${group[0].chain.name}": each image is one step, oldest last`}
-                  >
-                    Chain · {group[0].chain.name}
-                  </p>
                 ) : (
                   <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/80">
                     Batch of {group.length}
