@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -83,14 +83,34 @@ export function PromptForm() {
   // is pinned (scrolled down into settings) would otherwise swap content that's
   // entirely above the viewport, so we jump back to the top of the editor.
   const tabAnchorRef = useRef<HTMLDivElement>(null);
+  // The account bar pins above the tab bar, so the tab bar pins under it.
+  // Its height depends on the tier and the refill line, so measure it.
+  const [accountBarHeight, setAccountBarHeight] = useState(0);
+  const accountBarRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) {
+      setAccountBarHeight(0);
+      return;
+    }
+    const measure = () => setAccountBarHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // React 19 runs this instead of calling the ref with null.
+    return () => {
+      observer.disconnect();
+      setAccountBarHeight(0);
+    };
+  }, []);
 
   function switchPromptTab(tab: 'prompts' | 'characters') {
     setPromptTab(tab);
     const anchor = tabAnchorRef.current;
     const scroller = anchor?.closest('.overflow-y-auto');
-    if (anchor && scroller && anchor.getBoundingClientRect().top < scroller.getBoundingClientRect().top) {
-      anchor.scrollIntoView({ block: 'start' });
-    }
+    if (!anchor || !scroller) return;
+    // Where the tab bar sits once pinned: just under the account bar.
+    const pinned = scroller.getBoundingClientRect().top + accountBarHeight;
+    const offset = anchor.getBoundingClientRect().top - pinned;
+    if (offset < 0) scroller.scrollTop += offset;
   }
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
@@ -402,7 +422,7 @@ export function PromptForm() {
         </button>
       </div>
 
-      <AccountStatusBar />
+      <AccountStatusBar ref={accountBarRef} />
 
       {/* Error banner */}
       {error && (
@@ -579,9 +599,13 @@ export function PromptForm() {
           tab content) so it stays pinned under the header for the whole scroll,
           not just while the prompt list is on screen. */}
       <div ref={tabAnchorRef} className="-mb-4" />
-      {/* -top-5 cancels the scroll container's p-5, which sticky otherwise
-          honors, leaving a gap under the header for content to peek through. */}
-      <div className="sticky -top-5 z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2">
+      {/* The -20 cancels the scroll container's p-5, which sticky otherwise
+          honors, leaving a gap under the header for content to peek through;
+          the rest keeps this clear of the pinned account bar. */}
+      <div
+        className="sticky z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2"
+        style={{ top: accountBarHeight - 20 }}
+      >
         <div className="flex overflow-hidden rounded-md border border-slate-700 text-xs">
           <button
             type="button"

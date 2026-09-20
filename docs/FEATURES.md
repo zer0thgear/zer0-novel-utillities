@@ -36,7 +36,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
 - **Streaming mode** shows live preview frames while the image renders.
 - **Tab title:** like NovelAI's, it spins (◰◳◲◱) while images generate and shows ✓ when a run finishes while you're on another tab.
-- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter sit at the top of the sidebar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%.
+- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter stay pinned to the top of the sidebar as it scrolls, above the prompt tab bar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%. Clicking the Anlas line collapses the meter away, leaving just the balance; the choice is remembered.
 
 ## X/Y sweeps
 
