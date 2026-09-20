@@ -83,6 +83,7 @@ export function ImageViewer() {
   const { images, focusedImageId, isLoading, streamPreview, setImg2imgSource } = useSessionStore();
   const focusedGroupId = useSessionStore((s) => s.focusedGroupId);
   const backToGroup = useSessionStore((s) => s.backToGroup);
+  const setFocusedImageId = useSessionStore((s) => s.setFocusedImageId);
   const setSeed = useSettingsStore((s) => s.set);
   const form = useSettingsStore();
   const { subscription } = useSubscription();
@@ -113,6 +114,29 @@ export function ImageViewer() {
   const launchChain = useChainLauncher();
   // While a chain runs, other image actions wait so requests never overlap.
   const chainBusy = useChainBusy();
+
+  // ← and → step through the session's images, newest to oldest, as long as
+  // nothing else wants the key.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (document.querySelector('.fixed.inset-0')) return;
+      // With a grid open and no image picked, the arrows mean nothing yet.
+      if (!focusedImageId) return;
+      const at = images.findIndex((img) => img.id === focusedImageId);
+      if (at < 0) return;
+      // The strip runs newest first, so → goes back in time.
+      const next = images[at + (e.key === 'ArrowRight' ? 1 : -1)];
+      if (!next) return;
+      e.preventDefault();
+      setFocusedImageId(next.id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [images, focusedImageId, setFocusedImageId]);
 
   // Escape goes from one of a group's images back to its grid, as NovelAI's
   // canvas does, unless a field or an open dialog has the key.
@@ -285,12 +309,15 @@ export function ImageViewer() {
             <span className="text-sm">Generating…</span>
           </div>
         ) : focusedImage ? (
-          /* Focused image (or original when held) */
+          /* Focused image (or original when held). One from a batch goes back
+             to its grid when clicked, as novelai.net's canvas does. */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={displayUrl}
             alt={focusedImage.prompt}
-            className="max-h-full max-w-full object-contain"
+            onClick={inGroup ? backToGroup : undefined}
+            title={inGroup ? 'Back to the whole group (Esc)' : undefined}
+            className={`max-h-full max-w-full object-contain ${inGroup ? 'cursor-zoom-out' : ''}`}
           />
         ) : groupImages.length > 0 ? (
           <BatchGrid images={groupImages} title={groupTitle(groupImages)} />

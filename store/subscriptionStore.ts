@@ -17,7 +17,17 @@ interface SubscriptionState {
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+
+  /** The balance at the last refresh, and how much of it this session has
+   *  spent. Counted from the balance itself rather than from our own
+   *  estimates, so it's what NovelAI actually charged. A top-up moves the
+   *  baseline up without counting as a refund. */
+  lastAnlas: number | null;
+  spentThisSession: number;
 }
+
+const totalAnlas = (s: NovelAISubscription) =>
+  s.trainingStepsLeft.fixedTrainingStepsLeft + s.trainingStepsLeft.purchasedTrainingSteps;
 
 let latestRequest = 0;
 
@@ -27,6 +37,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set) => ({
   attemptedFor: null,
   isLoading: false,
   error: null,
+  lastAnlas: null,
+  spentThisSession: 0,
   refresh: async () => {
     const apiKey = useSessionStore.getState().apiKey;
     if (!apiKey) return;
@@ -40,7 +52,25 @@ export const useSubscriptionStore = create<SubscriptionState>((set) => ({
       });
       if (!res.ok) throw new Error(`Failed to load subscription info (${res.status}).`);
       const data = (await res.json()) as NovelAISubscription;
-      if (request === latestRequest) set({ subscription: data, forKey: apiKey });
+      if (request === latestRequest) {
+        set((state) => {
+          const total = totalAnlas(data);
+          // A new key starts its own tally.
+          const carryOver = state.forKey === apiKey;
+          const before = carryOver ? state.lastAnlas : null;
+          return {
+            subscription: data,
+            forKey: apiKey,
+            lastAnlas: total,
+            spentThisSession:
+              before !== null && total < before
+                ? state.spentThisSession + (before - total)
+                : carryOver
+                  ? state.spentThisSession
+                  : 0,
+          };
+        });
+      }
     } catch (err) {
       if (request === latestRequest) set({ error: err instanceof Error ? err.message : 'An unknown error occurred.' });
     } finally {

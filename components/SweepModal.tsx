@@ -13,6 +13,7 @@ import {
   toAxis,
 } from '@/lib/sweeps';
 import { SweepAxisEditor } from './SweepAxisEditor';
+import { SweepPresetBar } from './SweepPresetBar';
 
 interface Props {
   defaults: SweepDefaults;
@@ -69,6 +70,15 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
             ✕
           </button>
         </div>
+
+        <SweepPresetBar
+          x={x}
+          y={y}
+          onLoad={(preset) => {
+            setX(preset.x);
+            setY(preset.y);
+          }}
+        />
 
         <SweepAxisEditor
           title="X axis"

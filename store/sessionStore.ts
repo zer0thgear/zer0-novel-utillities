@@ -14,6 +14,11 @@ interface SessionState {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  /** What a request is waiting on while it retries, e.g. "Rate limited —
+   *  retrying in 5s (1/3)". Null when nothing is being retried. */
+  retryNotice: string | null;
+  setRetryNotice: (notice: string | null) => void;
+
   // Live preview frame shown during streaming generation (object URL or null)
   streamPreview: string | null;
   setStreamPreview: (url: string | null) => void;
@@ -23,6 +28,10 @@ interface SessionState {
   /** Merges fields into existing images (e.g. tagging a chain's results). */
   updateImages: (ids: string[], patch: Partial<GeneratedImage>) => void;
   removeImage: (id: string) => void;
+  /** Removes several at once, for the history's multi-select. */
+  removeImages: (ids: string[]) => void;
+  /** Pins or unpins an image, which is what keeps it through Clear Session. */
+  togglePin: (id: string) => void;
   clearImages: () => void;
 
   // The image currently displayed in the center viewer
@@ -60,7 +69,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
 
   isLoading: false,
-  setIsLoading: (loading) => set({ isLoading: loading }),
+  setIsLoading: (loading) => set({ isLoading: loading, ...(loading ? {} : { retryNotice: null }) }),
+
+  retryNotice: null,
+  setRetryNotice: (notice) => set({ retryNotice: notice }),
 
   streamPreview: null,
   setStreamPreview: (url) =>
@@ -93,30 +105,44 @@ export const useSessionStore = create<SessionState>((set) => ({
       images: state.images.map((img) => (ids.includes(img.id) ? { ...img, ...patch } : img)),
     })),
 
-  removeImage: (id) =>
+  removeImage: (id) => useSessionStore.getState().removeImages([id]),
+
+  removeImages: (ids) =>
     set((state) => {
-      const target = state.images.find((img) => img.id === id);
-      if (target) {
-        URL.revokeObjectURL(target.url);
-        if (target.sourceImageUrl) URL.revokeObjectURL(target.sourceImageUrl);
+      const gone = new Set(ids);
+      for (const image of state.images) {
+        if (!gone.has(image.id)) continue;
+        URL.revokeObjectURL(image.url);
+        if (image.sourceImageUrl) URL.revokeObjectURL(image.sourceImageUrl);
       }
-      const newImages = state.images.filter((img) => img.id !== id);
+      const newImages = state.images.filter((img) => !gone.has(img.id));
       const groupLeft = state.focusedGroupId && newImages.some((img) => img.batchId === state.focusedGroupId);
       const focusedGroupId = groupLeft ? state.focusedGroupId : null;
       // Removing the open image goes back to its group's grid if any of it is
       // left, else to the newest image.
-      let focusedImageId = state.focusedImageId === id ? null : state.focusedImageId;
+      let focusedImageId = state.focusedImageId && gone.has(state.focusedImageId) ? null : state.focusedImageId;
       if (!focusedImageId && !focusedGroupId) focusedImageId = newImages[0]?.id ?? null;
       return { images: newImages, focusedImageId, focusedGroupId };
     }),
 
+  togglePin: (id) =>
+    set((state) => ({
+      images: state.images.map((img) => (img.id === id ? { ...img, pinned: !img.pinned } : img)),
+    })),
+
+  /** Clears everything except the pinned images. */
   clearImages: () =>
     set((state) => {
       state.images.forEach((img) => {
+        if (img.pinned) return;
         URL.revokeObjectURL(img.url);
         if (img.sourceImageUrl) URL.revokeObjectURL(img.sourceImageUrl);
       });
-      return { images: [], focusedImageId: null, focusedGroupId: null };
+      const kept = state.images.filter((img) => img.pinned);
+      const focusedImageId = kept.some((img) => img.id === state.focusedImageId)
+        ? state.focusedImageId
+        : (kept[0]?.id ?? null);
+      return { images: kept, focusedImageId, focusedGroupId: null };
     }),
 
   focusedImageId: null,

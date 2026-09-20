@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { LibraryTidbit, NovelAIModel, PromptTidbit } from '@/types/novelai';
 import { createTidbit, createLinkedTidbit, linkedEntry, snapshotText } from '@/lib/promptTidbits';
 import { isRandomEntry, randomOptions } from '@/lib/wildcards';
@@ -31,6 +32,9 @@ export function TidbitList({
 }: TidbitListProps) {
   const library = useSettingsStore((s) => s.tidbitLibrary);
   const setSetting = useSettingsStore((s) => s.set);
+  // Folded away once a prompt has a few, so the field above stays reachable.
+  const [open, setOpen] = useState(true);
+  const on = tidbits.filter((t) => t.enabled).length;
 
   function update(id: string, changes: Partial<PromptTidbit>) {
     onChange(tidbits.map((t) => (t.id === id ? { ...t, ...changes } : t)));
@@ -63,11 +67,32 @@ export function TidbitList({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {tidbits.map((tidbit, index) => {
+      {tidbits.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-1 self-start text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-300"
+        >
+          <span className="text-slate-600">{open ? '▾' : '▸'}</span>
+          Tidbits
+          <span className="font-normal normal-case tracking-normal text-slate-600">
+            ({on} of {tidbits.length} on)
+          </span>
+        </button>
+      )}
+
+      {open && tidbits.map((tidbit, index) => {
         const entry = linkedEntry(tidbit, library);
+        // An off tidbit is struck through as well as dimmed, so it reads as
+        // "not in the prompt" rather than just a box you forgot to tick.
+        const off = tidbit.enabled ? '' : 'line-through decoration-slate-500';
 
         return (
-          <div key={tidbit.id} className="flex items-center gap-1.5">
+          <div
+            key={tidbit.id}
+            className={`flex items-center gap-1.5 transition-opacity ${tidbit.enabled ? '' : 'opacity-45'}`}
+            title={tidbit.enabled ? undefined : "Off — this tidbit isn't part of the prompt"}
+          >
             <input
               type="checkbox"
               checked={tidbit.enabled}
@@ -87,7 +112,7 @@ export function TidbitList({
                 </span>
                 {isRandomEntry(entry) ? (
                   <span
-                    className="min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400"
+                    className={`min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400 ${off}`}
                     title={`Picks one per image:\n${randomOptions(entry).join('\n')}`}
                   >
                     <span className="text-violet-300/80">1 of {randomOptions(entry).length}: </span>
@@ -95,7 +120,7 @@ export function TidbitList({
                   </span>
                 ) : (
                   <span
-                    className="min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400"
+                    className={`min-w-0 flex-1 truncate rounded bg-slate-900/30 px-2 py-1 text-xs text-slate-400 ${off}`}
                     title={entry.text}
                   >
                     {entry.text || <span className="italic text-slate-600">empty</span>}
@@ -119,7 +144,7 @@ export function TidbitList({
                   apiKey={apiKey}
                   placeholder={placeholder}
                   wrapperClassName="relative min-w-0 flex-1"
-                  className="w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
+                  className={`w-full rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-100 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors ${off}`}
                 />
               </>
             )}
@@ -158,6 +183,7 @@ export function TidbitList({
         );
       })}
 
+      {open && (
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -186,6 +212,7 @@ export function TidbitList({
           </select>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -25,7 +25,7 @@ interface SweepAroundOptions {
 }
 
 export function useSweepAround() {
-  const { generate, error, clearError } = useGenerate();
+  const { generate, error, clearError, lastErrorWasFatal } = useGenerate();
   const { setIsLoading } = useSessionStore();
   const useCoordsDefault = useSettingsStore((s) => s.useCoords);
 
@@ -113,8 +113,14 @@ export function useSweepAround() {
           source,
           sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
         });
-        if (!result) return null;
-        made.push(...result);
+        // A cell that fails for a reason retrying can't fix ends the sweep;
+        // one that just ran out of patience costs that cell, not the grid
+        // (the grid draws a placeholder where it's missing).
+        if (!result) {
+          if (lastErrorWasFatal()) return null;
+        } else {
+          made.push(...result);
+        }
         if (i < cells.length - 1 && !shouldStop()) await sleep(CELL_GAP_MS);
       }
       return made;

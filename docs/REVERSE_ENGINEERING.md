@@ -142,6 +142,20 @@ This app mirrors it in `lib/autoText.ts`, applied in `buildImageRequest` and str
 - **Requests:** a captured novelai.net request matched this app's field for field (`…, no text, teXt: Hello World`).
 - **Images:** same-seed generations on both sites (quoted and unquoted prompts) matched exactly on the block-mean grid.
 
+### Variety+ (`skip_cfg_above_sigma`)
+
+NovelAI's model table calls this `cfgDelay` and gives each model the sigma it starts from (`cfgDelaySigma`). The UI toggle is just on or off; its client turns that into the field's value on the way out:
+
+- **Which models:** V4, V4.5 and V3 have `cfgDelay: true`; **V5 does not**, and its client *deletes* the field for any model without it (`PE(model).cfgDelay || delete parameters.skip_cfg_above_sigma`). Models that do have it send `null` when the toggle is off.
+- **Starting sigma:** 58 on V4.5, 19 on V4 and V3.
+- **Scaled by size:** just before sending, the sigma is multiplied by `√(⌊w/8⌋·⌊h/8⌋ / (104·152))` — the request's latent area against 832×1216's, on the models' 8-pixel latent grid. So 832×1216 (either way round) sends the bare 58 or 19.
+- **After the 64 rounding:** the scaling uses the size actually sent. Asking for 1248×1824 on V4.5 sends `width: 1280, height: 1856` and `skip_cfg_above_sigma: 88.87784456804029`, which is 58 × √(160·232 / 15808).
+- **On import,** the client divides the stored value back out, so what it shows is the model's own sigma again.
+
+Confirmed on 2026-09-19 by reading the client and by three of its own captured requests (V4.5 at 1248×1824 on and off, V3 at 832×1216). This app mirrors it in `lib/variety.ts`; `buildImageRequest` applies the "null, or no field at all" rule. A same-seed V4.5 generation with Variety+ on matched novelai.net's to within PNG/WebP noise (largest row or column mean differing by 0.00007 of 255).
+
+While reading that table: V5's `maxCharacters` is now **32**, not the 22 it launched with.
+
 ### Tag autocomplete
 
 `GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores. `model` genuinely changes the result set/order, not just a vocabulary filter on one shared list — double-check you're passing the exact model string the live UI is set to before comparing, a mismatch (e.g. `nai-diffusion-4-5-curated` vs `nai-diffusion-5-curated`) silently gives a different-looking but plausible result.

@@ -8,6 +8,8 @@ interface UseSubscriptionReturn {
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
+  /** Anlas this session has actually been charged, from the balance itself. */
+  spentThisSession: number;
 }
 
 // Feeds the Anlas balance and the "Opus Generation Usage Limit" meter NovelAI's
@@ -16,7 +18,7 @@ interface UseSubscriptionReturn {
 // anything that spends Anlas.
 export function useSubscription(): UseSubscriptionReturn {
   const apiKey = useSessionStore((s) => s.apiKey);
-  const { subscription, forKey, isLoading, error, refresh } = useSubscriptionStore();
+  const { subscription, forKey, isLoading, error, refresh, spentThisSession } = useSubscriptionStore();
 
   // First use under a new key fetches once; other components mounting
   // alongside it read the live store (not this render's copy) and skip.
@@ -29,5 +31,6 @@ export function useSubscription(): UseSubscriptionReturn {
     isLoading,
     error,
     refresh,
+    spentThisSession,
   };
 }

@@ -11,9 +11,9 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 ## Writing prompts
 
 - **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
-- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 22 at once on V5, 6 on V4/V4.5). **Use Coordinates** places them on a drag-and-drop position canvas.
-- **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own.
-- **Tidbits.** Small toggleable pieces attached to a prompt or character, appended when enabled. They're trimmed and joined with ", ", never producing double commas.
+- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). Each folds down to a one-line summary, there's an Add at both ends of the list, and **Use Coordinates** places them on a drag-and-drop position canvas.
+- **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own. Both take tidbits, the same as a positive prompt does.
+- **Tidbits.** Small toggleable pieces attached to a prompt, a character or a negative prompt, appended when enabled. They're trimmed and joined with ", ", never producing double commas. An off one is dimmed and struck through, and the list folds away with a count of how many are on.
 - **Tidbit Library.** Reusable pieces, shared everywhere:
   - **Link** an entry as a tidbit, or reference it inline by writing `__Label__`. Editing an entry updates every place that uses it.
   - **Random entries** hold one option per line and roll a new one for each request. The roll is remembered on the image, so Enhance or Inpaint on it later doesn't re-roll.
@@ -32,11 +32,14 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## Generating
 
 - **Generation settings:** size presets or a custom size, steps, CFG (prompt guidance), sampler, noise schedule, CFG rescale, seed, and SMEA on V3.
+- **Variety+** (under Advanced settings) holds guidance back until the shapes have formed, for more varied and more saturated images, at some cost to how closely they follow the prompt. It's offered on the models NovelAI offers it on — V4, V4.5 and V3, but not V5 — and the strength it sends scales with the image size exactly as NovelAI's does.
 - **Copies:** 2–4 images from one prompt, as one **Batch** request or **Queued** one after another. Queued copies can each use the free Opus allowance and roll wildcards separately.
 - **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
 - **Streaming mode** shows live preview frames while the image renders.
+- **Inspect request** (under Advanced settings) shows the exact JSON the next Generate would POST, after every step that shapes it — quality tags, wildcards, V5's text section, the size rounding — with the image data shortened and a button to copy it. Handy for comparing against what novelai.net sends.
 - **Tab title:** like NovelAI's, it spins (◰◳◲◱) while images generate and shows ✓ when a run finishes while you're on another tab.
-- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter sit at the top of the sidebar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%.
+- **Retries:** a rate limit, a gateway error or a dropped connection is retried up to three times, waiting 2s, 5s then 12s (or whatever `Retry-After` asks for). The Generate button says what it's waiting on, so a long pause doesn't look like a hang. If it still fails, a run of many images — queued copies, a batch of prompts, a sweep — skips that one image and carries on, and tells you how many it lost. Anything retrying can't fix, like a bad key or a request NovelAI rejects, stops the run straight away.
+- **Cost estimates** on every paid button, calculated with NovelAI's own price formulas (including the free Opus allowance). The live Anlas balance and the Opus usage meter stay pinned to the top of the sidebar as it scrolls, above the prompt tab bar. The meter shows roughly how many free images are left, how fast it refills, and when it will be full, using NovelAI's own estimate of about 17.3 images per 1%. Clicking the Anlas line collapses the meter away, leaving just the balance; the choice is remembered. Next to the balance it shows what this session has actually been charged, counted from the balance itself rather than from our estimates (buying more Anlas moves the baseline up instead of counting as a refund).
 
 ## X/Y sweeps
 
@@ -46,6 +49,14 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
 - **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
+- **Saved setups:** name a pair of axes and load it again later. The same list is available in the Sweep dialog and in a chain's Sweep step, and it travels in Import / Export.
+
+## Keyboard
+
+- **Ctrl+Enter** (⌘+Enter) generates, from anywhere — including mid-prompt, where it beats the tag suggestion list's own Enter.
+- **← / →** step through the session's images, newest to oldest. They stay out of the way while you're typing, and while a dialog is open.
+- **Esc** goes from one of a batch's images back to its grid.
+- **Ctrl+↑ / Ctrl+↓** in any prompt field adds or removes emphasis around the tag under the cursor.
 
 ## Working with an image
 
@@ -67,7 +78,7 @@ Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, ar
 A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Sweep, Download), each applied to the previous step's result.
 - **Sweep:** regenerates the image from its own prompt, seed and settings, one image per combination of the step's axes (any sweep axis except wildcards), so you can see what changing each would do. It must be the last step, and its images open as a grid.
 - **Add Tags:** a step that adds tags to the prompt for the Enhance, Variations and Sweep steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
-- **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included).
+- **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included). With a batch open as a grid, **Chain all N** runs one on every image in it, priced for the whole group before it starts.
 - **Costs:** every run is priced step by step before it starts, and anything that isn't free asks first. Chains that can't work are caught up front, for example Upscale above 1 MP.
 - **While it runs:** steps go one at a time, with a Stop button and a clear message if a step fails. Generate waits until the chain is done.
 - **Results:** each step's image is kept in history, grouped under the chain's name.
@@ -79,11 +90,11 @@ Save the current settings and modifiers under a name, and load them back in one 
 ## Import & export
 
 - **Images.** Drop or paste an image anywhere to import its NovelAI metadata or use it as an img2img base. Pasted images work too: when copying strips the metadata, it's read from the copy NovelAI hides in the image's transparency. Images made with Image2Image or Inpainting are flagged, as on NovelAI, since their metadata can't reproduce them. You pick which parts to load: prompt, characters, negative, settings or seed. Prompts and characters can be appended to what you have, instead of replacing it. **Clean Imports** strips `[]`/`{}` and tidies spacing.
-- **Files.** Import / Export saves any selection of prompts, characters, library entries, presets, chains and settings to a JSON file. On import, you choose per list whether to add to or replace what you have. Library links are kept intact, and duplicates are merged.
+- **Files.** Import / Export saves any selection of prompts, characters, library entries, presets, chains, sweep setups and settings to a JSON file. On import, you choose per list whether to add to or replace what you have. Library links are kept intact, and duplicates are merged.
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc** or **← Batch of N** goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Filter** narrows it by anything the images carry — prompt (as sent or as written), model, seed, or the chain or sweep they came from — and every word has to match, in any order. **Select** turns the thumbnails into tick boxes, so a chosen set (or everything the filter left) can be downloaded as a ZIP or removed together. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc**, **← Batch of N**, or clicking the image itself goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Pin** an image (📌 on its thumbnail, or in a batch grid on hover) and **Clear Session** keeps it; the confirmation says how many will stay, and offers nothing to clear when everything is pinned. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
 
 ## Settings that persist
 

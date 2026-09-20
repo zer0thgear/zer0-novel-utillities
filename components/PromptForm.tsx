@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -15,7 +15,9 @@ import {
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
+import { TidbitList } from './TidbitList';
 import { AccountStatusBar } from './AccountStatusBar';
+import { RequestInspectorModal } from './RequestInspectorModal';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
 import { ChainsSection } from './ChainsSection';
@@ -26,11 +28,12 @@ import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
-import { MODELS, modelShortName } from '@/lib/models';
+import { MODELS, maxCharacters, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
+import { hasVariety } from '@/lib/variety';
 import { blobToBase64 } from '@/lib/imageUtils';
-import { eraseStealthMarks } from '@/lib/requestImage';
+import { eraseStealthMarks, finalizeRequest } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
@@ -83,14 +86,34 @@ export function PromptForm() {
   // is pinned (scrolled down into settings) would otherwise swap content that's
   // entirely above the viewport, so we jump back to the top of the editor.
   const tabAnchorRef = useRef<HTMLDivElement>(null);
+  // The account bar pins above the tab bar, so the tab bar pins under it.
+  // Its height depends on the tier and the refill line, so measure it.
+  const [accountBarHeight, setAccountBarHeight] = useState(0);
+  const accountBarRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) {
+      setAccountBarHeight(0);
+      return;
+    }
+    const measure = () => setAccountBarHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // React 19 runs this instead of calling the ref with null.
+    return () => {
+      observer.disconnect();
+      setAccountBarHeight(0);
+    };
+  }, []);
 
   function switchPromptTab(tab: 'prompts' | 'characters') {
     setPromptTab(tab);
     const anchor = tabAnchorRef.current;
     const scroller = anchor?.closest('.overflow-y-auto');
-    if (anchor && scroller && anchor.getBoundingClientRect().top < scroller.getBoundingClientRect().top) {
-      anchor.scrollIntoView({ block: 'start' });
-    }
+    if (!anchor || !scroller) return;
+    // Where the tab bar sits once pinned: just under the account bar.
+    const pinned = scroller.getBoundingClientRect().top + accountBarHeight;
+    const offset = anchor.getBoundingClientRect().top - pinned;
+    if (offset < 0) scroller.scrollTop += offset;
   }
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
@@ -103,23 +126,56 @@ export function PromptForm() {
   // "Batch" mode would multiply scope for little benefit.
   const [copies, setCopies] = useState(1);
   const [copiesMode, setCopiesMode] = useState<'batch' | 'queue'>('batch');
-  const { generate, error, clearError } = useGenerate();
-  const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
+  const { generate, error, clearError, lastErrorWasFatal } = useGenerate();
+  /** Set after a run that skipped some images, alongside the error banner. */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Ctrl/Cmd+Enter generates from anywhere, including mid-prompt, the way
+  // NovelAI's own shortcut does. handleSubmit already ignores it while a
+  // generation or chain is running.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.defaultPrevented) return;
+      // Not while a dialog is up: Enter there belongs to the dialog.
+      if (document.querySelector('.fixed.inset-0')) return;
+      e.preventDefault();
+      formRef.current?.requestSubmit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource, retryNotice } = useSessionStore();
   const { subscription } = useSubscription();
   const tokens = useTokenCounts(form);
   const launchChain = useChainLauncher();
   // A running chain has an image request in flight; Generate waits for it.
   const chainBusy = useChainBusy();
 
-  /** Wraps generate() to collect every image a run makes, for the auto chain. */
+  /** Wraps generate() to collect every image a run makes, for the auto chain,
+   *  and to count the ones that failed. */
   function collectingGenerate() {
     const made: GeneratedImage[] = [];
+    let skipped = 0;
+    setRunNotice(null);
     const gen = async (...args: Parameters<typeof generate>) => {
       const result = await generate(...args);
       if (result) made.push(...result);
+      else skipped++;
       return result;
     };
-    return { made, gen };
+    /** After a failed request: true to end the run, false to skip this image
+     *  and carry on. Only a fault in the request itself ends it; a rate limit
+     *  that outlasted its retries costs one image, not the whole grid. */
+    const stop = () => lastErrorWasFatal();
+    /** Says how many were skipped, once the run is over. */
+    const report = (total: number) => {
+      if (skipped > 0 && skipped < total) {
+        setRunNotice(`${skipped} of ${total} images failed and were skipped. The rest are in your history.`);
+      }
+    };
+    return { made, gen, stop, report };
   }
 
   /** Offers the "after each Generate" chain on a run's new images. */
@@ -135,7 +191,7 @@ export function PromptForm() {
 
   /** Rolls this prompt's wildcards once, for one request. */
   function resolveFor(prompt: BasePrompt): ResolvedRequestPrompts {
-    return resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary);
+    return resolveRequestPrompts(prompt, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary);
   }
 
   function buildRequest(
@@ -172,6 +228,24 @@ export function PromptForm() {
     });
   }
 
+  /** The request a Generate right now would send, for the inspector. It goes
+   *  through every step a real one does, finalizeRequest included, so what's
+   *  shown is the body itself and not an approximation of it. */
+  const buildPreviewRequest = useCallback(async () => {
+    const selected = form.basePrompts.find((p) => p.selected) ?? form.basePrompts[0];
+    const resolved = resolveFor(selected);
+    const nSamples = form.promptMode === 'single' && copies > 1 && copiesMode === 'batch' ? copies : 1;
+    const request = buildRequest(
+      resolved,
+      form.seed === 0 ? randomSeed() : form.seed,
+      await img2imgBaseB64(),
+      nSamples,
+    );
+    return finalizeRequest(request);
+    // Rebuilt on demand from the live form; the modal asks once when it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, copies, copiesMode, img2imgSource, img2imgStrength, img2imgNoise]);
+
   // ── Submit handler ─────────────────────────────────────────────────────
 
   // The base prompts a Generate click would send.
@@ -179,7 +253,7 @@ export function PromptForm() {
     form.promptMode === 'single'
       ? form.basePrompts.filter((p) => p.selected).slice(0, 1)
       : form.basePrompts.filter((p) => p.selected && p.text.trim());
-  const wildcards = analyzeWildcards(targetPrompts, form.characters, form.negativePrompt, form.tidbitLibrary);
+  const wildcards = analyzeWildcards(targetPrompts, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary);
   // Non-null while the "unknown wildcard" confirmation is open.
   const [unknownRefs, setUnknownRefs] = useState<string[] | null>(null);
 
@@ -197,8 +271,8 @@ export function PromptForm() {
 
   async function runGeneration() {
     setUnknownRefs(null);
-    const { made, gen } = collectingGenerate();
-    await generateAll(gen);
+    const { made, gen, stop, report } = collectingGenerate();
+    await generateAll(gen, stop, report);
     offerAutoChain(made);
   }
 
@@ -208,7 +282,7 @@ export function PromptForm() {
     return img2imgSource ? blobToBase64(await eraseStealthMarks(img2imgSource.blob)) : undefined;
   }
 
-  async function generateAll(gen: typeof generate) {
+  async function generateAll(gen: typeof generate, stop: () => boolean, report: (total: number) => void) {
     const baseImageB64 = await img2imgBaseB64();
 
     if (form.promptMode === 'single') {
@@ -240,10 +314,11 @@ export function PromptForm() {
             form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
           const ok = await gen(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
-          if (!ok) break;
+          if (!ok && stop()) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
 
+        report(copies);
         setIsLoading(false);
         setBatchStatus(null);
       } else {
@@ -272,9 +347,10 @@ export function PromptForm() {
           wildcardPicks: resolved.picks,
           source: promptSource(form, resolved),
         });
-        if (!ok) break; // stop batch on error
+        if (!ok && stop()) break;
       }
 
+      report(selectedPrompts.length);
       setIsLoading(false);
       setBatchStatus(null);
     }
@@ -303,7 +379,7 @@ export function PromptForm() {
     const baseline = resolveFor(selected);
     const baseImageB64 = await img2imgBaseB64();
 
-    const { made, gen } = collectingGenerate();
+    const { made, gen, stop, report } = collectingGenerate();
     sweepStopRef.current = false;
     setSweepRunning(true);
     setIsLoading(true);
@@ -312,7 +388,7 @@ export function PromptForm() {
       const cell = cells[i];
       setBatchStatus({ current: i + 1, total: cells.length });
       const rolled = resolveRequestPrompts(
-        selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
+        selected, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary, baseline.picks, cell.force,
       );
       // A tags axis adds its value where quality tags go (and it's kept in
       // the as-written prompt, so Reuse brings it back).
@@ -330,9 +406,10 @@ export function PromptForm() {
           sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
         },
       );
-      if (!ok) break;
+      if (!ok && stop()) break;
       if (i < cells.length - 1 && !sweepStopRef.current) await new Promise((r) => setTimeout(r, 1500));
     }
+    report(cells.length);
     setIsLoading(false);
     setBatchStatus(null);
     setSweepRunning(false);
@@ -375,6 +452,8 @@ export function PromptForm() {
     anlasCost;
 
   function buttonLabel() {
+    // A request being retried says so, so a long pause doesn't look like a hang.
+    if (retryNotice) return retryNotice;
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
     if (chainBusy) return 'Chain running…';
     if (isLoading) return 'Generating…';
@@ -389,7 +468,7 @@ export function PromptForm() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
       {/* API key strip */}
       <div className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2 text-xs border border-slate-700/50">
         <span className="text-slate-500">API key active</span>
@@ -402,7 +481,7 @@ export function PromptForm() {
         </button>
       </div>
 
-      <AccountStatusBar />
+      <AccountStatusBar ref={accountBarRef} />
 
       {/* Error banner */}
       {error && (
@@ -412,6 +491,20 @@ export function PromptForm() {
             type="button"
             onClick={clearError}
             className="flex-shrink-0 text-red-500 hover:text-red-300 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* How many of a run's images were lost, when some of it did work. */}
+      {runNotice && (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-200/90">
+          <span>{runNotice}</span>
+          <button
+            type="button"
+            onClick={() => setRunNotice(null)}
+            className="flex-shrink-0 text-amber-500/80 transition-colors hover:text-amber-200"
           >
             ✕
           </button>
@@ -579,9 +672,13 @@ export function PromptForm() {
           tab content) so it stays pinned under the header for the whole scroll,
           not just while the prompt list is on screen. */}
       <div ref={tabAnchorRef} className="-mb-4" />
-      {/* -top-5 cancels the scroll container's p-5, which sticky otherwise
-          honors, leaving a gap under the header for content to peek through. */}
-      <div className="sticky -top-5 z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2">
+      {/* The -20 cancels the scroll container's p-5, which sticky otherwise
+          honors, leaving a gap under the header for content to peek through;
+          the rest keeps this clear of the pinned account bar. */}
+      <div
+        className="sticky z-20 -mx-5 border-b border-slate-800/80 bg-sidebar px-5 py-2"
+        style={{ top: accountBarHeight - 20 }}
+      >
         <div className="flex overflow-hidden rounded-md border border-slate-700 text-xs">
           <button
             type="button"
@@ -627,7 +724,7 @@ export function PromptForm() {
             <CharacterPromptsEditor
               characters={form.characters}
               onChange={(characters) => form.set('characters', characters)}
-              maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
+              maxEnabled={maxCharacters(form.model)}
               model={form.model}
               tokens={tokens}
             />
@@ -761,6 +858,16 @@ export function PromptForm() {
                 apiKey={apiKey}
                 className={`${inputCls} resize-y`}
               />
+              {/* Tidbits, as on a base prompt — appended to the negative. */}
+              <div className="mt-2">
+                <TidbitList
+                  tidbits={form.negativeTidbits}
+                  onChange={(tidbits) => form.set('negativeTidbits', tidbits)}
+                  model={form.model}
+                  apiKey={apiKey}
+                  placeholder="bad hands, ..."
+                />
+              </div>
               {tokens && (
                 <div className="mt-2">
                   <TokenMeter
@@ -1034,6 +1141,25 @@ export function PromptForm() {
             />
           </div>
 
+          {/* Variety+ — only the models NovelAI offers it on (not V5). */}
+          {hasVariety(form.model) && (
+            <label className="flex cursor-pointer items-start justify-between gap-3">
+              <div>
+                <span className="text-xs text-slate-400">Variety+</span>
+                <p className="text-xs text-slate-600">
+                  Hold guidance back until the shapes have formed, for more varied, more saturated
+                  images. Can make them follow the prompt less closely.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.variety}
+                onChange={(e) => form.set('variety', e.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+              />
+            </label>
+          )}
+
           {/* Streaming Mode */}
           <label className="flex cursor-pointer items-center justify-between border-t border-slate-700/40 pt-3">
             <div>
@@ -1049,8 +1175,20 @@ export function PromptForm() {
               className="h-4 w-4 accent-violet-500"
             />
           </label>
+
+          {/* Inspect request */}
+          <button
+            type="button"
+            onClick={() => setInspecting(true)}
+            title="Show the exact JSON the next Generate would send"
+            className="rounded-lg border border-slate-700/60 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-700"
+          >
+            Inspect request…
+          </button>
         </div>
       )}
+
+      {inspecting && <RequestInspectorModal build={buildPreviewRequest} onClose={() => setInspecting(false)} />}
 
       {/* Generate button — sticky at the bottom of the scroll container.
           -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so
@@ -1065,6 +1203,7 @@ export function PromptForm() {
           <button
             type="submit"
             disabled={isLoading || chainBusy || !hasValidPrompt}
+            title="Ctrl+Enter"
             className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {buttonLabel()}

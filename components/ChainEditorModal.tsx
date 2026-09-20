@@ -5,6 +5,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { TagAutocompleteField } from '@/components/TagAutocompleteField';
 import { SweepAxisEditor } from '@/components/SweepAxisEditor';
+import { SweepPresetBar } from '@/components/SweepPresetBar';
 import { SweepDefaults } from '@/lib/sweeps';
 import { useSubscription } from '@/hooks/useSubscription';
 import { ReorderArrows } from '@/components/ReorderArrows';
@@ -187,6 +188,7 @@ function StepOptions({
     case 'sweep':
       return (
         <div className="flex flex-col gap-2 pl-6">
+          <SweepPresetBar x={step.x} y={step.y} onLoad={(preset) => onChange({ x: preset.x, y: preset.y })} />
           <SweepAxisEditor
             title="X axis"
             draft={step.x}

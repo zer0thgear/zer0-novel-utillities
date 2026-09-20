@@ -45,7 +45,7 @@ export interface ResolvedRequestPrompts {
 export function resolveRequestPrompts(
   base: { text: string; tidbits?: PromptTidbit[] },
   characters: CharacterPromptEntry[],
-  negativePrompt: string,
+  negative: { text: string; tidbits?: PromptTidbit[] },
   library: LibraryTidbit[],
   replay?: WildcardPicks,
   /** Pins random entries (by id) to one option everywhere they occur —
@@ -99,10 +99,11 @@ export function resolveRequestPrompts(
     .map((c) => ({
       ...c,
       prompt: inScope(`char:${c.id}`, () => withTidbits(c.prompt, c.tidbits)),
-      uc: inScope(`charuc:${c.id}`, () => expand(c.uc)),
+      uc: inScope(`charuc:${c.id}`, () => withTidbits(c.uc, c.ucTidbits)),
       tidbits: [],
+      ucTidbits: [],
     }));
-  const resolvedNegative = inScope('neg', () => expand(negativePrompt));
+  const resolvedNegative = inScope('neg', () => withTidbits(negative.text, negative.tidbits));
 
   return { baseText, characters: resolvedCharacters, negativePrompt: resolvedNegative, picks };
 }
@@ -149,7 +150,7 @@ export interface WildcardAnalysis {
 export function analyzeWildcards(
   bases: { text: string; tidbits?: PromptTidbit[] }[],
   characters: CharacterPromptEntry[],
-  negativePrompt: string,
+  negative: { text: string; tidbits?: PromptTidbit[] },
   library: LibraryTidbit[],
 ): WildcardAnalysis {
   const index = labelIndex(library);
@@ -186,8 +187,10 @@ export function analyzeWildcards(
     scan(c.prompt);
     scan(c.uc);
     scanTidbits(c.tidbits);
+    scanTidbits(c.ucTidbits);
   }
-  scan(negativePrompt);
+  scan(negative.text);
+  scanTidbits(negative.tidbits);
 
   return { unknown: [...unknown], usesRandom: randomEntries.length > 0, randomEntries };
 }

@@ -19,6 +19,7 @@ export const PRESET_SETTINGS_KEYS = [
   'smea',
   'smeaDyn',
   'cfgRescale',
+  'variety',
   'furMode',
   'nsfwMode',
   'transparentBg',
@@ -34,6 +35,7 @@ export const PRESET_PROMPT_KEYS = [
   'characters',
   'useCoords',
   'negativePrompt',
+  'negativeTidbits',
 ] as const satisfies readonly (keyof FormSettings)[];
 
 type PresetKey = (typeof PRESET_SETTINGS_KEYS)[number] | (typeof PRESET_PROMPT_KEYS)[number];

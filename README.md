@@ -38,6 +38,25 @@ npm run build
 npm start
 ```
 
+## Tests
+
+```bash
+# Typecheck, lint and run the tests
+npm run typecheck && npm run lint && npm test
+```
+
+The tests cover `lib/` — the modules that encode how NovelAI behaves: its Anlas
+price formulas, Enhance sizes, prompt composition and preset placement, V5's
+automatic text section, the request body `buildImageRequest` sends, sweep and
+chain planning, wildcards, the token counters, and the untrusted-input parsers
+for imported files. They're the guard on parity: getting any of it wrong
+changes what the server does, usually without an error. The same checks run on
+every pull request (`.github/workflows/ci.yml`).
+
+Anything needing a canvas, the network or a React tree is verified in the
+browser instead, against novelai.net itself — see
+[docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md).
+
 ## Architecture
 
 This app calls `https://image.novelai.net` **directly from the browser** — there is no server-side proxy route. Your API key is sent straight from your browser to NovelAI's servers and is never seen by anything this project's author operates. It's stored in `localStorage`, so don't use this on a shared or public machine, and don't deploy a build of it somewhere your key could be exposed to others.
@@ -107,6 +126,7 @@ types/
 public/tokenizers/              # Apache-2.0 tokenizer data (see its README)
 scripts/
   build-tokenizers.mjs          # Regenerates public/tokenizers/ from Hugging Face files
+tests/                          # Vitest suite over lib/ (npm test)
 docs/
   FEATURES.md                   # What the app does, feature by feature
   REVERSE_ENGINEERING.md        # How this app's API behavior was reverse-engineered

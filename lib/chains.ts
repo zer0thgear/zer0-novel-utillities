@@ -8,7 +8,7 @@ import {
 } from '@/lib/anlasCost';
 import { normalizePromptPart } from '@/lib/promptText';
 import { roundToSizeStep } from '@/lib/requestImage';
-import { AXIS_NAMES, MAX_SWEEP_CELLS, NO_AXIS, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
+import { AXIS_NAMES, MAX_SWEEP_CELLS, NO_AXIS, parseAxisDraft, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
 import {
   ENHANCE_LEVELS,
   EnhanceScale,
@@ -307,12 +307,6 @@ function parseStep(v: unknown): ChainStep | null {
     default:
       return null;
   }
-}
-
-function parseAxisDraft(v: unknown): SweepAxisDraft | null {
-  if (!isObj(v) || typeof v.key !== 'string' || typeof v.text !== 'string') return null;
-  const picked = Array.isArray(v.picked) ? v.picked.filter((p): p is string => typeof p === 'string') : [];
-  return { key: v.key, text: v.text, picked, ...(typeof v.baseline === 'boolean' ? { baseline: v.baseline } : {}) };
 }
 
 /** An enhance step's scale; older files have `upscale: true` for 1.5×. */
