@@ -208,6 +208,16 @@ export function draftFor(key: string, d: SweepDefaults, randomEntries: LibraryTi
   return NO_AXIS;
 }
 
+/** One axis draft from a file, or null if it isn't one. Untrusted input:
+ *  anything that isn't the right shape is dropped rather than trusted. */
+export function parseAxisDraft(v: unknown): SweepAxisDraft | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.key !== 'string' || typeof o.text !== 'string') return null;
+  const picked = Array.isArray(o.picked) ? o.picked.filter((p): p is string => typeof p === 'string') : [];
+  return { key: o.key, text: o.text, picked, ...(typeof o.baseline === 'boolean' ? { baseline: o.baseline } : {}) };
+}
+
 /** Turns a draft into an axis, or explains why it can't be used yet. */
 export function toAxis(draft: SweepAxisDraft): { axis?: SweepAxis; problem?: string } {
   if (draft.key === 'none') return {};

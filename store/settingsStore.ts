@@ -12,6 +12,7 @@ import {
 } from '@/types/novelai';
 import { QualityLevel, UcLevel } from '@/lib/naiPresets';
 import type { Preset } from '@/lib/presets';
+import type { SweepPreset } from '@/lib/sweepPresets';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ export interface FormSettings {
   presets: Preset[];
   /** Saved chained actions (see lib/chains.ts). Absent from older saves. */
   chains: Chain[];
+  /** Saved sweep setups (see lib/sweepPresets.ts). Absent from older saves. */
+  sweepPresets: SweepPreset[];
   /** Chain to offer on every new generation's results, or null. */
   autoChainId: string | null;
 }
@@ -89,6 +92,7 @@ const DEFAULTS: FormSettings = {
   tidbitLibrary: [],
   presets: [],
   chains: [],
+  sweepPresets: [],
   autoChainId: null,
 };
 

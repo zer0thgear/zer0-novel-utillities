@@ -49,6 +49,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.
 - **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
+- **Saved setups:** name a pair of axes and load it again later. The same list is available in the Sweep dialog and in a chain's Sweep step, and it travels in Import / Export.
 
 ## Working with an image
 
@@ -82,7 +83,7 @@ Save the current settings and modifiers under a name, and load them back in one 
 ## Import & export
 
 - **Images.** Drop or paste an image anywhere to import its NovelAI metadata or use it as an img2img base. Pasted images work too: when copying strips the metadata, it's read from the copy NovelAI hides in the image's transparency. Images made with Image2Image or Inpainting are flagged, as on NovelAI, since their metadata can't reproduce them. You pick which parts to load: prompt, characters, negative, settings or seed. Prompts and characters can be appended to what you have, instead of replacing it. **Clean Imports** strips `[]`/`{}` and tidies spacing.
-- **Files.** Import / Export saves any selection of prompts, characters, library entries, presets, chains and settings to a JSON file. On import, you choose per list whether to add to or replace what you have. Library links are kept intact, and duplicates are merged.
+- **Files.** Import / Export saves any selection of prompts, characters, library entries, presets, chains, sweep setups and settings to a JSON file. On import, you choose per list whether to add to or replace what you have. Library links are kept intact, and duplicates are merged.
 
 ## History
 

@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { isRandomEntry, randomOptions } from '@/lib/wildcards';
 import { presetSummary } from '@/lib/presets';
 import { chainSummary } from '@/lib/chains';
+import { sweepPresetSummary } from '@/lib/sweepPresets';
 import {
   applyImport,
   buildExport,
@@ -37,6 +38,7 @@ const LIST_TITLES: Record<ListKey, string> = {
   tidbitLibrary: 'Tidbit Library',
   presets: 'Presets',
   chains: 'Chains',
+  sweepPresets: 'Sweep setups',
 };
 
 function itemsOf(source: Pick<TransferFile, ListKey>): Record<ListKey, Item[]> {
@@ -54,6 +56,11 @@ function itemsOf(source: Pick<TransferFile, ListKey>): Record<ListKey, Item[]> {
       subtitle: presetSummary(p),
     })),
     chains: (source.chains ?? []).map((c) => ({ id: c.id, title: c.name, subtitle: chainSummary(c) })),
+    sweepPresets: (source.sweepPresets ?? []).map((p) => ({
+      id: p.id,
+      title: p.name,
+      subtitle: sweepPresetSummary(p),
+    })),
   };
 }
 
@@ -72,12 +79,12 @@ export function TransferModal({ mode, onClose, onImported }: Props) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<ListKey>>(new Set());
   const [modes, setModes] = useState<Record<ListKey, ImportMode>>({
-    basePrompts: 'add', characters: 'add', tidbitLibrary: 'add', presets: 'add', chains: 'add',
+    basePrompts: 'add', characters: 'add', tidbitLibrary: 'add', presets: 'add', chains: 'add', sweepPresets: 'add',
   });
 
   // What's on offer: the current sidebar when exporting, the file when importing.
   const source: TransferFile | null = mode === 'export'
-    ? { app: 'zer0-novel-frontend', version: 1, exportedAt: '', basePrompts: form.basePrompts, characters: form.characters, tidbitLibrary: form.tidbitLibrary, presets: form.presets, chains: form.chains }
+    ? { app: 'zer0-novel-frontend', version: 1, exportedAt: '', basePrompts: form.basePrompts, characters: form.characters, tidbitLibrary: form.tidbitLibrary, presets: form.presets, chains: form.chains, sweepPresets: form.sweepPresets }
     : file;
   const items = source ? itemsOf(source) : null;
   const hasSettings = mode === 'export' || !!file?.settings;

@@ -4,6 +4,7 @@ import { Preset, PRESET_SETTINGS_KEYS } from '@/lib/presets';
 import { referencedEntries } from '@/lib/wildcards';
 import { MODELS, maxCharacters } from '@/lib/models';
 import { parseChain } from '@/lib/chains';
+import { parseSweepPreset, SweepPreset } from '@/lib/sweepPresets';
 import { SAMPLERS } from '@/lib/samplers';
 
 // Import/export of prompts, characters, library entries, presets, chains and settings
@@ -13,8 +14,15 @@ import { SAMPLERS } from '@/lib/samplers';
 const APP = 'zer0-novel-frontend';
 const VERSION = 1;
 
-export type ListKey = 'basePrompts' | 'characters' | 'tidbitLibrary' | 'presets' | 'chains';
-export const LIST_KEYS: ListKey[] = ['basePrompts', 'characters', 'tidbitLibrary', 'presets', 'chains'];
+export type ListKey = 'basePrompts' | 'characters' | 'tidbitLibrary' | 'presets' | 'chains' | 'sweepPresets';
+export const LIST_KEYS: ListKey[] = [
+  'basePrompts',
+  'characters',
+  'tidbitLibrary',
+  'presets',
+  'chains',
+  'sweepPresets',
+];
 
 type SettingsValues = Partial<Pick<FormSettings, (typeof PRESET_SETTINGS_KEYS)[number]>>;
 
@@ -27,6 +35,7 @@ export interface TransferFile {
   tidbitLibrary?: LibraryTidbit[];
   presets?: Preset[];
   chains?: Chain[];
+  sweepPresets?: SweepPreset[];
   settings?: SettingsValues;
   negativePrompt?: string;
 }
@@ -50,6 +59,7 @@ export function buildExport(form: FormSettings, sel: TransferSelection): Transfe
   if (sel.lists.tidbitLibrary.size) file.tidbitLibrary = pick(form.tidbitLibrary, 'tidbitLibrary');
   if (sel.lists.presets.size) file.presets = pick(form.presets, 'presets');
   if (sel.lists.chains.size) file.chains = pick(form.chains, 'chains');
+  if (sel.lists.sweepPresets.size) file.sweepPresets = pick(form.sweepPresets, 'sweepPresets');
   if (sel.settings) {
     file.settings = Object.fromEntries(PRESET_SETTINGS_KEYS.map((k) => [k, form[k]])) as SettingsValues;
   }
@@ -191,6 +201,7 @@ export function parseTransferFile(text: string): { file?: TransferFile; error?: 
       tidbitLibrary: list(raw.tidbitLibrary, parseLibraryEntry),
       presets: list(raw.presets, parsePreset),
       chains: list(raw.chains, parseChain),
+      sweepPresets: list(raw.sweepPresets, parseSweepPreset),
       settings: parseSettings(raw.settings),
       negativePrompt: str(raw.negativePrompt) ? raw.negativePrompt : undefined,
     },
@@ -326,6 +337,24 @@ export function applyImport(
       changes.chains = [...form.chains, ...renamed];
     }
     summary.push(`${chains.length} chain${chains.length === 1 ? '' : 's'}`);
+  }
+
+  const sweeps = picked(file.sweepPresets, 'sweepPresets').map((p): SweepPreset => ({ ...p, id: fresh() }));
+  if (sweeps.length) {
+    if (modes.sweepPresets === 'replace') {
+      changes.sweepPresets = sweeps;
+    } else {
+      // Saving is by name, like the other two, so keep them unique.
+      const names = new Set(form.sweepPresets.map((p) => p.name.trim().toLowerCase()));
+      const renamed = sweeps.map((p) => {
+        let name = p.name;
+        for (let n = 2; names.has(name.trim().toLowerCase()); n++) name = `${p.name} (${n})`;
+        names.add(name.trim().toLowerCase());
+        return { ...p, name };
+      });
+      changes.sweepPresets = [...form.sweepPresets, ...renamed];
+    }
+    summary.push(`${sweeps.length} sweep setup${sweeps.length === 1 ? '' : 's'}`);
   }
 
   if (sel.settings && file.settings) {
