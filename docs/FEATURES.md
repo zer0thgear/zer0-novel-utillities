@@ -51,6 +51,13 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Afterwards:** the results open as a labelled grid, with the shared seed, which you can save as one PNG.
 - **Saved setups:** name a pair of axes and load it again later. The same list is available in the Sweep dialog and in a chain's Sweep step, and it travels in Import / Export.
 
+## Keyboard
+
+- **Ctrl+Enter** (⌘+Enter) generates, from anywhere — including mid-prompt, where it beats the tag suggestion list's own Enter.
+- **← / →** step through the session's images, newest to oldest. They stay out of the way while you're typing, and while a dialog is open.
+- **Esc** goes from one of a batch's images back to its grid.
+- **Ctrl+↑ / Ctrl+↓** in any prompt field adds or removes emphasis around the tag under the cursor.
+
 ## Working with an image
 
 From the viewer:

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -129,6 +129,22 @@ export function PromptForm() {
   /** Set after a run that skipped some images, alongside the error banner. */
   const [runNotice, setRunNotice] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Ctrl/Cmd+Enter generates from anywhere, including mid-prompt, the way
+  // NovelAI's own shortcut does. handleSubmit already ignores it while a
+  // generation or chain is running.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.defaultPrevented) return;
+      // Not while a dialog is up: Enter there belongs to the dialog.
+      if (document.querySelector('.fixed.inset-0')) return;
+      e.preventDefault();
+      formRef.current?.requestSubmit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource, retryNotice } = useSessionStore();
   const { subscription } = useSubscription();
   const tokens = useTokenCounts(form);
@@ -451,7 +467,7 @@ export function PromptForm() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
       {/* API key strip */}
       <div className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2 text-xs border border-slate-700/50">
         <span className="text-slate-500">API key active</span>
@@ -1176,6 +1192,7 @@ export function PromptForm() {
           <button
             type="submit"
             disabled={isLoading || chainBusy || !hasValidPrompt}
+            title="Ctrl+Enter"
             className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {buttonLabel()}

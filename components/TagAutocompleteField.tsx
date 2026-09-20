@@ -233,7 +233,9 @@ export function TagAutocompleteField({
       setActive(false);
       return;
     }
-    if (dropdownOpen && (e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+    // Ctrl/Cmd+Enter is Generate, wherever the caret is, so it beats the
+    // dropdown's own Enter.
+    if (dropdownOpen && (e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing && !(e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       select(suggestions[highlightIndex].tag);
       return;
