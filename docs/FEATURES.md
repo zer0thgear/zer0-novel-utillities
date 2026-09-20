@@ -71,7 +71,7 @@ Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, ar
 A chain is a saved list of steps (Enhance, Upscale, Director Tool, Pixel Snap, Variations, Sweep, Download), each applied to the previous step's result.
 - **Sweep:** regenerates the image from its own prompt, seed and settings, one image per combination of the step's axes (any sweep axis except wildcards), so you can see what changing each would do. It must be the last step, and its images open as a grid.
 - **Add Tags:** a step that adds tags to the prompt for the Enhance, Variations and Sweep steps after it, for that run only. Your prompt in the sidebar isn't changed, but the images record the tags they were made with.
-- **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included).
+- **Running a chain:** use **Chain** in the viewer, or set **After each Generate** to offer it on every new image (batches and sweeps included). With a batch open as a grid, **Chain all N** runs one on every image in it, priced for the whole group before it starts.
 - **Costs:** every run is priced step by step before it starts, and anything that isn't free asks first. Chains that can't work are caught up front, for example Upscale above 1 MP.
 - **While it runs:** steps go one at a time, with a Stop button and a clear message if a step fails. Generate waits until the chain is done.
 - **Results:** each step's image is kept in history, grouped under the chain's name.

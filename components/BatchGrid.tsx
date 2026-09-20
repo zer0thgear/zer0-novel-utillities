@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { GeneratedImage } from '@/types/novelai';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useChainBusy } from '@/store/chainStore';
+import { useChainLauncher } from '@/hooks/useChainLauncher';
 import { downloadImage } from '@/lib/imageUtils';
 
 interface Props {
@@ -24,6 +26,10 @@ const columnsFor = (n: number) => (n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4);
 export function BatchGrid({ images, title }: Props) {
   const setFocusedImageId = useSessionStore((s) => s.setFocusedImageId);
   const setForm = useSettingsStore((s) => s.set);
+  const chains = useSettingsStore((s) => s.chains);
+  const launchChain = useChainLauncher();
+  const chainBusy = useChainBusy();
+  const [pickingChain, setPickingChain] = useState(false);
   const [flash, setFlash] = useState<{ id: string; text: string } | null>(null);
   const cols = columnsFor(images.length);
   const rows = Math.ceil(images.length / cols);
@@ -48,9 +54,46 @@ export function BatchGrid({ images, title }: Props) {
 
   return (
     <div className="flex h-full w-full flex-col items-center gap-2 p-3">
-      <p className="flex-shrink-0 text-xs text-slate-500">
-        <span className="font-semibold text-slate-300">{title}</span> · click an image to open it
-      </p>
+      <div className="flex w-full flex-shrink-0 items-center justify-center gap-3 text-xs text-slate-500">
+        <p>
+          <span className="font-semibold text-slate-300">{title}</span> · click an image to open it
+        </p>
+        {/* A chain applies to every image here, priced for all of them at once. */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPickingChain((v) => !v)}
+            disabled={chainBusy}
+            title={chainBusy ? 'Wait for the running chain to finish' : `Run a saved chain on all ${images.length}`}
+            className="rounded bg-slate-700/80 px-2 py-0.5 text-xs text-slate-300 transition-colors hover:bg-violet-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-700/80 disabled:hover:text-slate-300"
+          >
+            Chain all {images.length}
+          </button>
+          {pickingChain && (
+            <div className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+              {chains.length > 0 ? (
+                chains.map((chain) => (
+                  <button
+                    key={chain.id}
+                    type="button"
+                    onClick={() => {
+                      setPickingChain(false);
+                      launchChain(chain, images);
+                    }}
+                    className="rounded px-2 py-1 text-left text-xs text-slate-200 transition-colors hover:bg-violet-600"
+                  >
+                    {chain.name}
+                  </button>
+                ))
+              ) : (
+                <p className="px-2 py-1 text-left text-xs text-slate-500">
+                  No chains yet. Make one under Chains in the sidebar.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
       <div
         className="grid min-h-0 w-full flex-1 gap-2"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
