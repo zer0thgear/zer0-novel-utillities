@@ -13,7 +13,7 @@ import type { TokenCounts } from '@/hooks/useTokenCounts';
 interface Props {
   characters: CharacterPromptEntry[];
   onChange: (characters: CharacterPromptEntry[]) => void;
-  /** Max simultaneously-enabled characters, per the selected model (6 for V4/V4.5, 22 for V5). */
+  /** Max simultaneously-enabled characters, per the selected model (see lib/models.ts). */
   maxEnabled?: number;
   model: NovelAIModel;
   tokens?: TokenCounts | null;

@@ -2,7 +2,7 @@ import type { FormSettings } from '@/store/settingsStore';
 import { BasePrompt, Chain, CharacterPromptEntry, LibraryTidbit, PromptTidbit } from '@/types/novelai';
 import { Preset, PRESET_SETTINGS_KEYS } from '@/lib/presets';
 import { referencedEntries } from '@/lib/wildcards';
-import { MODELS } from '@/lib/models';
+import { MODELS, maxCharacters } from '@/lib/models';
 import { parseChain } from '@/lib/chains';
 import { SAMPLERS } from '@/lib/samplers';
 
@@ -135,6 +135,7 @@ const SETTING_CHECKS: Record<(typeof PRESET_SETTINGS_KEYS)[number], (v: unknown)
   smea: (v) => typeof v === 'boolean',
   smeaDyn: (v) => typeof v === 'boolean',
   cfgRescale: (v) => num(v) && v >= 0 && v <= 1,
+  variety: (v) => typeof v === 'boolean',
   furMode: (v) => typeof v === 'boolean',
   nsfwMode: (v) => typeof v === 'boolean',
   transparentBg: (v) => typeof v === 'boolean',
@@ -274,7 +275,7 @@ export function applyImport(
     let next = modes.characters === 'replace' ? characters : [...form.characters, ...characters];
     // Keep within the model's simultaneous-character cap; extras come in off.
     const model = (sel.settings && file.settings?.model) || form.model;
-    const cap = model.startsWith('nai-diffusion-5') ? 22 : 6;
+    const cap = maxCharacters(model);
     let enabled = 0;
     next = next.map((c) => (c.enabled && ++enabled > cap ? { ...c, enabled: false } : c));
     changes.characters = next;

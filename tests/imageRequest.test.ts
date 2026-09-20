@@ -57,8 +57,14 @@ describe('formSampling', () => {
     expect(formSampling(form)).not.toHaveProperty('sm_dyn');
   });
 
-  it('leaves Variety+ (skip_cfg_above_sigma) off', () => {
-    expect(formSampling(form)).not.toHaveProperty('skip_cfg_above_sigma');
+  it('sends no Variety+ sigma while the toggle is off', () => {
+    expect(formSampling(form).skip_cfg_above_sigma).toBeNull();
+  });
+
+  it('sends the model’s Variety+ sigma when it is on', () => {
+    const on = { ...form, model: 'nai-diffusion-4-5-full' as const, variety: true };
+    // 832x1216 is the size the sigma is relative to, so it goes out unscaled.
+    expect(formSampling(on).skip_cfg_above_sigma).toBe(58);
   });
 
   it('lets a sweep cell override the swept values only', () => {
@@ -80,6 +86,28 @@ describe('buildImageRequest', () => {
         legacy_v3_extend: false,
       });
     }
+  });
+
+  describe('Variety+', () => {
+    it('carries the field on models that offer it, null when off', () => {
+      for (const model of ['nai-diffusion-4-5-full', 'nai-diffusion-4-full', 'nai-diffusion-3'] as NovelAIModel[]) {
+        const request = build(model);
+        expect(request.parameters).toHaveProperty('skip_cfg_above_sigma');
+        expect(request.parameters.skip_cfg_above_sigma).toBeNull();
+      }
+    });
+
+    it('leaves the field out entirely on V5, which does not offer it', () => {
+      expect(build('nai-diffusion-5-full').parameters).not.toHaveProperty('skip_cfg_above_sigma');
+      expect(build('nai-diffusion-5-curated').parameters).not.toHaveProperty('skip_cfg_above_sigma');
+    });
+
+    it('passes a flow’s own sigma through', () => {
+      const request = build('nai-diffusion-4-5-full', {
+        parameters: { ...formSampling({ ...form, model: 'nai-diffusion-4-5-full', variety: true }), seed: 1, n_samples: 1, add_original_image: true },
+      });
+      expect(request.parameters.skip_cfg_above_sigma).toBe(58);
+    });
   });
 
   it('puts the negative prompt in its own field', () => {

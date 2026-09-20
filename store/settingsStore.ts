@@ -35,6 +35,8 @@ export interface FormSettings {
   smea: boolean;
   smeaDyn: boolean;
   cfgRescale: number;
+  /** Variety+ (skip_cfg_above_sigma). Only some models offer it; see lib/variety.ts. */
+  variety: boolean;
   characters: CharacterPromptEntry[];
   useCoords: boolean;
   streamingMode: boolean;
@@ -80,6 +82,7 @@ const DEFAULTS: FormSettings = {
   smea: false,
   smeaDyn: false,
   cfgRescale: 0,
+  variety: false,
   characters: [],
   useCoords: false,
   streamingMode: false,

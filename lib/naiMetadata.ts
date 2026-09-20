@@ -1,4 +1,5 @@
 import { GeneratedImage, NovelAIModel, PromptSource } from '@/types/novelai';
+import { varietyWasOn } from '@/lib/variety';
 import { stripAutoText } from '@/lib/autoText';
 
 // NovelAI embeds generation metadata directly in PNG tEXt chunks on every
@@ -35,6 +36,8 @@ export interface ParsedNaiMetadata {
   smea: boolean;
   smeaDyn: boolean;
   cfgRescale: number;
+  /** Whether Variety+ was on, i.e. the image carries a skip_cfg_above_sigma. */
+  variety: boolean;
   /** Best-effort guess from the "Source"/model_name text — NOT authoritative,
    *  the metadata doesn't distinguish Full vs Curated. `undefined` if no
    *  confident guess could be made; callers should leave the current model
@@ -86,6 +89,7 @@ export function metadataFromImage(image: GeneratedImage): ParsedNaiMetadata {
     smea: p.sm ?? false,
     smeaDyn: p.sm_dyn ?? false,
     cfgRescale: p.cfg_rescale,
+    variety: varietyWasOn(p.skip_cfg_above_sigma),
     guessedModel: image.model,
     modifiers: image.source?.modifiers,
   };
@@ -275,6 +279,7 @@ function parseNaiText(chunks: Record<string, string>): ParsedNaiMetadata | null 
     smea: data.sm === true,
     smeaDyn: data.sm_dyn === true,
     cfgRescale: num(data.cfg_rescale, 0),
+    variety: varietyWasOn(typeof data.skip_cfg_above_sigma === 'number' ? data.skip_cfg_above_sigma : null),
     guessedModel: guessModel(str(data.model_name, chunks.Source)),
     notReproducible: notReproducibleReason(data),
     ...(data.request_type === 'Img2ImgRequest'

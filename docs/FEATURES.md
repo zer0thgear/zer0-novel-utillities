@@ -11,7 +11,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 ## Writing prompts
 
 - **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
-- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 22 at once on V5, 6 on V4/V4.5). **Use Coordinates** places them on a drag-and-drop position canvas.
+- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). **Use Coordinates** places them on a drag-and-drop position canvas.
 - **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own.
 - **Tidbits.** Small toggleable pieces attached to a prompt or character, appended when enabled. They're trimmed and joined with ", ", never producing double commas.
 - **Tidbit Library.** Reusable pieces, shared everywhere:
@@ -32,6 +32,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## Generating
 
 - **Generation settings:** size presets or a custom size, steps, CFG (prompt guidance), sampler, noise schedule, CFG rescale, seed, and SMEA on V3.
+- **Variety+** (under Advanced settings) holds guidance back until the shapes have formed, for more varied and more saturated images, at some cost to how closely they follow the prompt. It's offered on the models NovelAI offers it on — V4, V4.5 and V3, but not V5 — and the strength it sends scales with the image size exactly as NovelAI's does.
 - **Copies:** 2–4 images from one prompt, as one **Batch** request or **Queued** one after another. Queued copies can each use the free Opus allowance and roll wildcards separately.
 - **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
 - **Streaming mode** shows live preview frames while the image renders.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
+import { varietySigma } from '@/lib/variety';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage } from '@/types/novelai';
 import {
@@ -59,6 +60,13 @@ export function useEdit(): UseEditReturn {
           ...EDIT_REQUEST_FLAGS,
           width: image.parameters.width,
           height: image.parameters.height,
+          // Variety+ scales with the size, and this renders at its own.
+          skip_cfg_above_sigma: varietySigma(
+            form.model,
+            form.variety,
+            image.parameters.width,
+            image.parameters.height,
+          ),
           n_samples: 1,
           strength,
           noise,

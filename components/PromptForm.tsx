@@ -26,9 +26,10 @@ import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
-import { MODELS, modelShortName } from '@/lib/models';
+import { MODELS, maxCharacters, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
+import { hasVariety } from '@/lib/variety';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { eraseStealthMarks } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
@@ -651,7 +652,7 @@ export function PromptForm() {
             <CharacterPromptsEditor
               characters={form.characters}
               onChange={(characters) => form.set('characters', characters)}
-              maxEnabled={form.model.startsWith('nai-diffusion-5') ? 22 : 6}
+              maxEnabled={maxCharacters(form.model)}
               model={form.model}
               tokens={tokens}
             />
@@ -1057,6 +1058,25 @@ export function PromptForm() {
               className="w-full accent-violet-500"
             />
           </div>
+
+          {/* Variety+ — only the models NovelAI offers it on (not V5). */}
+          {hasVariety(form.model) && (
+            <label className="flex cursor-pointer items-start justify-between gap-3">
+              <div>
+                <span className="text-xs text-slate-400">Variety+</span>
+                <p className="text-xs text-slate-600">
+                  Hold guidance back until the shapes have formed, for more varied, more saturated
+                  images. Can make them follow the prompt less closely.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.variety}
+                onChange={(e) => form.set('variety', e.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+              />
+            </label>
+          )}
 
           {/* Streaming Mode */}
           <label className="flex cursor-pointer items-center justify-between border-t border-slate-700/40 pt-3">

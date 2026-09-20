@@ -12,6 +12,7 @@ import {
 import { resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
 import { joinPromptParts } from '@/lib/promptText';
 import { addAutoText, hasAutoText } from '@/lib/autoText';
+import { hasVariety, varietySigma } from '@/lib/variety';
 import {
   composeNegativeWithUc,
   composeWithQuality,
@@ -110,6 +111,7 @@ export function promptSource(form: PromptModifiers, resolved: ResolvedRequestPro
 
 type SamplingKey =
   | 'params_version'
+  | 'skip_cfg_above_sigma'
   | 'width'
   | 'height'
   | 'scale'
@@ -137,7 +139,9 @@ export function formSampling(
     ...(isV3Model(form.model) ? { sm: form.smea, sm_dyn: form.smeaDyn } : {}),
     cfg_rescale: overrides.cfgRescale ?? form.cfgRescale,
     noise_schedule: form.noiseSchedule,
-    // skip_cfg_above_sigma ("Variety+") is left out, i.e. off.
+    // Variety+, scaled to the size this request is sent at. Flows that render
+    // at a different size (Enhance, Inpaint, Edit) recompute it for theirs.
+    skip_cfg_above_sigma: varietySigma(form.model, form.variety, form.width, form.height),
   };
 }
 
@@ -204,6 +208,9 @@ export function buildImageRequest(args: {
   parameters: Omit<NovelAIParameters, SharedKey>;
 }): NovelAIGenerateRequest {
   const { negativePrompt, model, action, characters, useCoords, presets, parameters } = args;
+  // Variety+ is carried in `parameters`, but only some models have the field
+  // at all, so it's taken out here and put back below for the ones that do.
+  const { skip_cfg_above_sigma: variety, ...rest } = parameters;
   const isV3 = isV3Model(model);
   // V5 gathers quoted text into a "teXt:" section, as NovelAI's client does
   // just before sending (after quality tags and any Enhance addition).
@@ -218,7 +225,10 @@ export function buildImageRequest(args: {
       ...(isV3 ? {} : { autoSmea: false, normalize_reference_strength_multiple: true }),
       ...(model.startsWith('nai-diffusion-5') ? { straight_alpha: true } : {}),
       ...(presets ? presetFields(model, presets) : {}),
-      ...parameters,
+      ...rest,
+      // As NovelAI does: models that don't offer Variety+ don't carry the
+      // field at all, and the ones that do send null when it's off.
+      ...(hasVariety(model) ? { skip_cfg_above_sigma: variety ?? null } : {}),
       dynamic_thresholding: false,
       controlnet_strength: 1,
       legacy: false,
@@ -229,7 +239,7 @@ export function buildImageRequest(args: {
       // answers V3 requests carrying v4_prompt/v4_negative_prompt with a 500,
       // and NovelAI sends neither (verified live, 2026-09-18).
       ...(isV3
-        ? { skip_cfg_above_sigma: null, characterPrompts: [] }
+        ? { characterPrompts: [] }
         : {
             use_coords: useCoords,
             legacy_uc: false,

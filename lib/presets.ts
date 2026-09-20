@@ -19,6 +19,7 @@ export const PRESET_SETTINGS_KEYS = [
   'smea',
   'smeaDyn',
   'cfgRescale',
+  'variety',
   'furMode',
   'nsfwMode',
   'transparentBg',

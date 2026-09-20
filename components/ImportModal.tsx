@@ -105,6 +105,7 @@ export function ImportModal({
       form.set('smea', meta.smea);
       form.set('smeaDyn', meta.smeaDyn);
       form.set('cfgRescale', meta.cfgRescale);
+      form.set('variety', meta.variety);
       if (meta.sampler) form.set('sampler', meta.sampler as NovelAISampler);
       if (meta.noiseSchedule) form.set('noiseSchedule', meta.noiseSchedule as NovelAINoiseSchedule);
       if (meta.guessedModel) form.set('model', meta.guessedModel);
