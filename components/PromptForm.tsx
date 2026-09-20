@@ -16,6 +16,7 @@ import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
 import { AccountStatusBar } from './AccountStatusBar';
+import { RequestInspectorModal } from './RequestInspectorModal';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
 import { ChainsSection } from './ChainsSection';
@@ -31,7 +32,7 @@ import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { hasVariety } from '@/lib/variety';
 import { blobToBase64 } from '@/lib/imageUtils';
-import { eraseStealthMarks } from '@/lib/requestImage';
+import { eraseStealthMarks, finalizeRequest } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
@@ -127,6 +128,7 @@ export function PromptForm() {
   const { generate, error, clearError, lastErrorWasFatal } = useGenerate();
   /** Set after a run that skipped some images, alongside the error banner. */
   const [runNotice, setRunNotice] = useState<string | null>(null);
+  const [inspecting, setInspecting] = useState(false);
   const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource, retryNotice } = useSessionStore();
   const { subscription } = useSubscription();
   const tokens = useTokenCounts(form);
@@ -208,6 +210,24 @@ export function PromptForm() {
       },
     });
   }
+
+  /** The request a Generate right now would send, for the inspector. It goes
+   *  through every step a real one does, finalizeRequest included, so what's
+   *  shown is the body itself and not an approximation of it. */
+  const buildPreviewRequest = useCallback(async () => {
+    const selected = form.basePrompts.find((p) => p.selected) ?? form.basePrompts[0];
+    const resolved = resolveFor(selected);
+    const nSamples = form.promptMode === 'single' && copies > 1 && copiesMode === 'batch' ? copies : 1;
+    const request = buildRequest(
+      resolved,
+      form.seed === 0 ? randomSeed() : form.seed,
+      await img2imgBaseB64(),
+      nSamples,
+    );
+    return finalizeRequest(request);
+    // Rebuilt on demand from the live form; the modal asks once when it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, copies, copiesMode, img2imgSource, img2imgStrength, img2imgNoise]);
 
   // ── Submit handler ─────────────────────────────────────────────────────
 
@@ -1128,8 +1148,20 @@ export function PromptForm() {
               className="h-4 w-4 accent-violet-500"
             />
           </label>
+
+          {/* Inspect request */}
+          <button
+            type="button"
+            onClick={() => setInspecting(true)}
+            title="Show the exact JSON the next Generate would send"
+            className="rounded-lg border border-slate-700/60 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-700"
+          >
+            Inspect request…
+          </button>
         </div>
       )}
+
+      {inspecting && <RequestInspectorModal build={buildPreviewRequest} onClose={() => setInspecting(false)} />}
 
       {/* Generate button — sticky at the bottom of the scroll container.
           -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so

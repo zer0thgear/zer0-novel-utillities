@@ -54,7 +54,7 @@ function formatDuration(seconds: number): string {
 // tracked below is an Opus-only perk, so that part only renders for tier 3.
 // Anlas balance applies to every tier and is always shown when available.
 export function AccountStatusBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
-  const { subscription } = useSubscription();
+  const { subscription, spentThisSession } = useSubscription();
   const [collapsed, setCollapsed] = useState(wasCollapsed);
 
   function toggle() {
@@ -90,7 +90,14 @@ export function AccountStatusBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
             title={collapsed ? 'Show the Opus allowance' : 'Hide the Opus allowance'}
             className="flex items-center justify-between text-left text-slate-400 transition-colors hover:text-slate-200"
           >
-            <span>Anlas</span>
+            <span>
+              Anlas
+              {spentThisSession > 0 && (
+                <span className="ml-1.5 text-slate-600" title="Charged since this tab was opened">
+                  −{spentThisSession.toLocaleString()} this session
+                </span>
+              )}
+            </span>
             <span className="flex items-center gap-1.5">
               <span className="font-semibold text-slate-200">{totalAnlas.toLocaleString()}</span>
               <span className="text-slate-500">{collapsed ? '▸' : '▾'}</span>
@@ -98,7 +105,14 @@ export function AccountStatusBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
           </button>
         ) : (
           <div className="flex items-center justify-between text-slate-400">
-            <span>Anlas</span>
+            <span>
+              Anlas
+              {spentThisSession > 0 && (
+                <span className="ml-1.5 text-slate-600" title="Charged since this tab was opened">
+                  −{spentThisSession.toLocaleString()} this session
+                </span>
+              )}
+            </span>
             <span className="font-semibold text-slate-200">{totalAnlas.toLocaleString()}</span>
           </div>
         )}
