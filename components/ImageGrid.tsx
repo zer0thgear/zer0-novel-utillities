@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { downloadSessionAsZip } from '@/lib/imageUtils';
+import { filterImages } from '@/lib/historyFilter';
 import { useSessionStore } from '@/store/sessionStore';
 import { useChainBusy } from '@/store/chainStore';
 import { GeneratedImage } from '@/types/novelai';
@@ -38,12 +39,27 @@ function Spinner({ className }: { className?: string }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function HistoryStrip() {
-  const { images, focusedImageId, isLoading, streamPreview, clearImages, focusedGroupId, showGroup } = useSessionStore();
+  const { images, focusedImageId, isLoading, streamPreview, clearImages, focusedGroupId, showGroup, removeImages } =
+    useSessionStore();
   const [collapsed, setCollapsed] = useState(false);
   const [gridSweepId, setGridSweepId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [query, setQuery] = useState('');
+  /** Null when not selecting; a set of image ids while the user picks some. */
+  const [picked, setPicked] = useState<Set<string> | null>(null);
   // A running chain is still adding to (and reading from) the history.
   const chainBusy = useChainBusy();
+
+  const shown = filterImages(images, query);
+  const selecting = picked !== null;
+  const selected = shown.filter((img) => picked?.has(img.id));
+
+  const toggle = (id: string) =>
+    setPicked((was) => {
+      const next = new Set(was ?? []);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   // ── Collapsed state ──────────────────────────────────────────────────────
 
@@ -93,22 +109,99 @@ export function HistoryStrip() {
       {/* Session controls */}
       {images.length > 0 && (
         <div className="flex flex-shrink-0 flex-col gap-1 border-b border-slate-800 px-2 py-2">
-          <button
-            type="button"
-            onClick={() => downloadSessionAsZip(images)}
-            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
-          >
-            Download ZIP
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmClear(true)}
-            disabled={isLoading || chainBusy}
-            title={isLoading || chainBusy ? 'Wait for the current generation to finish' : undefined}
-            className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-700/80 disabled:hover:text-slate-400"
-          >
-            Clear Session
-          </button>
+          {/* Filter — matches the prompt, model, seed, chain or sweep. */}
+          <div className="relative">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter…"
+              className="w-full rounded bg-slate-800 px-2 py-1 pr-6 text-xs text-slate-200 placeholder:text-slate-600"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                title="Clear the filter"
+                className="absolute right-1 top-1/2 -translate-y-1/2 px-1 text-xs text-slate-500 transition-colors hover:text-slate-200"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {query && (
+            <p className="px-0.5 text-[10px] text-slate-600">
+              {shown.length} of {images.length} shown
+            </p>
+          )}
+
+          {selecting ? (
+            <>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPicked(new Set(shown.map((img) => img.id)))}
+                  className="flex-1 rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
+                >
+                  All{query ? ' shown' : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPicked(null)}
+                  className="flex-1 rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
+                >
+                  Done
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => downloadSessionAsZip(selected)}
+                disabled={selected.length === 0}
+                className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-700/80"
+              >
+                Download{selected.length ? ` ${selected.length}` : ''} ZIP
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  removeImages(selected.map((img) => img.id));
+                  setPicked(new Set());
+                }}
+                disabled={selected.length === 0 || isLoading || chainBusy}
+                className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-700/80 disabled:hover:text-slate-400"
+              >
+                Remove{selected.length ? ` ${selected.length}` : ''}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => downloadSessionAsZip(shown)}
+                  className="flex-1 rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
+                >
+                  Download ZIP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPicked(new Set())}
+                  title="Pick images to download or remove"
+                  className="flex-1 rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-600"
+                >
+                  Select
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                disabled={isLoading || chainBusy}
+                title={isLoading || chainBusy ? 'Wait for the current generation to finish' : undefined}
+                className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-700/80 disabled:hover:text-slate-400"
+              >
+                Clear Session
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -139,9 +232,9 @@ export function HistoryStrip() {
           )}
 
           {/* Empty state */}
-          {images.length === 0 && !isLoading && (
+          {shown.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-xs text-slate-700">No images yet</p>
+              <p className="text-xs text-slate-700">{images.length === 0 ? 'No images yet' : 'Nothing matches'}</p>
             </div>
           )}
 
@@ -149,11 +242,18 @@ export function HistoryStrip() {
               (Copies, a multi-prompt Batch, a sweep or a chain) are clumped into one 2-col grid
               so they read as one generation while staying individually
               clickable/removable. */}
-          {groupConsecutiveByBatch(images).map((group) =>
+          {groupConsecutiveByBatch(shown).map((group) =>
             // A sweep or chain keeps its header even with one image (stopped
             // early, or a one-step chain); other one-image groups are cards.
             group.length === 1 && !group[0].sweep && !group[0].chain ? (
-              <ImageCard key={group[0].id} image={group[0]} focused={group[0].id === focusedImageId} />
+              <ImageCard
+                key={group[0].id}
+                image={group[0]}
+                focused={group[0].id === focusedImageId}
+                selecting={selecting}
+                selected={picked?.has(group[0].id)}
+                onToggle={toggle}
+              />
             ) : (
               <div
                 key={group[0].batchId}
@@ -218,7 +318,14 @@ export function HistoryStrip() {
                 )}
                 <div className="grid grid-cols-2 gap-1.5">
                   {group.map((image) => (
-                    <ImageCard key={image.id} image={image} focused={image.id === focusedImageId} />
+                    <ImageCard
+                      key={image.id}
+                      image={image}
+                      focused={image.id === focusedImageId}
+                      selecting={selecting}
+                      selected={picked?.has(image.id)}
+                      onToggle={toggle}
+                    />
                   ))}
                 </div>
               </div>

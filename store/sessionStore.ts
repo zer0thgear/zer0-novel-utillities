@@ -28,6 +28,8 @@ interface SessionState {
   /** Merges fields into existing images (e.g. tagging a chain's results). */
   updateImages: (ids: string[], patch: Partial<GeneratedImage>) => void;
   removeImage: (id: string) => void;
+  /** Removes several at once, for the history's multi-select. */
+  removeImages: (ids: string[]) => void;
   clearImages: () => void;
 
   // The image currently displayed in the center viewer
@@ -101,19 +103,22 @@ export const useSessionStore = create<SessionState>((set) => ({
       images: state.images.map((img) => (ids.includes(img.id) ? { ...img, ...patch } : img)),
     })),
 
-  removeImage: (id) =>
+  removeImage: (id) => useSessionStore.getState().removeImages([id]),
+
+  removeImages: (ids) =>
     set((state) => {
-      const target = state.images.find((img) => img.id === id);
-      if (target) {
-        URL.revokeObjectURL(target.url);
-        if (target.sourceImageUrl) URL.revokeObjectURL(target.sourceImageUrl);
+      const gone = new Set(ids);
+      for (const image of state.images) {
+        if (!gone.has(image.id)) continue;
+        URL.revokeObjectURL(image.url);
+        if (image.sourceImageUrl) URL.revokeObjectURL(image.sourceImageUrl);
       }
-      const newImages = state.images.filter((img) => img.id !== id);
+      const newImages = state.images.filter((img) => !gone.has(img.id));
       const groupLeft = state.focusedGroupId && newImages.some((img) => img.batchId === state.focusedGroupId);
       const focusedGroupId = groupLeft ? state.focusedGroupId : null;
       // Removing the open image goes back to its group's grid if any of it is
       // left, else to the newest image.
-      let focusedImageId = state.focusedImageId === id ? null : state.focusedImageId;
+      let focusedImageId = state.focusedImageId && gone.has(state.focusedImageId) ? null : state.focusedImageId;
       if (!focusedImageId && !focusedGroupId) focusedImageId = newImages[0]?.id ?? null;
       return { images: newImages, focusedImageId, focusedGroupId };
     }),
