@@ -14,6 +14,11 @@ interface SessionState {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  /** What a request is waiting on while it retries, e.g. "Rate limited —
+   *  retrying in 5s (1/3)". Null when nothing is being retried. */
+  retryNotice: string | null;
+  setRetryNotice: (notice: string | null) => void;
+
   // Live preview frame shown during streaming generation (object URL or null)
   streamPreview: string | null;
   setStreamPreview: (url: string | null) => void;
@@ -60,7 +65,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
 
   isLoading: false,
-  setIsLoading: (loading) => set({ isLoading: loading }),
+  setIsLoading: (loading) => set({ isLoading: loading, ...(loading ? {} : { retryNotice: null }) }),
+
+  retryNotice: null,
+  setRetryNotice: (notice) => set({ retryNotice: notice }),
 
   streamPreview: null,
   setStreamPreview: (url) =>

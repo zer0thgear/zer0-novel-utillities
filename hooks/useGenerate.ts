@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { extractImagesFromZip, getImageDimensions } from '@/lib/imageUtils';
 import { finalizeRequest } from '@/lib/requestImage';
+import { fetchWithRetry, NovelAIError, novelAIError } from '@/lib/apiRetry';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GeneratedImage, NovelAIGenerateRequest, PromptSource, SweepCellInfo, WildcardPicks } from '@/types/novelai';
@@ -29,6 +30,11 @@ interface UseGenerateReturn {
   generate: (request: NovelAIGenerateRequest, opts?: GenerateOptions) => Promise<GeneratedImage[] | null>;
   error: string | null;
   clearError: () => void;
+  /** Whether the last failure is one there's no point carrying on past — a
+   *  bad key, no Anlas, a request NovelAI rejected. A run that's making many
+   *  images checks this to decide between stopping and skipping one image.
+   *  It's a ref, not state, so it can be read straight after an await. */
+  lastErrorWasFatal: () => boolean;
 }
 
 // Decode a base64 string to a Uint8Array, tolerating whitespace in the input
@@ -41,27 +47,43 @@ function base64ToBytes(b64: string): Uint8Array {
 
 export function useGenerate(): UseGenerateReturn {
   const [error, setError] = useState<string | null>(null);
-  const { apiKey, addImages, updateImages, setStreamPreview } = useSessionStore();
+  const { apiKey, addImages, updateImages, setStreamPreview, setRetryNotice } = useSessionStore();
   const streamingMode = useSettingsStore((s) => s.streamingMode);
+  const fatalRef = useRef(false);
+
+  /** Anything that isn't a NovelAIError (a decode failure, say) is treated as
+   *  fatal: it's a fault in this request, not a blip worth skipping past. */
+  const fail = (err: unknown) => {
+    fatalRef.current = !(err instanceof NovelAIError) || err.fatal;
+    setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+    setRetryNotice(null);
+    return null;
+  };
+
+  /** Reports a wait to the UI while a request is being retried. */
+  const retryOptions = () => ({
+    onRetry: ({ attempt, of, waitMs, reason }: { attempt: number; of: number; waitMs: number; reason: string }) =>
+      setRetryNotice(`${reason} — retrying in ${Math.round(waitMs / 1000)}s (${attempt}/${of})`),
+  });
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
 
   const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
+    fatalRef.current = false;
     try {
-      const response = await fetch('https://image.novelai.net/ai/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify(request),
-      });
+      const response = await fetchWithRetry(
+        'https://image.novelai.net/ai/generate-image',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify(request),
+        },
+        retryOptions(),
+      );
+      setRetryNotice(null);
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: response.statusText }));
-        if (response.status === 401) throw new Error('Invalid API key.');
-        if (response.status === 402) throw new Error('Insufficient Anlas. Please top up your account.');
-        if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-        throw new Error(`Generation failed (${response.status}): ${data.error ?? ''}`);
-      }
+      if (!response.ok) throw await novelAIError(response);
 
       const buffer = await response.arrayBuffer();
       const blobs = await extractImagesFromZip(buffer);
@@ -88,8 +110,7 @@ export function useGenerate(): UseGenerateReturn {
       addImages(images);
       return images;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return null;
+      return fail(err);
     }
   };
 
@@ -97,20 +118,20 @@ export function useGenerate(): UseGenerateReturn {
 
   const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
+    fatalRef.current = false;
     try {
-      const response = await fetch('https://image.novelai.net/ai/generate-image-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify(request),
-      });
+      const response = await fetchWithRetry(
+        'https://image.novelai.net/ai/generate-image-stream',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify(request),
+        },
+        retryOptions(),
+      );
+      setRetryNotice(null);
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: response.statusText }));
-        if (response.status === 401) throw new Error('Invalid API key.');
-        if (response.status === 402) throw new Error('Insufficient Anlas. Please top up your account.');
-        if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-        throw new Error(`Generation failed (${response.status}): ${data.error ?? ''}`);
-      }
+      if (!response.ok) throw await novelAIError(response);
 
       if (!response.body) throw new Error('No response body from stream endpoint.');
 
@@ -242,8 +263,7 @@ export function useGenerate(): UseGenerateReturn {
       return [finalImage];
     } catch (err) {
       setStreamPreview(null);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      return null;
+      return fail(err);
     }
   };
 
@@ -251,6 +271,7 @@ export function useGenerate(): UseGenerateReturn {
 
   const generate = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     if (!apiKey) {
+      fatalRef.current = true;
       setError('No API key set. Please enter your NovelAI API key.');
       return null;
     }
@@ -274,5 +295,5 @@ export function useGenerate(): UseGenerateReturn {
     return images;
   };
 
-  return { generate, error, clearError: () => setError(null) };
+  return { generate, error, clearError: () => setError(null), lastErrorWasFatal: () => fatalRef.current };
 }

@@ -124,23 +124,39 @@ export function PromptForm() {
   // "Batch" mode would multiply scope for little benefit.
   const [copies, setCopies] = useState(1);
   const [copiesMode, setCopiesMode] = useState<'batch' | 'queue'>('batch');
-  const { generate, error, clearError } = useGenerate();
-  const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource } = useSessionStore();
+  const { generate, error, clearError, lastErrorWasFatal } = useGenerate();
+  /** Set after a run that skipped some images, alongside the error banner. */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
+  const { apiKey, setApiKey, isLoading, setIsLoading, img2imgSource, setImg2imgSource, retryNotice } = useSessionStore();
   const { subscription } = useSubscription();
   const tokens = useTokenCounts(form);
   const launchChain = useChainLauncher();
   // A running chain has an image request in flight; Generate waits for it.
   const chainBusy = useChainBusy();
 
-  /** Wraps generate() to collect every image a run makes, for the auto chain. */
+  /** Wraps generate() to collect every image a run makes, for the auto chain,
+   *  and to count the ones that failed. */
   function collectingGenerate() {
     const made: GeneratedImage[] = [];
+    let skipped = 0;
+    setRunNotice(null);
     const gen = async (...args: Parameters<typeof generate>) => {
       const result = await generate(...args);
       if (result) made.push(...result);
+      else skipped++;
       return result;
     };
-    return { made, gen };
+    /** After a failed request: true to end the run, false to skip this image
+     *  and carry on. Only a fault in the request itself ends it; a rate limit
+     *  that outlasted its retries costs one image, not the whole grid. */
+    const stop = () => lastErrorWasFatal();
+    /** Says how many were skipped, once the run is over. */
+    const report = (total: number) => {
+      if (skipped > 0 && skipped < total) {
+        setRunNotice(`${skipped} of ${total} images failed and were skipped. The rest are in your history.`);
+      }
+    };
+    return { made, gen, stop, report };
   }
 
   /** Offers the "after each Generate" chain on a run's new images. */
@@ -218,8 +234,8 @@ export function PromptForm() {
 
   async function runGeneration() {
     setUnknownRefs(null);
-    const { made, gen } = collectingGenerate();
-    await generateAll(gen);
+    const { made, gen, stop, report } = collectingGenerate();
+    await generateAll(gen, stop, report);
     offerAutoChain(made);
   }
 
@@ -229,7 +245,7 @@ export function PromptForm() {
     return img2imgSource ? blobToBase64(await eraseStealthMarks(img2imgSource.blob)) : undefined;
   }
 
-  async function generateAll(gen: typeof generate) {
+  async function generateAll(gen: typeof generate, stop: () => boolean, report: (total: number) => void) {
     const baseImageB64 = await img2imgBaseB64();
 
     if (form.promptMode === 'single') {
@@ -261,10 +277,11 @@ export function PromptForm() {
             form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
           const ok = await gen(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
-          if (!ok) break;
+          if (!ok && stop()) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
 
+        report(copies);
         setIsLoading(false);
         setBatchStatus(null);
       } else {
@@ -293,9 +310,10 @@ export function PromptForm() {
           wildcardPicks: resolved.picks,
           source: promptSource(form, resolved),
         });
-        if (!ok) break; // stop batch on error
+        if (!ok && stop()) break;
       }
 
+      report(selectedPrompts.length);
       setIsLoading(false);
       setBatchStatus(null);
     }
@@ -324,7 +342,7 @@ export function PromptForm() {
     const baseline = resolveFor(selected);
     const baseImageB64 = await img2imgBaseB64();
 
-    const { made, gen } = collectingGenerate();
+    const { made, gen, stop, report } = collectingGenerate();
     sweepStopRef.current = false;
     setSweepRunning(true);
     setIsLoading(true);
@@ -351,9 +369,10 @@ export function PromptForm() {
           sweep: { id: sweepId, x: xInfo, xIndex: cell.xIndex, y: yInfo, yIndex: cell.yIndex },
         },
       );
-      if (!ok) break;
+      if (!ok && stop()) break;
       if (i < cells.length - 1 && !sweepStopRef.current) await new Promise((r) => setTimeout(r, 1500));
     }
+    report(cells.length);
     setIsLoading(false);
     setBatchStatus(null);
     setSweepRunning(false);
@@ -396,6 +415,8 @@ export function PromptForm() {
     anlasCost;
 
   function buttonLabel() {
+    // A request being retried says so, so a long pause doesn't look like a hang.
+    if (retryNotice) return retryNotice;
     if (batchStatus) return `Generating ${batchStatus.current} of ${batchStatus.total}…`;
     if (chainBusy) return 'Chain running…';
     if (isLoading) return 'Generating…';
@@ -433,6 +454,20 @@ export function PromptForm() {
             type="button"
             onClick={clearError}
             className="flex-shrink-0 text-red-500 hover:text-red-300 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* How many of a run's images were lost, when some of it did work. */}
+      {runNotice && (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-200/90">
+          <span>{runNotice}</span>
+          <button
+            type="button"
+            onClick={() => setRunNotice(null)}
+            className="flex-shrink-0 text-amber-500/80 transition-colors hover:text-amber-200"
           >
             ✕
           </button>
