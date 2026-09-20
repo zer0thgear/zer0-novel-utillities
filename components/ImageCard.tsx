@@ -14,7 +14,7 @@ interface ImageCardProps {
 }
 
 export function ImageCard({ image, focused, selecting, selected, onToggle }: ImageCardProps) {
-  const { setFocusedImageId, removeImage } = useSessionStore();
+  const { setFocusedImageId, removeImage, togglePin } = useSessionStore();
 
   return (
     <div
@@ -67,6 +67,22 @@ export function ImageCard({ image, focused, selecting, selected, onToggle }: Ima
         >
           {image.chain.step}/{image.chain.total} · {image.chain.label}
         </div>
+      )}
+
+      {/* Pin — always shown once pinned, so what survives a clear is obvious. */}
+      {!selecting && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); togglePin(image.id); }}
+          title={image.pinned ? 'Unpin (it would be cleared with the rest)' : 'Pin — keeps it through Clear Session'}
+          className={`absolute left-1 top-1 h-5 w-5 items-center justify-center rounded-full text-[10px] transition-colors ${
+            image.pinned
+              ? 'flex bg-violet-600/90 text-white hover:bg-violet-500'
+              : 'hidden bg-black/70 text-slate-400 hover:bg-violet-600 hover:text-white group-hover:flex'
+          }`}
+        >
+          📌
+        </button>
       )}
 
       {selecting ? (

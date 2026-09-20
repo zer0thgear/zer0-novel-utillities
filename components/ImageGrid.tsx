@@ -359,7 +359,8 @@ function ClearSessionModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const count = images.length;
+  const pinned = images.filter((img) => img.pinned).length;
+  const count = images.length - pinned;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
@@ -367,10 +368,15 @@ function ClearSessionModal({
     >
       <div className="flex w-full max-w-sm flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
         <h2 className="text-sm font-bold text-slate-100">
-          Clear {count === 1 ? 'the 1 image' : `all ${count} images`} from this session?
+          {count === 0
+            ? 'Everything here is pinned'
+            : `Clear ${count === 1 ? 'the 1 image' : `all ${count} images`} from this session?`}
         </h2>
         <p className="text-xs text-slate-400">
-          History is only kept in memory, so this can&apos;t be undone. Download a ZIP first to keep them.
+          {count === 0
+            ? 'Unpin something first, or download a ZIP to keep them all.'
+            : 'History is only kept in memory, so this can’t be undone. Download a ZIP first to keep them.'}
+          {count > 0 && pinned > 0 && ` The ${pinned} pinned image${pinned === 1 ? '' : 's'} will stay.`}
         </p>
         <div className="flex justify-end gap-2">
           <button
@@ -388,16 +394,18 @@ function ClearSessionModal({
           >
             Download ZIP
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              onClear();
-              onClose();
-            }}
-            className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
-          >
-            Clear
-          </button>
+          {count > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                onClear();
+                onClose();
+              }}
+              className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
     </div>

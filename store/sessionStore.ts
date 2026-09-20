@@ -30,6 +30,8 @@ interface SessionState {
   removeImage: (id: string) => void;
   /** Removes several at once, for the history's multi-select. */
   removeImages: (ids: string[]) => void;
+  /** Pins or unpins an image, which is what keeps it through Clear Session. */
+  togglePin: (id: string) => void;
   clearImages: () => void;
 
   // The image currently displayed in the center viewer
@@ -123,13 +125,24 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { images: newImages, focusedImageId, focusedGroupId };
     }),
 
+  togglePin: (id) =>
+    set((state) => ({
+      images: state.images.map((img) => (img.id === id ? { ...img, pinned: !img.pinned } : img)),
+    })),
+
+  /** Clears everything except the pinned images. */
   clearImages: () =>
     set((state) => {
       state.images.forEach((img) => {
+        if (img.pinned) return;
         URL.revokeObjectURL(img.url);
         if (img.sourceImageUrl) URL.revokeObjectURL(img.sourceImageUrl);
       });
-      return { images: [], focusedImageId: null, focusedGroupId: null };
+      const kept = state.images.filter((img) => img.pinned);
+      const focusedImageId = kept.some((img) => img.id === state.focusedImageId)
+        ? state.focusedImageId
+        : (kept[0]?.id ?? null);
+      return { images: kept, focusedImageId, focusedGroupId: null };
     }),
 
   focusedImageId: null,

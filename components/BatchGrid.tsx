@@ -25,6 +25,7 @@ const columnsFor = (n: number) => (n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4);
  */
 export function BatchGrid({ images, title }: Props) {
   const setFocusedImageId = useSessionStore((s) => s.setFocusedImageId);
+  const togglePin = useSessionStore((s) => s.togglePin);
   const setForm = useSettingsStore((s) => s.set);
   const chains = useSettingsStore((s) => s.chains);
   const launchChain = useChainLauncher();
@@ -118,6 +119,14 @@ export function BatchGrid({ images, title }: Props) {
                 <span className={miniBtn}>{flash.text}</span>
               ) : (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => togglePin(image.id)}
+                    className={miniBtn}
+                    title={image.pinned ? 'Unpin' : 'Pin — keeps it through Clear Session'}
+                  >
+                    {image.pinned ? 'Unpin' : 'Pin'}
+                  </button>
                   <button type="button" onClick={() => downloadImage(image)} className={miniBtn} title="Download">
                     Download
                   </button>

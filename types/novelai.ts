@@ -294,6 +294,9 @@ export interface GeneratedImage {
   source?: PromptSource;
   /** Set on every image a chain produced: which run and step made it. */
   chain?: ChainStepInfo;
+  /** Kept when the session is cleared. History lives in memory only, so this
+   *  is what stops a good one going with the rest. */
+  pinned?: boolean;
 }
 
 // ─── Chained actions ─────────────────────────────────────────────────────────
