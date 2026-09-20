@@ -54,7 +54,7 @@ export function BatchGrid({ images, title }: Props) {
     'rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm transition-colors hover:bg-violet-600';
 
   return (
-    <div className="flex h-full w-full flex-col items-center gap-2 p-3">
+    <div className="flex h-full w-full flex-col items-center gap-1.5 p-2">
       <div className="flex w-full flex-shrink-0 items-center justify-center gap-3 text-xs text-slate-500">
         <p>
           <span className="font-semibold text-slate-300">{title}</span> · click an image to open it
@@ -96,7 +96,7 @@ export function BatchGrid({ images, title }: Props) {
         </div>
       </div>
       <div
-        className="grid min-h-0 w-full flex-1 gap-2"
+        className="grid min-h-0 w-full flex-1 gap-1"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
       >
         {images.map((image) => (

@@ -44,7 +44,7 @@ type PromptModifiers = Pick<
  *  reworking that image so it doesn't re-roll. */
 export function resolveSelectedPrompt(form: FormSettings, replay?: WildcardPicks): ResolvedRequestPrompts {
   const selected = form.basePrompts.find((p) => p.selected);
-  return resolveRequestPrompts(selected ?? { text: '' }, form.characters, form.negativePrompt, form.tidbitLibrary, replay);
+  return resolveRequestPrompts(selected ?? { text: '' }, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary, replay);
 }
 
 /**
@@ -59,7 +59,7 @@ export function resolveReworkPrompt(form: FormSettings, image: GeneratedImage): 
   const resolved = resolveRequestPrompts(
     { text: image.source.prompt },
     form.characters,
-    form.negativePrompt,
+    { text: form.negativePrompt, tidbits: form.negativeTidbits },
     form.tidbitLibrary,
     image.wildcardPicks,
   );

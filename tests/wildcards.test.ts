@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeWildcards, randomOptions, referencedEntries, resolveRequestPrompts } from '@/lib/wildcards';
-import { CharacterPromptEntry, LibraryTidbit } from '@/types/novelai';
+import { CharacterPromptEntry, LibraryTidbit, PromptTidbit } from '@/types/novelai';
+
+const tidbit = (text: string, over: Partial<PromptTidbit> = {}): PromptTidbit => ({
+  id: `t-${text}`,
+  label: '',
+  text,
+  enabled: true,
+  ...over,
+});
 
 const fixed = (id: string, label: string, text: string): LibraryTidbit => ({ id, label, text, kind: 'fixed' });
 const random = (id: string, label: string, text: string): LibraryTidbit => ({ id, label, text, kind: 'random' });
@@ -19,6 +27,7 @@ const resolve = (
   opts: {
     characters?: CharacterPromptEntry[];
     negative?: string;
+    negativeTidbits?: PromptTidbit[];
     replay?: Record<string, string[]>;
     force?: Record<string, string>;
   } = {},
@@ -26,7 +35,7 @@ const resolve = (
   resolveRequestPrompts(
     { text: baseText },
     opts.characters ?? [],
-    opts.negative ?? '',
+    { text: opts.negative ?? '', tidbits: opts.negativeTidbits },
     library,
     opts.replay,
     opts.force,
@@ -100,6 +109,42 @@ describe('resolveRequestPrompts', () => {
     expect(resolve('__Loop__', library).baseText).toContain('__Loop__');
   });
 
+  describe('tidbits on a negative prompt', () => {
+    it('appends the enabled ones, like a base prompt does', () => {
+      const out = resolve('1girl', [], {
+        negative: 'lowres',
+        negativeTidbits: [tidbit('bad hands'), tidbit('watermark', { enabled: false })],
+      });
+      expect(out.negativePrompt).toBe('lowres, bad hands');
+    });
+
+    it('expands references inside them, under the negative’s own scope', () => {
+      const library = [random('bad', 'Bad', 'bad hands')];
+      const out = resolve('1girl', library, { negative: 'lowres', negativeTidbits: [tidbit('__Bad__')] });
+      expect(out.negativePrompt).toBe('lowres, bad hands');
+      expect(out.picks['neg|bad']).toEqual(['bad hands']);
+    });
+  });
+
+  describe('tidbits on a character’s negative', () => {
+    it('appends them to that character’s uc only', () => {
+      const chars = [
+        { ...character('c1', '1girl', 'lowres'), ucTidbits: [tidbit('bad hands')] },
+        character('c2', '1boy', 'lowres'),
+      ];
+      const out = resolve('', [], { characters: chars });
+      expect(out.characters[0].uc).toBe('lowres, bad hands');
+      expect(out.characters[1].uc).toBe('lowres');
+    });
+
+    it('keys their rolls under the character’s uc scope', () => {
+      const library = [random('bad', 'Bad', 'bad hands')];
+      const chars = [{ ...character('c1', '1girl', ''), ucTidbits: [tidbit('__Bad__')] }];
+      const out = resolve('', library, { characters: chars });
+      expect(out.picks['charuc:c1|bad']).toEqual(['bad hands']);
+    });
+  });
+
   it('drops characters that are off, and resolves the negative prompt', () => {
     const library = [fixed('a', 'Bad', 'bad hands')];
     const out = resolve('1girl', library, {
@@ -113,30 +158,50 @@ describe('resolveRequestPrompts', () => {
 
 describe('analyzeWildcards', () => {
   it('reports unknown references as written', () => {
-    const out = analyzeWildcards([{ text: '1girl, __typo__' }], [], '', []);
+    const out = analyzeWildcards([{ text: '1girl, __typo__' }], [], { text: '' }, []);
     expect(out.unknown).toEqual(['__typo__']);
     expect(out.usesRandom).toBe(false);
   });
 
   it('finds random entries reachable through other entries', () => {
     const library = [fixed('a', 'Outer', '__Hair__'), random('hair', 'Hair', 'red\nblue')];
-    const out = analyzeWildcards([{ text: '__Outer__' }], [], '', library);
+    const out = analyzeWildcards([{ text: '__Outer__' }], [], { text: '' }, library);
     expect(out.usesRandom).toBe(true);
     expect(out.randomEntries.map((e) => e.id)).toEqual(['hair']);
   });
 
   it('follows every option, not just one roll', () => {
     const library = [random('a', 'Pick', '__Red__\n__Blue__'), fixed('r', 'Red', 'red'), random('b', 'Blue', 'navy\nsky')];
-    const out = analyzeWildcards([{ text: '__Pick__' }], [], '', library);
+    const out = analyzeWildcards([{ text: '__Pick__' }], [], { text: '' }, library);
     expect(out.randomEntries.map((e) => e.id).sort()).toEqual(['a', 'b']);
   });
 
   it('looks in character prompts, their UC and the negative prompt', () => {
     const library = [random('hair', 'Hair', 'red')];
-    const fromCharacter = analyzeWildcards([{ text: '' }], [character('c1', '__Hair__')], '', library);
-    const fromUc = analyzeWildcards([{ text: '' }], [character('c1', '', '__Hair__')], '', library);
-    const fromNegative = analyzeWildcards([{ text: '' }], [], '__Hair__', library);
+    const fromCharacter = analyzeWildcards([{ text: '' }], [character('c1', '__Hair__')], { text: '' }, library);
+    const fromUc = analyzeWildcards([{ text: '' }], [character('c1', '', '__Hair__')], { text: '' }, library);
+    const fromNegative = analyzeWildcards([{ text: '' }], [], { text: '__Hair__' }, library);
     for (const out of [fromCharacter, fromUc, fromNegative]) expect(out.usesRandom).toBe(true);
+  });
+});
+
+describe('analyzeWildcards and the new tidbit lists', () => {
+  const library = [random('hair', 'Hair', 'red')];
+
+  it('looks in a negative prompt’s tidbits', () => {
+    const out = analyzeWildcards([{ text: '' }], [], { text: '', tidbits: [tidbit('__Hair__')] }, library);
+    expect(out.usesRandom).toBe(true);
+  });
+
+  it('looks in a character’s negative tidbits', () => {
+    const chars = [{ ...character('c1', '', ''), ucTidbits: [tidbit('__Hair__')] }];
+    const out = analyzeWildcards([{ text: '' }], chars, { text: '' }, library);
+    expect(out.usesRandom).toBe(true);
+  });
+
+  it('reports an unknown reference in them too', () => {
+    const out = analyzeWildcards([{ text: '' }], [], { text: '', tidbits: [tidbit('__typo__')] }, []);
+    expect(out.unknown).toEqual(['__typo__']);
   });
 });
 

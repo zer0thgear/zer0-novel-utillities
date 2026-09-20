@@ -31,9 +31,22 @@ describe('redactRequest', () => {
     expect(out.parameters.masks[0]).toContain('KB of image data');
   });
 
-  it('keeps prompts, which are never that long', () => {
-    const prompt = '1girl, '.repeat(30); // 210 characters
-    expect(redactRequest({ input: prompt })).toEqual({ input: prompt });
+  it('keeps a prompt however long it is', () => {
+    // A UC preset alone runs past the length cutoff, so length can't be the
+    // only test; a prompt's punctuation is what tells it apart from base64.
+    const uc = 'lowres, {bad}, error, fewer, extra, missing, worst quality, '.repeat(8);
+    expect(uc.length).toBeGreaterThan(256);
+    expect(redactRequest({ negative_prompt: uc })).toEqual({ negative_prompt: uc });
+  });
+
+  it('shortens a long base64 value even under a key it does not know', () => {
+    const out = redactRequest({ something_new: base64(300) }) as { something_new: string };
+    expect(out.something_new).toContain('KB of image data');
+  });
+
+  it('leaves a short value under an image key alone', () => {
+    // NovelAI's multipart requests put the literal string "image" there.
+    expect(redactRequest({ image: 'image' })).toEqual({ image: 'image' });
   });
 
   it('passes other values through untouched', () => {

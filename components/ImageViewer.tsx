@@ -309,12 +309,15 @@ export function ImageViewer() {
             <span className="text-sm">Generating…</span>
           </div>
         ) : focusedImage ? (
-          /* Focused image (or original when held) */
+          /* Focused image (or original when held). One from a batch goes back
+             to its grid when clicked, as novelai.net's canvas does. */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={displayUrl}
             alt={focusedImage.prompt}
-            className="max-h-full max-w-full object-contain"
+            onClick={inGroup ? backToGroup : undefined}
+            title={inGroup ? 'Back to the whole group (Esc)' : undefined}
+            className={`max-h-full max-w-full object-contain ${inGroup ? 'cursor-zoom-out' : ''}`}
           />
         ) : groupImages.length > 0 ? (
           <BatchGrid images={groupImages} title={groupTitle(groupImages)} />

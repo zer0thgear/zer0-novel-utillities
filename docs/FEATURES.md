@@ -11,9 +11,9 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 ## Writing prompts
 
 - **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
-- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). **Use Coordinates** places them on a drag-and-drop position canvas.
-- **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own.
-- **Tidbits.** Small toggleable pieces attached to a prompt or character, appended when enabled. They're trimmed and joined with ", ", never producing double commas.
+- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). Each folds down to a one-line summary, there's an Add at both ends of the list, and **Use Coordinates** places them on a drag-and-drop position canvas.
+- **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own. Both take tidbits, the same as a positive prompt does.
+- **Tidbits.** Small toggleable pieces attached to a prompt, a character or a negative prompt, appended when enabled. They're trimmed and joined with ", ", never producing double commas. An off one is dimmed and struck through, and the list folds away with a count of how many are on.
 - **Tidbit Library.** Reusable pieces, shared everywhere:
   - **Link** an entry as a tidbit, or reference it inline by writing `__Label__`. Editing an entry updates every place that uses it.
   - **Random entries** hold one option per line and roll a new one for each request. The roll is remembered on the image, so Enhance or Inpaint on it later doesn't re-roll.
@@ -94,7 +94,7 @@ Save the current settings and modifiers under a name, and load them back in one 
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Filter** narrows it by anything the images carry — prompt (as sent or as written), model, seed, or the chain or sweep they came from — and every word has to match, in any order. **Select** turns the thumbnails into tick boxes, so a chosen set (or everything the filter left) can be downloaded as a ZIP or removed together. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc** or **← Batch of N** goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Pin** an image (📌 on its thumbnail, or in a batch grid on hover) and **Clear Session** keeps it; the confirmation says how many will stay, and offers nothing to clear when everything is pinned. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Filter** narrows it by anything the images carry — prompt (as sent or as written), model, seed, or the chain or sweep they came from — and every word has to match, in any order. **Select** turns the thumbnails into tick boxes, so a chosen set (or everything the filter left) can be downloaded as a ZIP or removed together. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc**, **← Batch of N**, or clicking the image itself goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Pin** an image (📌 on its thumbnail, or in a batch grid on hover) and **Clear Session** keeps it; the confirmation says how many will stay, and offers nothing to clear when everything is pinned. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
 
 ## Settings that persist
 

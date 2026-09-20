@@ -24,6 +24,8 @@ type ActiveTab = 'prompt' | 'uc';
 export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model, tokens }: Props) {
   const apiKey = useSessionStore((s) => s.apiKey);
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
+  /** Characters folded down to their header, so a long cast stays navigable. */
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const enabledCount = characters.filter((c) => c.enabled).length;
   const atCap = enabledCount >= maxEnabled;
@@ -47,7 +49,14 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
       delete next[id];
       return next;
     });
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
+
+  const toggleCollapsed = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const update = (id: string, patch: Partial<CharacterPromptEntry>) =>
     onChange(characters.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -89,6 +98,7 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
       {characters.map((char, index) => {
         const tab = getTab(char.id);
         const canEnable = char.enabled || !atCap;
+        const folded = !!collapsed[char.id];
 
         return (
           <div
@@ -107,15 +117,29 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                   : 'border-slate-800/60 bg-slate-900/40'
               }`}
             >
+              <button
+                type="button"
+                onClick={() => toggleCollapsed(char.id)}
+                title={folded ? 'Show this character' : 'Fold this character away'}
+                className="mr-1.5 flex-shrink-0 text-xs text-slate-600 transition-colors hover:text-slate-300"
+              >
+                {folded ? '▸' : '▾'}
+              </button>
               <input
                 type="text"
                 value={char.label ?? ''}
                 onChange={(e) => update(char.id, { label: e.target.value })}
                 placeholder={`Character ${index + 1}`}
-                className={`min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none placeholder-slate-600 transition-colors ${
-                  char.enabled ? 'text-slate-300' : 'text-slate-600'
-                }`}
+                className={`min-w-0 bg-transparent text-xs font-semibold outline-none placeholder-slate-600 transition-colors ${
+                  folded ? 'w-24 flex-shrink-0' : 'flex-1'
+                } ${char.enabled ? 'text-slate-300' : 'text-slate-600'}`}
               />
+              {/* Folded: the prompt itself stands in for the card. */}
+              {folded && (
+                <span className="min-w-0 flex-1 truncate px-1.5 text-xs text-slate-600" title={char.prompt}>
+                  {char.prompt || <span className="italic">empty</span>}
+                </span>
+              )}
 
               <div className="flex items-center gap-3">
                 {/* Enabled toggle */}
@@ -162,8 +186,8 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
               </div>
             </div>
 
-            {/* Card body — dimmed when disabled */}
-            <div className={`transition-opacity ${char.enabled ? 'opacity-100' : 'opacity-40'}`}>
+            {/* Card body — dimmed when disabled, hidden when folded */}
+            <div className={`transition-opacity ${char.enabled ? 'opacity-100' : 'opacity-40'} ${folded ? 'hidden' : ''}`}>
               {/* Tab buttons */}
               <div className="flex border-b border-slate-700/60">
                 {(['prompt', 'uc'] as const).map((t) => (
@@ -201,17 +225,18 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
                   className="w-full resize-none rounded-lg bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none border border-slate-700/40 focus:border-violet-500 transition-colors"
                 />
 
-                {/* Tidbits — toggleable sub-prompts appended to the prompt above when enabled */}
-                {tab === 'prompt' && (
-                  <TidbitList
-                    tidbits={char.tidbits ?? []}
-                    onChange={(tidbits) => update(char.id, { tidbits })}
-                    model={model}
-                    apiKey={apiKey}
-                    placeholder="red dress, ..."
-                    labelWidthCls="w-16"
-                  />
-                )}
+                {/* Tidbits — toggleable sub-prompts appended to the field
+                    above when enabled; each tab keeps its own. */}
+                <TidbitList
+                  tidbits={(tab === 'prompt' ? char.tidbits : char.ucTidbits) ?? []}
+                  onChange={(tidbits) =>
+                    update(char.id, tab === 'prompt' ? { tidbits } : { ucTidbits: tidbits })
+                  }
+                  model={model}
+                  apiKey={apiKey}
+                  placeholder={tab === 'prompt' ? 'red dress, ...' : 'bad hands, ...'}
+                  labelWidthCls="w-16"
+                />
 
                 {tokens?.characters[char.id] && (
                   <CharacterTokenMeter tokens={tokens} id={char.id} tab={tab} />
@@ -248,10 +273,19 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
         );
       })}
 
-      {characters.length === 0 && (
+      {characters.length === 0 ? (
         <p className="text-xs italic text-slate-600">
           Add characters to use v4 per-character prompts.
         </p>
+      ) : (
+        /* A second Add, so a long cast doesn't mean scrolling back up. */
+        <button
+          type="button"
+          onClick={addCharacter}
+          className="self-start rounded px-2.5 py-1 text-xs text-slate-500 transition-colors hover:bg-violet-600 hover:text-white"
+        >
+          + Add character
+        </button>
       )}
     </div>
   );

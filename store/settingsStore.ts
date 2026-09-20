@@ -9,6 +9,7 @@ import {
   NovelAISampler,
   NovelAINoiseSchedule,
   PromptMode,
+  PromptTidbit,
 } from '@/types/novelai';
 import { QualityLevel, UcLevel } from '@/lib/naiPresets';
 import type { Preset } from '@/lib/presets';
@@ -25,6 +26,8 @@ export interface FormSettings {
   qualityPreset: QualityLevel;
   ucPreset: UcLevel;
   negativePrompt: string;
+  /** Tidbits appended to the negative prompt, like a base prompt's. */
+  negativeTidbits: PromptTidbit[];
   model: NovelAIModel;
   width: number;
   height: number;
@@ -74,6 +77,7 @@ const DEFAULTS: FormSettings = {
   qualityPreset: 'none',
   ucPreset: 'none',
   negativePrompt: DEFAULT_NEGATIVE,
+  negativeTidbits: [],
   model: 'nai-diffusion-4-5-full',
   width: 832,
   height: 1216,

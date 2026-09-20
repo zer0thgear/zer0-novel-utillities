@@ -36,7 +36,7 @@ export function useVariations(): UseVariationsReturn {
       const imageB64 = await blobToBase64(image.blob);
       // Base prompt and negatives come from the image itself (already rolled);
       // characters come from the current form, replaying the image's rolls.
-      const resolved = resolveRequestPrompts({ text: '' }, form.characters, '', form.tidbitLibrary, image.wildcardPicks);
+      const resolved = resolveRequestPrompts({ text: '' }, form.characters, { text: '' }, form.tidbitLibrary, image.wildcardPicks);
       const seed = randomSeed();
 
       // Settings come from the image itself, not the current form.

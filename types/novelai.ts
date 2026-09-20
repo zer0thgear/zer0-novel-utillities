@@ -102,6 +102,8 @@ export interface CharacterPromptEntry extends CharacterPrompt {
   label?: string;
   /** Optional — absent on characters persisted before this feature existed. */
   tidbits?: PromptTidbit[];
+  /** The same, for this character's negative prompt. */
+  ucTidbits?: PromptTidbit[];
 }
 
 // ─── V4 prompt structures ─────────────────────────────────────────────────────

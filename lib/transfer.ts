@@ -38,6 +38,8 @@ export interface TransferFile {
   sweepPresets?: SweepPreset[];
   settings?: SettingsValues;
   negativePrompt?: string;
+  /** Travels with the negative prompt, being part of it. */
+  negativeTidbits?: PromptTidbit[];
 }
 
 export interface TransferSelection {
@@ -63,14 +65,17 @@ export function buildExport(form: FormSettings, sel: TransferSelection): Transfe
   if (sel.settings) {
     file.settings = Object.fromEntries(PRESET_SETTINGS_KEYS.map((k) => [k, form[k]])) as SettingsValues;
   }
-  if (sel.negativePrompt) file.negativePrompt = form.negativePrompt;
+  if (sel.negativePrompt) {
+    file.negativePrompt = form.negativePrompt;
+    file.negativeTidbits = structuredClone(form.negativeTidbits);
+  }
   return file;
 }
 
 /** Library entries the selected prompts, characters and presets depend on
  *  (linked tidbits and `__Label__` references, followed through entries). */
 export function libraryNeeds(
-  source: Pick<TransferFile, 'basePrompts' | 'characters' | 'presets'>,
+  source: Pick<TransferFile, 'basePrompts' | 'characters' | 'presets' | 'negativeTidbits'>,
   library: LibraryTidbit[],
   sel: TransferSelection,
 ): LibraryTidbit[] {
@@ -80,7 +85,11 @@ export function libraryNeeds(
     prompts.push(...(preset.values.basePrompts ?? []));
     chars.push(...(preset.values.characters ?? []));
   }
-  const tidbits = [...prompts.flatMap((p) => p.tidbits ?? []), ...chars.flatMap((c) => c.tidbits ?? [])];
+  const tidbits = [
+    ...prompts.flatMap((p) => p.tidbits ?? []),
+    ...chars.flatMap((c) => [...(c.tidbits ?? []), ...(c.ucTidbits ?? [])]),
+    ...(sel.negativePrompt ? (source.negativeTidbits ?? []) : []),
+  ];
   const texts = [
     ...prompts.map((p) => p.text),
     ...chars.flatMap((c) => [c.prompt, c.uc]),
@@ -126,6 +135,7 @@ function parseCharacter(v: unknown): CharacterPromptEntry | null {
     center: { x: Math.min(1, Math.max(0, Number(c.x))), y: Math.min(1, Math.max(0, Number(c.y))) },
     enabled: v.enabled !== false,
     tidbits: parseTidbits(v.tidbits),
+    ucTidbits: parseTidbits(v.ucTidbits),
   };
 }
 
@@ -204,6 +214,7 @@ export function parseTransferFile(text: string): { file?: TransferFile; error?: 
       sweepPresets: list(raw.sweepPresets, parseSweepPreset),
       settings: parseSettings(raw.settings),
       negativePrompt: str(raw.negativePrompt) ? raw.negativePrompt : undefined,
+      negativeTidbits: raw.negativeTidbits === undefined ? undefined : parseTidbits(raw.negativeTidbits),
     },
   };
 }
@@ -266,7 +277,12 @@ export function applyImport(
       ...(t.sourceId ? { sourceId: idMap.get(t.sourceId) ?? t.sourceId } : {}),
     }));
   const relinkPrompt = (p: BasePrompt): BasePrompt => ({ ...p, id: fresh(), tidbits: relinkTidbits(p.tidbits) });
-  const relinkCharacter = (c: CharacterPromptEntry): CharacterPromptEntry => ({ ...c, id: fresh(), tidbits: relinkTidbits(c.tidbits) });
+  const relinkCharacter = (c: CharacterPromptEntry): CharacterPromptEntry => ({
+    ...c,
+    id: fresh(),
+    tidbits: relinkTidbits(c.tidbits),
+    ucTidbits: relinkTidbits(c.ucTidbits),
+  });
 
   const prompts = picked(file.basePrompts, 'basePrompts').map(relinkPrompt);
   if (prompts.length) {
@@ -363,6 +379,7 @@ export function applyImport(
   }
   if (sel.negativePrompt && file.negativePrompt !== undefined) {
     changes.negativePrompt = file.negativePrompt;
+    changes.negativeTidbits = relinkTidbits(file.negativeTidbits);
     summary.push('negative prompt');
   }
   return { changes, summary };

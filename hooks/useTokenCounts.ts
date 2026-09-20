@@ -28,6 +28,7 @@ type Inputs = Pick<
   | 'basePrompts'
   | 'characters'
   | 'negativePrompt'
+  | 'negativeTidbits'
   | 'tidbitLibrary'
   | 'furMode'
   | 'nsfwMode'
@@ -58,7 +59,7 @@ function computeCounts(form: Inputs, budget: TokenBudget, counter: TokenCounter)
   let selectedBase = 0;
   const selected = form.basePrompts.filter((p) => p.selected);
   for (const prompt of form.basePrompts) {
-    const resolved = resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary, undefined, longest);
+    const resolved = resolveRequestPrompts(prompt, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary, undefined, longest);
     const final = composeFinalPrompts(form, resolved);
     base[prompt.id] = count(final.input);
     if (prompt.selected) selectedBase = Math.max(selectedBase, base[prompt.id]);
@@ -101,19 +102,19 @@ export function useTokenCounts(form: Inputs): TokenCounts | null {
     };
   }, [kind]);
 
-  const { model, basePrompts, characters, negativePrompt, tidbitLibrary } = form;
+  const { model, basePrompts, characters, negativePrompt, negativeTidbits, tidbitLibrary } = form;
   const { furMode, nsfwMode, transparentBg, qualityPreset, ucPreset } = form;
   useEffect(() => {
     if (!budget || counter?.kind !== budget.kind) return;
     const timer = setTimeout(() => {
-      const inputs = { model, basePrompts, characters, negativePrompt, tidbitLibrary };
+      const inputs = { model, basePrompts, characters, negativePrompt, negativeTidbits, tidbitLibrary };
       const modifiers = { furMode, nsfwMode, transparentBg, qualityPreset, ucPreset };
       setCounts(computeCounts({ ...inputs, ...modifiers }, budget, counter.count));
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `budget` is derived from `model`, which is listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [counter, model, basePrompts, characters, negativePrompt, tidbitLibrary, furMode, nsfwMode, transparentBg, qualityPreset, ucPreset]);
+  }, [counter, model, basePrompts, characters, negativePrompt, negativeTidbits, tidbitLibrary, furMode, nsfwMode, transparentBg, qualityPreset, ucPreset]);
 
   // Hide stale numbers from another model family until the recount lands.
   return budget && counts?.budget.kind === budget.kind ? { ...counts, budget } : null;

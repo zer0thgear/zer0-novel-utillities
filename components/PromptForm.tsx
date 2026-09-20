@@ -15,6 +15,7 @@ import {
 import { CharacterPromptsEditor } from './CharacterPromptsEditor';
 import { CharacterPositionCanvas } from './CharacterPositionCanvas';
 import { BasePromptsEditor } from './BasePromptsEditor';
+import { TidbitList } from './TidbitList';
 import { AccountStatusBar } from './AccountStatusBar';
 import { RequestInspectorModal } from './RequestInspectorModal';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
@@ -190,7 +191,7 @@ export function PromptForm() {
 
   /** Rolls this prompt's wildcards once, for one request. */
   function resolveFor(prompt: BasePrompt): ResolvedRequestPrompts {
-    return resolveRequestPrompts(prompt, form.characters, form.negativePrompt, form.tidbitLibrary);
+    return resolveRequestPrompts(prompt, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary);
   }
 
   function buildRequest(
@@ -252,7 +253,7 @@ export function PromptForm() {
     form.promptMode === 'single'
       ? form.basePrompts.filter((p) => p.selected).slice(0, 1)
       : form.basePrompts.filter((p) => p.selected && p.text.trim());
-  const wildcards = analyzeWildcards(targetPrompts, form.characters, form.negativePrompt, form.tidbitLibrary);
+  const wildcards = analyzeWildcards(targetPrompts, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary);
   // Non-null while the "unknown wildcard" confirmation is open.
   const [unknownRefs, setUnknownRefs] = useState<string[] | null>(null);
 
@@ -387,7 +388,7 @@ export function PromptForm() {
       const cell = cells[i];
       setBatchStatus({ current: i + 1, total: cells.length });
       const rolled = resolveRequestPrompts(
-        selected, form.characters, form.negativePrompt, form.tidbitLibrary, baseline.picks, cell.force,
+        selected, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary, baseline.picks, cell.force,
       );
       // A tags axis adds its value where quality tags go (and it's kept in
       // the as-written prompt, so Reuse brings it back).
@@ -857,6 +858,16 @@ export function PromptForm() {
                 apiKey={apiKey}
                 className={`${inputCls} resize-y`}
               />
+              {/* Tidbits, as on a base prompt — appended to the negative. */}
+              <div className="mt-2">
+                <TidbitList
+                  tidbits={form.negativeTidbits}
+                  onChange={(tidbits) => form.set('negativeTidbits', tidbits)}
+                  model={form.model}
+                  apiKey={apiKey}
+                  placeholder="bad hands, ..."
+                />
+              </div>
               {tokens && (
                 <div className="mt-2">
                   <TokenMeter
