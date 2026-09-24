@@ -133,9 +133,11 @@ function parseCharacter(v: unknown): CharacterPromptEntry | null {
     prompt: v.prompt,
     uc: str(v.uc) ? v.uc : '',
     center: { x: Math.min(1, Math.max(0, Number(c.x))), y: Math.min(1, Math.max(0, Number(c.y))) },
-    enabled: v.enabled !== false,
+    enabled: v.enabled !== false && v.archived !== true,
     tidbits: parseTidbits(v.tidbits),
     ucTidbits: parseTidbits(v.ucTidbits),
+    ...(v.collapsed === true ? { collapsed: true } : {}),
+    ...(v.archived === true ? { archived: true } : {}),
   };
 }
 
