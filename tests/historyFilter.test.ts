@@ -42,6 +42,34 @@ describe('imageMatches', () => {
     expect(imageMatches(img, 'weather')).toBe(true);
   });
 
+  it('searches character prompts, not just the base prompt', () => {
+    const img = image({
+      prompt: '2girls, park',
+      parameters: {
+        width: 832, height: 1216, steps: 23, seed: 777,
+        characterPrompts: [
+          { prompt: 'girl, blue dress', uc: '', center: { x: 0.3, y: 0.5 }, enabled: true },
+          { prompt: 'girl, red umbrella', uc: 'hat', center: { x: 0.7, y: 0.5 }, enabled: true },
+        ],
+      },
+    } as Partial<GeneratedImage>);
+    expect(imageMatches(img, 'umbrella')).toBe(true);
+    expect(imageMatches(img, 'park dress umbrella')).toBe(true);
+    // A character's negative isn't what the image shows, so it isn't searched.
+    expect(imageMatches(img, 'hat')).toBe(false);
+  });
+
+  it('falls back to v4 captions when there are no characterPrompts', () => {
+    const img = image({
+      prompt: '1girl',
+      parameters: {
+        width: 832, height: 1216, steps: 23, seed: 777,
+        v4_prompt: { caption: { base_caption: '1girl', char_captions: [{ char_caption: 'girl, witch hat', centers: [{ x: 0.5, y: 0.5 }] }] }, use_coords: false, use_order: true },
+      },
+    } as Partial<GeneratedImage>);
+    expect(imageMatches(img, 'witch')).toBe(true);
+  });
+
   it('searches the model name and the seed', () => {
     expect(imageMatches(image(), 'v5 full')).toBe(true);
     expect(imageMatches(image(), '777')).toBe(true);
