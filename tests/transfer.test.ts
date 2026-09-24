@@ -48,6 +48,20 @@ describe('parseTransferFile', () => {
     expect(parsed?.characters?.[0].center).toEqual({ x: 0.5, y: 0.5 });
   });
 
+  it('keeps archived and folded characters, and never lets an archived one in enabled', () => {
+    const { file: parsed } = parseTransferFile(
+      file({
+        characters: [
+          { id: 'a', prompt: '1girl', enabled: true, archived: true, collapsed: true },
+          { id: 'b', prompt: '1boy', archived: 'yes' },
+        ],
+      }),
+    );
+    expect(parsed?.characters?.[0]).toMatchObject({ archived: true, enabled: false, collapsed: true });
+    expect(parsed?.characters?.[1]).toMatchObject({ enabled: true });
+    expect(parsed?.characters?.[1]).not.toHaveProperty('archived');
+  });
+
   it('keeps only settings that are in range and in the enums', () => {
     const { file: parsed } = parseTransferFile(
       file({

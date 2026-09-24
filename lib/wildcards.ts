@@ -95,7 +95,7 @@ export function resolveRequestPrompts(
 
   const baseText = inScope('base', () => withTidbits(base.text, base.tidbits));
   const resolvedCharacters = characters
-    .filter((c) => c.enabled)
+    .filter((c) => c.enabled && !c.archived)
     .map((c) => ({
       ...c,
       prompt: inScope(`char:${c.id}`, () => withTidbits(c.prompt, c.tidbits)),
@@ -183,7 +183,7 @@ export function analyzeWildcards(
     scan(b.text);
     scanTidbits(b.tidbits);
   }
-  for (const c of characters.filter((c) => c.enabled)) {
+  for (const c of characters.filter((c) => c.enabled && !c.archived)) {
     scan(c.prompt);
     scan(c.uc);
     scanTidbits(c.tidbits);

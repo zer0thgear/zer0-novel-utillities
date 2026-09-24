@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinPromptParts, moveItem, normalizePromptPart } from '@/lib/promptText';
+import { joinPromptParts, moveItem, moveItemAmong, normalizePromptPart } from '@/lib/promptText';
 import { roundToSizeStep } from '@/lib/requestImage';
 
 describe('normalizePromptPart', () => {
@@ -57,5 +57,27 @@ describe('roundToSizeStep', () => {
   it('never rounds down to nothing', () => {
     expect(roundToSizeStep(1)).toBe(64);
     expect(roundToSizeStep(0)).toBe(64);
+  });
+});
+
+describe('moveItemAmong', () => {
+  const items = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id }));
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id).join('');
+  const hideBD = (x: { id: string }) => x.id !== 'b' && x.id !== 'd';
+
+  it('behaves like a plain swap when nothing is hidden', () => {
+    expect(ids(moveItemAmong(items, 'c', 'up', () => true))).toBe('acbde');
+    expect(ids(moveItemAmong(items, 'c', 'down', () => true))).toBe('abdce');
+  });
+
+  it('steps past hidden items to the next shown one', () => {
+    expect(ids(moveItemAmong(items, 'c', 'up', hideBD))).toBe('cabde');
+    expect(ids(moveItemAmong(items, 'c', 'down', hideBD))).toBe('abdec');
+  });
+
+  it('returns the same array with no shown neighbour, or an unknown id', () => {
+    expect(moveItemAmong(items, 'a', 'up', hideBD)).toBe(items);
+    expect(moveItemAmong(items, 'b', 'up', (x) => x.id === 'b')).toBe(items);
+    expect(moveItemAmong(items, 'zz', 'down', () => true)).toBe(items);
   });
 });

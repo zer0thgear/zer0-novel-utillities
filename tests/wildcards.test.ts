@@ -48,6 +48,13 @@ describe('randomOptions', () => {
 });
 
 describe('resolveRequestPrompts', () => {
+  it('leaves archived characters out, even if somehow still enabled', () => {
+    const out = resolve('', [], {
+      characters: [character('a', '1girl'), { ...character('b', '1boy'), archived: true }],
+    });
+    expect(out.characters.map((c) => c.id)).toEqual(['a']);
+  });
+
   it('expands a fixed entry in place', () => {
     const library = [fixed('a', 'Style', 'watercolor, soft light')];
     expect(resolve('1girl, __Style__', library).baseText).toBe('1girl, watercolor, soft light');
