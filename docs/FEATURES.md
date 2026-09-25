@@ -112,9 +112,10 @@ The session history groups batches, sweeps and chains, and **Download ZIP** save
 On a narrow screen, or a phone turned on its side, the page becomes one screen, as novelai.net's own phone layout does. The image fills it, and a bar along the bottom holds **Prompt**, **Generate** (with Sweep) and **History**.
 
 - **Prompt** opens the whole sidebar as a sheet over the image. Close it and it keeps everything as it was, scroll position included. Generate is on the bar either way, and starting a generation closes the sheet so you see the image arrive.
-- **History** opens the history as a sheet of thumbnails, three across; picking one shows it and closes the sheet. With no hover on a touch screen, pins show on every thumbnail, and removing goes through **Select**.
+- **History** opens the history as a sheet of thumbnails, three across (a batch of four two by two); picking one shows it and closes the sheet. With no hover on a touch screen, pins show on every thumbnail, and removing goes through **Select**.
 - The image's actions are one row that scrolls sideways. The canvas and Director Tools put their tools under the picture, with Undo and Redo first. Drawing, the Hold: Original button and dragging character positions all work by touch.
 - Text fields are 16px on touch screens, so iPhone Safari doesn't zoom in when you tap one.
+- On its side, the header and the image's prompt line are left out, so the image has what height there is, and the sheets open to the top of the screen.
 
 ## Settings that persist
 

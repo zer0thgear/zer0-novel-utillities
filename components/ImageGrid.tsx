@@ -319,7 +319,9 @@ export function HistoryStrip() {
                     Batch of {group.length}
                   </button>
                 )}
-                <div className="grid grid-cols-2 gap-1.5 phone:grid-cols-3">
+                {/* Three across on a phone, but a batch of four two by two
+                    rather than three and one left over. */}
+                <div className={`grid grid-cols-2 gap-1.5 ${group.length === 4 ? '' : 'phone:grid-cols-3'}`}>
                   {group.map((image) => (
                     <ImageCard
                       key={image.id}

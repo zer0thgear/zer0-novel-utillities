@@ -91,7 +91,7 @@ export default function Home() {
       {apiKey && <ChainRunner />}
 
       {/* ── Phone header ── */}
-      <div className="flex h-12 flex-shrink-0 items-center border-b border-slate-800/80 bg-sidebar px-4 wide:hidden">
+      <div className="flex h-12 flex-shrink-0 items-center border-b border-slate-800/80 bg-sidebar px-4 wide:hidden short:hidden">
         <h1 className="text-base font-bold tracking-tight">
           <span className="text-violet-400">NAI</span> Image Generator
         </h1>
@@ -100,7 +100,7 @@ export default function Home() {
       {/* ── Left panel: generation form (a sheet on a phone) ── */}
       <aside
         className={`flex flex-col bg-sidebar wide:w-(--panel-w) wide:flex-shrink-0 ${PHONE_SHEET} ${
-          sheet === 'prompt' ? 'phone:top-12' : 'phone:top-full'
+          sheet === 'prompt' ? 'phone:top-12 short:top-0' : 'phone:top-full'
         }`}
       >
         <div className="flex flex-shrink-0 items-center border-b border-slate-800/80 px-5 py-4 phone:hidden">
@@ -141,7 +141,7 @@ export default function Home() {
 
       {/* ── Right: collapsible history strip (a sheet on a phone) ── */}
       <div
-        className={`flex phone:bg-slate-950 ${PHONE_SHEET} ${sheet === 'history' ? 'phone:top-12' : 'phone:top-full'}`}
+        className={`flex phone:bg-slate-950 ${PHONE_SHEET} ${sheet === 'history' ? 'phone:top-12 short:top-0' : 'phone:top-full'}`}
       >
         <HistoryStrip />
       </div>
@@ -174,10 +174,11 @@ export default function Home() {
   );
 }
 
-/** A phone sheet: the space between the header and the bar. It's above the
+/** A phone sheet: the space between the header and the bar (the whole
+ *  height above the bar on its side, where there's no header). It's above the
  *  bar in z-order (they don't overlap), so the dialogs it opens, which sit in
  *  its stacking context, cover the bar too. */
-const PHONE_SHEET = 'phone:fixed phone:inset-x-0 phone:z-30 phone:h-[calc(100dvh-3rem-var(--bar-h))]';
+const PHONE_SHEET = 'phone:fixed phone:inset-x-0 phone:z-30 phone:h-[calc(100dvh-3rem-var(--bar-h))] short:h-[calc(100dvh-var(--bar-h))]';
 
 function PhoneBarButton({
   label,

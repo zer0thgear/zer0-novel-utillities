@@ -456,7 +456,7 @@ export function ImageViewer() {
       {/* ── Bottom bar ── */}
       {focusedImage && !isLoading && (
         <div className="flex flex-shrink-0 items-center gap-3 border-t border-slate-800/60 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm phone:flex-col phone:items-stretch phone:backdrop-blur-none phone:gap-2 phone:px-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 short:hidden">
             <span className="flex-shrink-0 text-xs text-slate-600">
               {focusedImage.parameters.width}×{focusedImage.parameters.height}
             </span>

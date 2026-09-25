@@ -12,6 +12,11 @@
 @custom-variant phone (@media (max-width: 767.98px) or ((max-height: 500px) and (pointer: coarse)));
 @custom-variant wide (@media (min-width: 768px) and (not ((max-height: 500px) and (pointer: coarse))));
 
+/* A phone on its side (always `phone` too): little height, so the header and
+   the image's prompt line give their room to the image. Defined after
+   `phone` so it wins where both set something. */
+@custom-variant short (@media (max-height: 500px) and (pointer: coarse));
+
 :root {
   --background: #020617; /* slate-950 */
   --foreground: #f1f5f9; /* slate-100 */
