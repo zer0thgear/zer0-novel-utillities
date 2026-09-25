@@ -76,7 +76,8 @@ components/
   ImageViewer.tsx             # Focused image + Edit/Inpaint/Tools/Variations/Upscale/Enhance/Metadata
   ImageGrid.tsx                # Session history strip, groups batch/queue runs visually
   ImageCard.tsx
-  InpaintModal.tsx / EditModal.tsx / DirectorToolsModal.tsx
+  CanvasEditor.tsx            # Edit Image / Inpaint canvas; saves back to the Image2Image base
+  DirectorToolsModal.tsx
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
   SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
   PresetsSection.tsx          # Save/load named setting presets
@@ -91,7 +92,7 @@ components/
   ApiKeyModal.tsx
 hooks/
   useGenerate.ts               # Generation (standard + SSE streaming)
-  useEnhance.ts / useInpaint.ts / useEdit.ts / useVariations.ts / useUpscale.ts / useAugment.ts
+  useEnhance.ts / useVariations.ts / useUpscale.ts / useAugment.ts
   usePixelSnap.ts               # Client-side only — see docs/REVERSE_ENGINEERING.md
   useSubscription.ts            # Account/Anlas/Opus usage
   useTagSuggestions.ts          # Live tag autocomplete
@@ -117,6 +118,10 @@ lib/
   transfer.ts                   # Import/export file format, validation, re-linking
   emphasis.ts                   # {}/[]/w::text:: emphasis parsing and stepping
   imageRequest.ts               # Builds every /ai/generate-image request
+  inpaint.ts                    # Inpainting model mapping and its strength rules
+  inpaintComposite.ts           # Pastes an inpaint over the original through a feathered matte, as NovelAI does
+  brush.ts                      # Canvas stamping, NovelAI's pixel-perfect mask brush, flood fill
+  editorResult.ts               # Turns what the canvas saved into the Image2Image base
   tokenCount.ts                 # Per-model tokenizer + limit, NovelAI's counting rules
   tokenizers/                   # T5 Unigram and Qwen 3.5 BPE token counters
   pixelSnap.ts                  # Client-side pixel-art filter

@@ -18,6 +18,8 @@ import { BasePromptsEditor } from './BasePromptsEditor';
 import { TidbitList } from './TidbitList';
 import { AccountStatusBar } from './AccountStatusBar';
 import { RequestInspectorModal } from './RequestInspectorModal';
+import { CanvasEditor } from './CanvasEditor';
+import { applyEditorResult, EditorMode, EditorResult } from '@/lib/editorResult';
 import { TidbitLibrarySection } from './TidbitLibrarySection';
 import { PresetsSection } from './PresetsSection';
 import { ChainsSection } from './ChainsSection';
@@ -31,7 +33,8 @@ import { SAMPLERS } from '@/lib/samplers';
 import { MODELS, maxCharacters, modelShortName } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
-import { hasVariety } from '@/lib/variety';
+import { hasVariety, varietySigma } from '@/lib/variety';
+import { hasInpaintStrength, toInpaintingModel } from '@/lib/inpaint';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { eraseStealthMarks, finalizeRequest } from '@/lib/requestImage';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
@@ -129,6 +132,11 @@ export function PromptForm() {
 
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
   const [img2imgNoise, setImg2imgNoise] = useState(0);
+  // Inpainting's own strength (NovelAI's inpaintImg2ImgStrength: 1, its
+  // default, repaints the masked area from scratch).
+  const [inpaintStrength, setInpaintStrength] = useState(1);
+  // The Edit / Inpaint canvas, when it's open from the base image panel.
+  const [canvasMode, setCanvasMode] = useState<EditorMode | null>(null);
   // "Copies" — generate 2-4 images from one prompt in a single shot (true
   // batch, n_samples > 1, real extra Anlas cost) or queued back-to-back as
   // separate single-image calls (each can independently land inside the free
@@ -171,6 +179,16 @@ export function PromptForm() {
     let skipped = 0;
     setRunNotice(null);
     const gen = async (...args: Parameters<typeof generate>) => {
+      // A base that came from a history image makes its results comparable
+      // with it ("Hold: Original"), as the old Edit and Inpaint did.
+      const from = img2imgSource?.from;
+      if (from && args[1]?.sourceImageId === undefined) {
+        args[1] = {
+          ...args[1],
+          sourceImageId: from.imageId,
+          sourceImageUrl: URL.createObjectURL(img2imgSource.original ?? img2imgSource.blob),
+        };
+      }
       const result = await generate(...args);
       if (result) made.push(...result);
       else skipped++;
@@ -202,39 +220,59 @@ export function PromptForm() {
 
   /** Rolls this prompt's wildcards once, for one request. */
   function resolveFor(prompt: BasePrompt): ResolvedRequestPrompts {
-    return resolveRequestPrompts(prompt, form.characters, { text: form.negativePrompt, tidbits: form.negativeTidbits }, form.tidbitLibrary);
+    // Reworking a history image (Edit, Inpaint) keeps its wildcard rolls, so
+    // the part that isn't regenerated still matches the prompt.
+    return resolveRequestPrompts(
+      prompt,
+      form.characters,
+      { text: form.negativePrompt, tidbits: form.negativeTidbits },
+      form.tidbitLibrary,
+      img2imgSource?.from?.picks,
+    );
   }
 
   function buildRequest(
     resolved: ResolvedRequestPrompts,
     seed: number,
-    baseImageB64?: string,
+    base?: { image: string; mask?: string },
     nSamples = 1,
     // A sweep cell's values, replacing the form's for this one request.
     overrides: { scale?: number; cfgRescale?: number; steps?: number; sampler?: NovelAISampler } = {},
   ): NovelAIGenerateRequest {
-    const { input, negativePrompt } = composeFinalPrompts(form, resolved);
+    // With a mask it's an inpaint, on the model's inpainting model — whose
+    // presets are the ones that apply (V5 Curated's is V4.5 Curated's).
+    const inpainting = !!base?.mask;
+    const model = inpainting ? toInpaintingModel(form.model) : form.model;
+    const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
+    // A base image keeps its own size rather than the form's.
+    const size = base && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : null;
     return buildImageRequest({
       input,
       negativePrompt,
-      model: form.model,
-      action: baseImageB64 ? 'img2img' : 'generate',
+      model,
+      action: inpainting ? 'infill' : base ? 'img2img' : 'generate',
       characters: resolved.characters,
       useCoords: form.useCoords,
       presets: { quality: form.qualityPreset, uc: form.ucPreset },
       parameters: {
         ...formSampling(form, overrides),
-        // NovelAI sends this default on V4+ generations only.
-        ...(form.model.startsWith('nai-diffusion-3') || form.model.startsWith('nai-diffusion-furry-3')
-          ? {}
-          : { inpaintImg2ImgStrength: 1 }),
-        // An img2img base keeps its own size rather than the form's.
-        ...(baseImageB64 && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : {}),
+        // NovelAI sends this on V4+ only: 1 unless an inpaint sets it.
+        ...(hasInpaintStrength(form.model) ? { inpaintImg2ImgStrength: inpainting ? inpaintStrength : 1 } : {}),
+        ...(size
+          ? {
+              ...size,
+              // Variety+ scales with the size, and this one isn't the form's.
+              skip_cfg_above_sigma: varietySigma(form.model, form.variety, size.width, size.height),
+            }
+          : {}),
         n_samples: nSamples,
-        // NovelAI sends true for plain generations too.
-        add_original_image: true,
+        // NovelAI sends true for plain generations too, and always false for
+        // an inpaint: it pastes the result over the original itself, through
+        // a feathered edge (lib/inpaintComposite.ts), so there's no seam.
+        add_original_image: !inpainting,
         seed,
-        ...(baseImageB64 ? { strength: img2imgStrength, noise: img2imgNoise, image: baseImageB64 } : {}),
+        ...(base ? { strength: img2imgStrength, noise: img2imgNoise, image: base.image } : {}),
+        ...(base?.mask ? { mask: base.mask } : {}),
       },
     });
   }
@@ -249,13 +287,13 @@ export function PromptForm() {
     const request = buildRequest(
       resolved,
       form.seed === 0 ? randomSeed() : form.seed,
-      await img2imgBaseB64(),
+      await baseImages(),
       nSamples,
     );
     return finalizeRequest(request);
     // Rebuilt on demand from the live form; the modal asks once when it opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, copies, copiesMode, img2imgSource, img2imgStrength, img2imgNoise]);
+  }, [form, copies, copiesMode, img2imgSource, img2imgStrength, img2imgNoise, inpaintStrength]);
 
   // ── Submit handler ─────────────────────────────────────────────────────
 
@@ -287,14 +325,26 @@ export function PromptForm() {
     offerAutoChain(made);
   }
 
-  /** The Img2Img base, stealth metadata erased as NovelAI's canvas does on
-   *  loading it (the rest of its preparation happens as it's sent). */
-  async function img2imgBaseB64() {
-    return img2imgSource ? blobToBase64(await eraseStealthMarks(img2imgSource.blob)) : undefined;
+  /** What the base image panel's canvas saved: new paint, or a new mask. */
+  function onCanvasSave(result: EditorResult) {
+    const src = img2imgSource;
+    const mode = canvasMode;
+    setCanvasMode(null);
+    if (!src || !mode) return;
+    setImg2imgSource(applyEditorResult(src, mode, result));
+  }
+
+  /** The Img2Img base (and inpainting mask), stealth metadata erased as
+   *  NovelAI's canvas does on loading it (the rest of its preparation
+   *  happens as it's sent). */
+  async function baseImages(): Promise<{ image: string; mask?: string } | undefined> {
+    if (!img2imgSource) return undefined;
+    const image = await blobToBase64(await eraseStealthMarks(img2imgSource.blob));
+    return img2imgSource.mask ? { image, mask: await blobToBase64(img2imgSource.mask.full) } : { image };
   }
 
   async function generateAll(gen: typeof generate, stop: () => boolean, report: (total: number) => void) {
-    const baseImageB64 = await img2imgBaseB64();
+    const baseImage = await baseImages();
 
     if (form.promptMode === 'single') {
       const selected = form.basePrompts.find((p) => p.selected);
@@ -307,7 +357,7 @@ export function PromptForm() {
         const resolved = resolveFor(selected);
         setIsLoading(true);
         await gen(
-          buildRequest(resolved, seed, baseImageB64, copies),
+          buildRequest(resolved, seed, baseImage, copies),
           { batchId: crypto.randomUUID(), forceStandard: true, wildcardPicks: resolved.picks, source: promptSource(form, resolved) },
         );
         setIsLoading(false);
@@ -324,7 +374,7 @@ export function PromptForm() {
           const seed =
             form.seed === 0 ? randomSeed() : form.seed + i;
           const resolved = resolveFor(selected);
-          const ok = await gen(buildRequest(resolved, seed, baseImageB64), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+          const ok = await gen(buildRequest(resolved, seed, baseImage), { batchId, wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
           if (!ok && stop()) break;
           if (i < copies - 1) await new Promise((r) => setTimeout(r, 1500));
         }
@@ -336,7 +386,7 @@ export function PromptForm() {
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selected);
         setIsLoading(true);
-        await gen(buildRequest(resolved, seed, baseImageB64), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
+        await gen(buildRequest(resolved, seed, baseImage), { wildcardPicks: resolved.picks, source: promptSource(form, resolved) });
         setIsLoading(false);
       }
     } else {
@@ -353,7 +403,7 @@ export function PromptForm() {
         setBatchStatus({ current: i + 1, total: selectedPrompts.length });
         const seed = form.seed === 0 ? randomSeed() : form.seed;
         const resolved = resolveFor(selectedPrompts[i]);
-        const ok = await gen(buildRequest(resolved, seed, baseImageB64), {
+        const ok = await gen(buildRequest(resolved, seed, baseImage), {
           batchId,
           wildcardPicks: resolved.picks,
           source: promptSource(form, resolved),
@@ -388,7 +438,7 @@ export function PromptForm() {
     // Roll every wildcard once and replay that across the grid, so the only
     // thing changing between cells is what's being swept.
     const baseline = resolveFor(selected);
-    const baseImageB64 = await img2imgBaseB64();
+    const baseImage = await baseImages();
 
     const { made, gen, stop, report } = collectingGenerate();
     sweepStopRef.current = false;
@@ -405,7 +455,7 @@ export function PromptForm() {
       // the as-written prompt, so Reuse brings it back).
       const resolved = cell.tags ? { ...rolled, baseText: insertTags(rolled.baseText, form.model, cell.tags) } : rolled;
       const ok = await gen(
-        buildRequest(resolved, cell.seed ?? seed, baseImageB64, 1, {
+        buildRequest(resolved, cell.seed ?? seed, baseImage, 1, {
           scale: cell.scale,
           cfgRescale: cell.cfgRescale,
           steps: cell.steps,
@@ -430,15 +480,22 @@ export function PromptForm() {
 
   // What a request with the form's settings costs (SMEA is only sent on V3;
   // an img2img base prices by its own size and the strength used).
+  // An inpaint is priced on the inpainting model, by its own strength, as
+  // NovelAI's price does (mask ? inpaintImg2ImgStrength : image ? strength : 1).
+  const inpainting = !!img2imgSource?.mask;
   const costInput = (steps: number, nSamples: number) => ({
-    model: form.model,
+    model: inpainting ? toInpaintingModel(form.model) : form.model,
     width: img2imgSource ? img2imgSource.width : form.width,
     height: img2imgSource ? img2imgSource.height : form.height,
     steps,
     smea: isV3Model(form.model) && form.smea,
     smeaDyn: isV3Model(form.model) && form.smeaDyn,
     nSamples,
-    strength: img2imgSource ? img2imgStrength : undefined,
+    strength: !img2imgSource
+      ? undefined
+      : inpainting
+        ? hasInpaintStrength(form.model) ? inpaintStrength : 1
+        : img2imgStrength,
     ...opusStatus(subscription),
   });
 
@@ -522,18 +579,27 @@ export function PromptForm() {
         </div>
       )}
 
-      {/* Base image — set via "Use as Base" on a generated image */}
+      {/* Base image — from "Use as Base", a dropped image, or the Edit /
+          Inpaint canvas. As on novelai.net, the canvas saves back to here and
+          Generate does the rest, so the prompt and settings stay to hand. */}
       {img2imgSource && (
         <div className="flex flex-col gap-2.5 rounded-lg border border-violet-700/40 bg-violet-950/20 px-3 py-2.5">
           <div className="flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={img2imgSource.url}
-              alt="Base image"
-              className="h-10 w-10 flex-shrink-0 rounded object-cover"
-            />
+            <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img2imgSource.url} alt="Base image" className="h-full w-full object-cover" />
+              {img2imgSource.mask && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={img2imgSource.mask.url}
+                  alt="Inpainting mask"
+                  className="absolute inset-0 h-full w-full object-cover opacity-60"
+                  style={{ imageRendering: 'pixelated' }}
+                />
+              )}
+            </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-violet-300">Img2Img base image</p>
+              <p className="text-xs font-semibold text-violet-300">{inpainting ? 'Inpainting' : 'Image2Image'}</p>
               <p className="text-xs text-slate-500">
                 {img2imgSource.width}×{img2imgSource.height} — output locked to this size
               </p>
@@ -546,35 +612,99 @@ export function PromptForm() {
               Remove
             </button>
           </div>
-          <div className="flex items-center gap-4">
-            <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
-              <span className="w-14 flex-shrink-0">Strength</span>
-              <input
-                type="range"
-                min={0.1}
-                max={0.99}
-                step={0.01}
-                value={img2imgStrength}
-                onChange={(e) => setImg2imgStrength(Number(e.target.value))}
-                className="w-full accent-violet-500"
-              />
-              <span className="w-8 flex-shrink-0 text-right">{img2imgStrength.toFixed(2)}</span>
-            </label>
-            <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
-              <span className="w-14 flex-shrink-0">Noise</span>
-              <input
-                type="range"
-                min={0}
-                max={0.5}
-                step={0.01}
-                value={img2imgNoise}
-                onChange={(e) => setImg2imgNoise(Number(e.target.value))}
-                className="w-full accent-violet-500"
-              />
-              <span className="w-8 flex-shrink-0 text-right">{img2imgNoise.toFixed(2)}</span>
-            </label>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCanvasMode('paint')}
+              className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-200 transition-colors hover:bg-violet-600"
+              title="Paint over the base image"
+            >
+              Edit Image
+            </button>
+            <button
+              type="button"
+              onClick={() => setCanvasMode('mask')}
+              className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-200 transition-colors hover:bg-violet-600"
+              title="Mark part of the image to regenerate"
+            >
+              {inpainting ? 'Edit Mask' : 'Inpaint'}
+            </button>
+            {inpainting && (
+              <button
+                type="button"
+                onClick={() => setImg2imgSource({ ...img2imgSource, mask: undefined })}
+                className="rounded bg-slate-700/80 px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-red-700 hover:text-white"
+              >
+                Remove Mask
+              </button>
+            )}
           </div>
+
+          {inpainting ? (
+            <div className="flex flex-col gap-2">
+              {/* V3 has no inpainting strength: it always repaints the mask. */}
+              {hasInpaintStrength(form.model) && (
+                <label className="flex items-center gap-2 text-xs text-slate-400">
+                  <span className="w-14 flex-shrink-0">Strength</span>
+                  <input
+                    type="range"
+                    min={0.01}
+                    max={1}
+                    step={0.01}
+                    value={inpaintStrength}
+                    onChange={(e) => setInpaintStrength(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
+                  <span className="w-8 flex-shrink-0 text-right">{inpaintStrength.toFixed(2)}</span>
+                </label>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
+                <span className="w-14 flex-shrink-0">Strength</span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={0.99}
+                  step={0.01}
+                  value={img2imgStrength}
+                  onChange={(e) => setImg2imgStrength(Number(e.target.value))}
+                  className="w-full accent-violet-500"
+                />
+                <span className="w-8 flex-shrink-0 text-right">{img2imgStrength.toFixed(2)}</span>
+              </label>
+              <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
+                <span className="w-14 flex-shrink-0">Noise</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.5}
+                  step={0.01}
+                  value={img2imgNoise}
+                  onChange={(e) => setImg2imgNoise(Number(e.target.value))}
+                  className="w-full accent-violet-500"
+                />
+                <span className="w-8 flex-shrink-0 text-right">{img2imgNoise.toFixed(2)}</span>
+              </label>
+            </div>
+          )}
         </div>
+      )}
+
+      {img2imgSource && canvasMode && (
+        <CanvasEditor
+          mode={canvasMode}
+          // Paint goes over the unpainted picture on its own layer; the mask
+          // goes over the picture as it will be sent.
+          image={canvasMode === 'paint' ? (img2imgSource.original ?? img2imgSource.blob) : img2imgSource.blob}
+          width={img2imgSource.width}
+          height={img2imgSource.height}
+          initialLayer={canvasMode === 'paint' ? img2imgSource.paint : img2imgSource.mask?.layer}
+          onSave={onCanvasSave}
+          onCancel={() => setCanvasMode(null)}
+        />
       )}
 
       {/* Prompt modifiers — collapsible */}

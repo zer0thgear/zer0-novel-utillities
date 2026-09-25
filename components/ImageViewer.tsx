@@ -27,8 +27,9 @@ import {
   UPSCALE_MAX_PIXELS,
   upscaleCost,
 } from '@/lib/anlasCost';
-import { InpaintModal } from './InpaintModal';
-import { EditModal } from './EditModal';
+import { CanvasEditor } from './CanvasEditor';
+import { eraseStealthMarks } from '@/lib/requestImage';
+import { applyEditorResult, baseFromImage, EditorMode } from '@/lib/editorResult';
 import { DirectorToolsModal } from './DirectorToolsModal';
 import { MetadataModal } from './MetadataModal';
 import { DEFAULT_IMPORT, ImportModal } from './ImportModal';
@@ -103,8 +104,10 @@ export function ImageViewer() {
   const [seedCopied, setSeedCopied] = useState(false);
   // True while the "view original" button is held down
   const [viewingOriginal, setViewingOriginal] = useState(false);
-  const [showInpaint, setShowInpaint] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
+  // The Edit / Inpaint canvas, open on a history image. Saving makes it the
+  // Image2Image base and comes back here, as novelai.net does: generating is
+  // done from the main screen, with the prompt and settings to hand.
+  const [canvas, setCanvas] = useState<{ mode: EditorMode; picture: Blob; image: GeneratedImage } | null>(null);
   const [showDirectorTools, setShowDirectorTools] = useState(false);
   const [baseImageSet, setBaseImageSet] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -220,8 +223,7 @@ export function ImageViewer() {
     setStateFor(focusedImageId);
     setViewingOriginal(false);
     setShowEnhance(false);
-    setShowInpaint(false);
-    setShowEdit(false);
+    setCanvas(null);
     setShowDirectorTools(false);
     setBaseImageSet(false);
     setShowMetadata(false);
@@ -234,6 +236,13 @@ export function ImageViewer() {
     setShowEnhance(false);
     if (enhanceScale === null) return;
     await enhance(focusedImage, enhanceLevel, enhanceScale);
+  };
+
+  /** Opens the canvas on this image, stealth metadata erased first, as
+   *  NovelAI's canvas does when it loads one. */
+  const openCanvas = async (mode: EditorMode) => {
+    if (!focusedImage) return;
+    setCanvas({ mode, picture: await eraseStealthMarks(focusedImage.blob), image: focusedImage });
   };
 
   const handleUseAsBase = async () => {
@@ -255,11 +264,20 @@ export function ImageViewer() {
 
   return (
     <div className="flex h-full flex-col bg-slate-950">
-      {showInpaint && focusedImage && (
-        <InpaintModal image={focusedImage} onClose={() => setShowInpaint(false)} />
-      )}
-      {showEdit && focusedImage && (
-        <EditModal image={focusedImage} onClose={() => setShowEdit(false)} />
+      {canvas && (
+        <CanvasEditor
+          mode={canvas.mode}
+          image={canvas.picture}
+          width={canvas.image.parameters.width}
+          height={canvas.image.parameters.height}
+          onSave={(result) => {
+            setImg2imgSource(applyEditorResult(baseFromImage(canvas.image, canvas.picture), canvas.mode, result));
+            setCanvas(null);
+            setBaseImageSet(true);
+            setTimeout(() => setBaseImageSet(false), 1200);
+          }}
+          onCancel={() => setCanvas(null)}
+        />
       )}
       {showDirectorTools && focusedImage && (
         <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
@@ -466,7 +484,7 @@ export function ImageViewer() {
             )}
             <button
               type="button"
-              onClick={() => setShowEdit(true)}
+              onClick={() => openCanvas('paint')}
               disabled={chainBusy || !!renderTooLarge}
               title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -475,7 +493,7 @@ export function ImageViewer() {
             </button>
             <button
               type="button"
-              onClick={() => setShowInpaint(true)}
+              onClick={() => openCanvas('mask')}
               disabled={chainBusy || !!renderTooLarge}
               title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"

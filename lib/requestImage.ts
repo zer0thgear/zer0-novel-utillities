@@ -1,5 +1,7 @@
 import { MAX_STEALTH_PIXELS, STEALTH_MAGIC } from '@/lib/naiMetadata';
 import { NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
+import { inpaintImg2Img } from '@/lib/inpaint';
+import { isV3Model } from '@/lib/imageRequest';
 
 // NovelAI's client sends every request image through one preparation step
 // (confirmed 2026-09-18 from its bundle, and by running that step and its
@@ -11,6 +13,8 @@ import { NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
 //   4. blend any transparency onto a background: white, black for masks,
 //      none on V5 (which supports transparency);
 //   5. re-encode it as PNG.
+// It also sets color_correct false on Image2Image, and gives an inpaint an
+// img2img block only when its strength is below 1 (V4 and later).
 // Then the request's width and height are rounded to multiples of 64, after
 // the image was sized, so an Enhance at 1.5× of 832×1216 sends a 1248×1824
 // image in a 1280×1856 request (the server can't render 1248×1824).
@@ -36,14 +40,14 @@ const isJpeg = (b: Uint8Array) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xf
 
 // ─── Base64 ────────────────────────────────────────────────────────────────────
 
-function fromBase64(b64: string): Uint8Array {
+export function fromBase64(b64: string): Uint8Array {
   const binary = atob(b64.replace(/\s/g, ''));
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -163,7 +167,7 @@ async function decodeViaCanvas(bytes: Uint8Array): Promise<Pixels> {
   return { width, height, data };
 }
 
-async function decodeImage(bytes: Uint8Array): Promise<Pixels> {
+export async function decodeImage(bytes: Uint8Array): Promise<Pixels> {
   return (isPng(bytes) ? await decodePngExactly(bytes) : undefined) ?? decodeViaCanvas(bytes);
 }
 
@@ -188,7 +192,7 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 /** A plain RGBA PNG (no row filters, no text chunks). */
-async function encodePng({ width, height, data }: Pixels): Promise<Uint8Array> {
+export async function encodePng({ width, height, data }: Pixels): Promise<Uint8Array> {
   const ihdr = new Uint8Array(13);
   const header = new DataView(ihdr.buffer);
   header.setUint32(0, width);
@@ -213,10 +217,43 @@ async function encodePng({ width, height, data }: Pixels): Promise<Uint8Array> {
   return out;
 }
 
+const TEXT_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt']);
+
+/** A PNG's text chunks (where NovelAI puts its metadata), each whole:
+ *  length, type, data and CRC. */
+export function pngTextChunks(png: Uint8Array): Uint8Array[] {
+  if (!isPng(png)) return [];
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  const chunks: Uint8Array[] = [];
+  for (let offset = 8; offset + 12 <= png.length; ) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(...png.subarray(offset + 4, offset + 8));
+    if (TEXT_CHUNKS.has(type)) chunks.push(png.subarray(offset, offset + 12 + length));
+    if (type === 'IEND') break;
+    offset += 12 + length;
+  }
+  return chunks;
+}
+
+/** The PNG with `chunks` inserted straight after its header chunk. */
+export function withChunksAfterHeader(png: Uint8Array, chunks: Uint8Array[]): Uint8Array {
+  if (chunks.length === 0) return png;
+  const headerEnd = 8 + 12 + new DataView(png.buffer, png.byteOffset).getUint32(8);
+  const out = new Uint8Array(png.length + chunks.reduce((n, c) => n + c.length, 0));
+  out.set(png.subarray(0, headerEnd));
+  let at = headerEnd;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  out.set(png.subarray(headerEnd), at);
+  return out;
+}
+
 // ─── The steps ─────────────────────────────────────────────────────────────────
 
 /** Whether alpha starts with the stealth marker, read down each column. */
-function hasStealthMarker({ width, height, data }: Pixels): boolean {
+export function hasStealthMarker({ width, height, data }: Pixels): boolean {
   if (width * height < STEALTH_MAGIC.length * 8) return false;
   for (let i = 0; i < STEALTH_MAGIC.length; i++) {
     let byte = 0;
@@ -230,7 +267,7 @@ function hasStealthMarker({ width, height, data }: Pixels): boolean {
   return true;
 }
 
-function clearStealthAlpha({ data }: Pixels) {
+export function clearStealthAlpha({ data }: Pixels) {
   for (let i = 3; i < data.length; i += 4) {
     if (data[i] === 254) data[i] = 255;
     else if (data[i] === 1) data[i] = 0;
@@ -343,9 +380,9 @@ const keepsTransparency = (model: NovelAIModel) => model.startsWith('nai-diffusi
 
 /**
  * The last step before sending, as NovelAI's client does it: for a request
- * with an image, prepares the image and mask, turns SMEA off and gives
- * extra_noise_seed its default of seed − 1; then, for any request, rounds
- * the size to multiples of 64.
+ * with an image, prepares the image and mask, turns SMEA off (V3; later
+ * models have none, so it's dropped) and gives extra_noise_seed its default
+ * of seed − 1; then, for any request, rounds the size to multiples of 64.
  */
 export async function finalizeRequest(request: NovelAIGenerateRequest): Promise<NovelAIGenerateRequest> {
   const p = request.parameters;
@@ -356,13 +393,27 @@ export async function finalizeRequest(request: NovelAIGenerateRequest): Promise<
       height: p.height,
       background: keepsTransparency(request.model) ? 'transparent' : 'white',
     });
-    parameters.sm = false;
-    parameters.sm_dyn = false;
+    // SMEA goes off on V3; newer models have none, so the fields go.
+    if (isV3Model(request.model)) {
+      parameters.sm = false;
+      parameters.sm_dyn = false;
+    } else {
+      delete parameters.sm;
+      delete parameters.sm_dyn;
+    }
     if (parameters.extra_noise_seed === undefined) parameters.extra_noise_seed = p.seed - 1;
   }
+  // Image2Image never colour-corrects; an inpaint's colour correction rides
+  // in its img2img block instead.
+  if (request.action === 'img2img') parameters.color_correct = false;
   if (p.mask) {
     parameters.mask = await prepareRequestImage(p.mask, { width: p.width, height: p.height, background: 'black', smooth: false });
   }
+  // NovelAI adds an img2img block to an inpaint only when the model takes a
+  // strength and it's below 1; otherwise the field goes.
+  const img2img = p.mask ? inpaintImg2Img(request.model, p.inpaintImg2ImgStrength ?? 1) : undefined;
+  if (img2img) parameters.img2img = img2img;
+  else delete parameters.img2img;
   if (p.width % SIZE_STEP !== 0) parameters.width = roundToSizeStep(p.width);
   if (p.height % SIZE_STEP !== 0) parameters.height = roundToSizeStep(p.height);
   return { ...request, parameters };
