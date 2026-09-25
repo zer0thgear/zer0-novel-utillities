@@ -78,7 +78,7 @@ export function ImageCard({ image, focused, selecting, selected, onToggle }: Ima
           className={`absolute left-1 top-1 h-5 w-5 items-center justify-center rounded-full text-[10px] transition-colors ${
             image.pinned
               ? 'flex bg-violet-600/90 text-white hover:bg-violet-500'
-              : 'hidden bg-black/70 text-slate-400 hover:bg-violet-600 hover:text-white group-hover:flex'
+              : 'hidden bg-black/70 text-slate-400 hover:bg-violet-600 hover:text-white group-hover:flex touch:flex touch:opacity-60'
           }`}
         >
           📌
@@ -96,7 +96,8 @@ export function ImageCard({ image, focused, selecting, selected, onToggle }: Ima
           {selected ? '✓' : ''}
         </div>
       ) : (
-        /* Remove button — visible on hover */
+        /* Remove button — visible on hover. A touch screen removes through
+           Select instead, rather than a ✕ on every thumbnail. */
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); removeImage(image.id); }}

@@ -377,7 +377,7 @@ export function ImageViewer() {
           </div>
 
           {/* Scale + action row */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {enhanceOptions.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -455,14 +455,17 @@ export function ImageViewer() {
 
       {/* ── Bottom bar ── */}
       {focusedImage && !isLoading && (
-        <div className="flex flex-shrink-0 items-center gap-3 border-t border-slate-800/60 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm">
-          <span className="flex-shrink-0 text-xs text-slate-600">
-            {focusedImage.parameters.width}×{focusedImage.parameters.height}
-          </span>
-          <p className="min-w-0 flex-1 truncate text-xs text-slate-500" title={focusedImage.prompt}>
-            {focusedImage.prompt}
-          </p>
-          <div className="flex flex-shrink-0 items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-3 border-t border-slate-800/60 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm phone:flex-col phone:items-stretch phone:backdrop-blur-none phone:gap-2 phone:px-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span className="flex-shrink-0 text-xs text-slate-600">
+              {focusedImage.parameters.width}×{focusedImage.parameters.height}
+            </span>
+            <p className="min-w-0 flex-1 truncate text-xs text-slate-500" title={focusedImage.prompt}>
+              {focusedImage.prompt}
+            </p>
+          </div>
+          {/* On a phone the actions are one row that scrolls sideways. */}
+          <div className="flex flex-shrink-0 items-center gap-2 phone:-mx-3 phone:overflow-x-auto phone:px-3 phone:pb-1 phone:*:flex-shrink-0 phone:*:whitespace-nowrap">
             {/* "Hold to view original" — only shown for enhanced images */}
             {focusedImage.sourceImageUrl && (
               <button
@@ -473,7 +476,10 @@ export function ImageViewer() {
                 onMouseLeave={() => setViewingOriginal(false)}
                 onTouchStart={() => setViewingOriginal(true)}
                 onTouchEnd={() => setViewingOriginal(false)}
-                className={`select-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                onTouchCancel={() => setViewingOriginal(false)}
+                // A long press would otherwise open the phone's menu.
+                onContextMenu={(e) => e.preventDefault()}
+                className={`select-none [-webkit-touch-callout:none] rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   viewingOriginal
                     ? 'bg-amber-600 text-white'
                     : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
@@ -590,7 +596,10 @@ export function ImageViewer() {
                 Chain
               </button>
               {showChains && (
-                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                // On a phone the row scrolls, which would clip it, so it's
+                // pinned above the bars instead (the bar above has no blur
+                // there, which would otherwise be what it's fixed to).
+                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl phone:fixed phone:inset-x-3 phone:bottom-[calc(var(--bar-h)+6.5rem)] phone:mb-0 phone:w-auto phone:whitespace-normal">
                   {chains.map((chain) => (
                     <button
                       key={chain.id}

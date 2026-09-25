@@ -169,7 +169,7 @@ function ChainProgressBar() {
   if (!progress && !error) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-16 z-40 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-16 z-40 flex justify-center px-4 phone:top-14 phone:bottom-auto">
       {progress ? (
         <div className="pointer-events-auto flex max-w-xl items-center gap-3 rounded-lg border border-violet-700/50 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm">
           <span className="h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-violet-400" />

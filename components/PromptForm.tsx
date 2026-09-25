@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -41,6 +42,7 @@ import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
 import { TokenMeter } from './TokenMeter';
+import { usePhoneLayout } from './PhoneLayout';
 import {
   getAvailableQualityLevels,
   getAvailableUcLevels,
@@ -75,6 +77,9 @@ const inputCls =
   'w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none border border-slate-700 focus:border-violet-500 transition-colors';
 
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400';
+
+/** The form's id, for the Generate button when it's outside it (on a phone). */
+const FORM_ID = 'prompt-form';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -150,6 +155,7 @@ export function PromptForm() {
   const [runNotice, setRunNotice] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const { generateSlot } = usePhoneLayout();
 
   // Ctrl/Cmd+Enter generates from anywhere, including mid-prompt, the way
   // NovelAI's own shortcut does. handleSubmit already ignores it while a
@@ -535,8 +541,55 @@ export function PromptForm() {
 
   // ── Render ─────────────────────────────────────────────────────────────
 
+  const generateRow = (
+    <>
+      {wildcards.unknown.length > 0 && (
+        <p className="mb-2 text-xs text-amber-400" title="No Tidbit Library entry has this label">
+          Unknown wildcard{wildcards.unknown.length > 1 ? 's' : ''}: {wildcards.unknown.join(', ')}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          form={FORM_ID}
+          disabled={isLoading || chainBusy || !hasValidPrompt}
+          title="Ctrl+Enter"
+          className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {buttonLabel()}
+        </button>
+        {sweepRunning ? (
+          <button
+            type="button"
+            onClick={() => {
+              sweepStopRef.current = true;
+              setSweepStopping(true);
+            }}
+            disabled={sweepStopping}
+            title="Stop the sweep after the image in progress"
+            className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-red-700 disabled:opacity-60"
+          >
+            {sweepStopping ? 'Stopping…' : 'Stop'}
+          </button>
+        ) : (
+          form.promptMode === 'single' && (
+            <button
+              type="button"
+              onClick={() => setShowSweep(true)}
+              disabled={isLoading || chainBusy || !hasValidPrompt}
+              title="X/Y sweep: compare settings or wildcard options side by side"
+              className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Sweep
+            </button>
+          )
+        )}
+      </div>
+    </>
+  );
+
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form id={FORM_ID} ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
       {/* API key strip */}
       <div className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2 text-xs border border-slate-700/50">
         <span className="text-slate-500">API key active</span>
@@ -1335,50 +1388,15 @@ export function PromptForm() {
 
       {/* Generate button — sticky at the bottom of the scroll container.
           -bottom-5/-mb-5 cancel the container's p-5, same as the tab bar, so
-          it sits flush against the bottom edge with nothing peeking under it. */}
-      <div className="sticky -bottom-5 -mx-5 -mb-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm">
-        {wildcards.unknown.length > 0 && (
-          <p className="mb-2 text-xs text-amber-400" title="No Tidbit Library entry has this label">
-            Unknown wildcard{wildcards.unknown.length > 1 ? 's' : ''}: {wildcards.unknown.join(', ')}
-          </p>
-        )}
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={isLoading || chainBusy || !hasValidPrompt}
-            title="Ctrl+Enter"
-            className="min-w-0 flex-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 active:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {buttonLabel()}
-          </button>
-          {sweepRunning ? (
-            <button
-              type="button"
-              onClick={() => {
-                sweepStopRef.current = true;
-                setSweepStopping(true);
-              }}
-              disabled={sweepStopping}
-              title="Stop the sweep after the image in progress"
-              className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-red-700 disabled:opacity-60"
-            >
-              {sweepStopping ? 'Stopping…' : 'Stop'}
-            </button>
-          ) : (
-            form.promptMode === 'single' && (
-              <button
-                type="button"
-                onClick={() => setShowSweep(true)}
-                disabled={isLoading || chainBusy || !hasValidPrompt}
-                title="X/Y sweep: compare settings or wildcard options side by side"
-                className="flex-shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Sweep
-              </button>
-            )
-          )}
-        </div>
+          it sits flush against the bottom edge with nothing peeking under it.
+          On a phone it's on the bottom bar instead, outside the form (hence
+          the form attribute), so it's there while the form sheet is closed.
+          Both are rendered and CSS shows the one for the screen, so it never
+          waits on a script to notice the screen size. */}
+      <div className="sticky -bottom-5 -mx-5 -mb-5 border-t border-slate-800/80 bg-slate-900/95 px-5 py-3 backdrop-blur-sm phone:hidden">
+        {generateRow}
       </div>
+      {generateSlot && createPortal(generateRow, generateSlot)}
 
       {showSweep && (
         <SweepModal

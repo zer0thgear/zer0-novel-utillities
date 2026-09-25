@@ -73,7 +73,7 @@ export function RequestInspectorModal({ build, onClose }: Props) {
 
         {error && <p className="flex-shrink-0 text-xs text-red-300">{error}</p>}
 
-        <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300">
+        <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300 phone:break-all phone:whitespace-pre-wrap">
           {json ?? (error ? '' : 'Building…')}
         </pre>
 

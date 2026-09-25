@@ -696,7 +696,7 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
       {/* Header */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-slate-700 bg-slate-900 px-4 py-2.5">
         <span className="text-sm font-semibold text-slate-200">{isMask ? 'Inpaint Image' : 'Edit Image'}</span>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 phone:hidden">
           {isMask
             ? 'Mark what to regenerate, then save and generate from the main screen.'
             : 'Paint over the picture, then save and generate from the main screen.'}
@@ -720,9 +720,10 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {/* On a phone the tools sit under the picture, in two columns. */}
+      <div className="flex min-h-0 flex-1 phone:flex-col-reverse">
         {/* Tools */}
-        <div className="flex w-48 flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-slate-700 bg-slate-900/90 p-3">
+        <div className="flex w-48 flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-slate-700 bg-slate-900/90 p-3 phone:grid phone:h-48 phone:w-full phone:grid-cols-2 phone:content-start phone:gap-3 phone:border-r-0 phone:border-t phone:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex flex-col gap-1">
             <span className={label}>Tool</span>
             <div className="grid grid-cols-2 gap-1">
@@ -734,7 +735,7 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
                   title={`${t.hint} (${t.key})`}
                   className={btn(activeTool === t.tool)}
                 >
-                  {t.label} <span className="opacity-50">{t.key}</span>
+                  {t.label} <span className="opacity-50 touch:hidden">{t.key}</span>
                 </button>
               ))}
             </div>
@@ -877,7 +878,7 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
             </label>
           )}
 
-          <div className="mt-auto flex flex-col gap-1.5">
+          <div className="mt-auto flex flex-col gap-1.5 phone:order-first phone:mt-0">
             <div className="grid grid-cols-2 gap-1">
               <button type="button" onClick={undo} disabled={!canUndo} className={`${btn(false)} disabled:opacity-40`} title="Ctrl+Z">
                 Undo
@@ -889,12 +890,12 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
             <button type="button" onClick={clearLayer} className={btn(false)}>
               {isMask ? 'Clear mask' : 'Clear paint'}
             </button>
-            <p className="text-[10px] leading-snug text-slate-600">[ and ] change the size.</p>
+            <p className="text-[10px] leading-snug text-slate-600 touch:hidden">[ and ] change the size.</p>
           </div>
         </div>
 
         {/* Canvas */}
-        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-slate-950 p-4">
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-slate-950 p-4 phone:p-2">
           <div ref={wrapRef} className="relative select-none">
             {imageUrl && (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -902,7 +903,7 @@ export function CanvasEditor({ mode, image, width, height, initialLayer, onSave,
                 src={imageUrl}
                 alt="Picture being edited"
                 draggable={false}
-                className="block max-h-[calc(100vh-7rem)] max-w-full"
+                className="block max-h-[calc(100dvh-7rem)] max-w-full phone:max-h-[calc(100dvh-18rem)]"
                 style={{ aspectRatio: `${width} / ${height}` }}
               />
             )}

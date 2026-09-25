@@ -65,7 +65,7 @@ This app calls `https://image.novelai.net` **directly from the browser** — the
 
 ```
 app/
-  page.tsx                  # Main layout (sidebar + viewer + history)
+  page.tsx                  # Main layout (sidebar + viewer + history; one screen with a bottom bar on a phone)
   layout.tsx
 components/
   PromptForm.tsx             # Prompt editor, generation settings, Generate button
@@ -90,6 +90,7 @@ components/
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
+  PhoneLayout.tsx             # Where the phone layout's bottom bar puts the Generate button
 hooks/
   useGenerate.ts               # Generation (standard + SSE streaming)
   useEnhance.ts / useVariations.ts / useUpscale.ts / useAugment.ts
@@ -98,6 +99,7 @@ hooks/
   useTagSuggestions.ts          # Live tag autocomplete
   useTokenCounts.ts             # Live prompt token counts for the editor
   useChainLauncher.ts           # Prices a chain for some images and queues it
+  useMediaQuery.ts              # Live media-query match (the phone layout's query)
 store/
   settingsStore.ts              # Persisted generation settings (Zustand + localStorage)
   sessionStore.ts               # In-memory session state (images, loading, API key)

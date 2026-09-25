@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true, // required for static export
   },
+  // The dev badge's other corners cover buttons in the phone layout (Prompt,
+  // History, the canvas's Save).
+  devIndicators: { position: 'top-left' },
 };
 
 export default nextConfig;

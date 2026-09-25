@@ -5,6 +5,7 @@ import { downloadSessionAsZip } from '@/lib/imageUtils';
 import { filterImages } from '@/lib/historyFilter';
 import { useSessionStore } from '@/store/sessionStore';
 import { useChainBusy } from '@/store/chainStore';
+import { PHONE_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { GeneratedImage } from '@/types/novelai';
 import { ImageCard } from './ImageCard';
 import { SweepGridModal } from './SweepGridModal';
@@ -49,6 +50,7 @@ export function HistoryStrip() {
   const [picked, setPicked] = useState<Set<string> | null>(null);
   // A running chain is still adding to (and reading from) the history.
   const chainBusy = useChainBusy();
+  const phone = useMediaQuery(PHONE_QUERY);
 
   const shown = filterImages(images, query);
   const selecting = picked !== null;
@@ -63,7 +65,8 @@ export function HistoryStrip() {
 
   // ── Collapsed state ──────────────────────────────────────────────────────
 
-  if (collapsed) {
+  // A phone shows it as a full sheet; collapsing is for a wide screen.
+  if (collapsed && !phone) {
     return (
       <div className="flex w-8 flex-shrink-0 flex-col items-center border-l border-slate-800 bg-slate-900/40 py-3">
         <button
@@ -84,7 +87,7 @@ export function HistoryStrip() {
   // ── Expanded state ───────────────────────────────────────────────────────
 
   return (
-    <div className="flex w-48 flex-shrink-0 flex-col border-l border-slate-800 bg-slate-900/40">
+    <div className="flex w-48 flex-shrink-0 flex-col border-l border-slate-800 bg-slate-900/40 phone:w-full phone:border-l-0">
       {/* Header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-800 px-3 py-2">
         <span className="text-xs font-semibold text-slate-400">
@@ -97,7 +100,7 @@ export function HistoryStrip() {
           type="button"
           onClick={() => setCollapsed(true)}
           title="Collapse"
-          className="text-slate-500 transition-colors hover:text-slate-300"
+          className="text-slate-500 transition-colors hover:text-slate-300 phone:hidden"
         >
           {/* Right-pointing chevron (collapse) */}
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -208,7 +211,7 @@ export function HistoryStrip() {
       {/* Scroll container — constrained height, scrolls */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Layout container — unconstrained height, grows with content */}
-        <div className="flex flex-col gap-2 p-2">
+        <div className="flex flex-col gap-2 p-2 phone:grid phone:grid-cols-3">
           {/* Loading placeholder — newest item slot */}
           {isLoading && (
             streamPreview ? (
@@ -233,7 +236,7 @@ export function HistoryStrip() {
 
           {/* Empty state */}
           {shown.length === 0 && !isLoading && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex flex-col items-center justify-center py-12 text-center phone:col-span-3">
               <p className="text-xs text-slate-700">{images.length === 0 ? 'No images yet' : 'Nothing matches'}</p>
             </div>
           )}
@@ -257,7 +260,7 @@ export function HistoryStrip() {
             ) : (
               <div
                 key={group[0].batchId}
-                className={`rounded-lg border p-1.5 transition-colors ${
+                className={`rounded-lg border p-1.5 transition-colors phone:col-span-3 ${
                   focusedGroupId === group[0].batchId && !focusedImageId
                     ? 'border-violet-500 bg-violet-950/30'
                     : 'border-violet-700/30 bg-violet-950/10'
@@ -316,7 +319,7 @@ export function HistoryStrip() {
                     Batch of {group.length}
                   </button>
                 )}
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 phone:grid-cols-3">
                   {group.map((image) => (
                     <ImageCard
                       key={image.id}
