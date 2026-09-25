@@ -116,6 +116,17 @@ export function PromptForm() {
     if (offset < 0) scroller.scrollTop += offset;
   }
   const [showPositionCanvas, setShowPositionCanvas] = useState(false);
+  /** Characters in the list, i.e. not put away in the archive. */
+  const liveCharacterCount = form.characters.filter((c) => !c.archived).length;
+  /** Set by clicking a marker on the position canvas: the character to open. */
+  const [characterJump, setCharacterJump] = useState<{ id: string } | null>(null);
+
+  const jumpToCharacter = (id: string) => {
+    setShowPositionCanvas(false);
+    form.set('characters', form.characters.map((c) => (c.id === id ? { ...c, collapsed: false } : c)));
+    setCharacterJump({ id });
+  };
+
   const [img2imgStrength, setImg2imgStrength] = useState(0.7);
   const [img2imgNoise, setImg2imgNoise] = useState(0);
   // "Copies" — generate 2-4 images from one prompt in a single shot (true
@@ -701,8 +712,8 @@ export function PromptForm() {
             }`}
           >
             Characters
-            {form.characters.length > 0 && (
-              <span className="ml-1 opacity-70">({form.characters.length})</span>
+            {liveCharacterCount > 0 && (
+              <span className="ml-1 opacity-70">({liveCharacterCount})</span>
             )}
           </button>
         </div>
@@ -727,8 +738,9 @@ export function PromptForm() {
               maxEnabled={maxCharacters(form.model)}
               model={form.model}
               tokens={tokens}
+              jumpTo={characterJump}
             />
-            {form.characters.length > 0 && (
+            {liveCharacterCount > 0 && (
               <>
                 <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-700/40 bg-slate-800/40 px-3 py-2.5">
                   <div>
@@ -822,6 +834,7 @@ export function PromptForm() {
           characters={form.characters}
           onChange={(characters) => form.set('characters', characters)}
           onClose={() => setShowPositionCanvas(false)}
+          onSelect={jumpToCharacter}
           aspectRatio={form.width / form.height}
         />
       )}

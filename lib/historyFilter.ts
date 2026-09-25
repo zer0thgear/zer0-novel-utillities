@@ -17,6 +17,15 @@ export function queryTerms(query: string): string[] {
   return query.split(',').map(normalize).filter(Boolean);
 }
 
+/** The character prompts an image was made with. They travel in the request
+ *  parameters, not in `prompt` (which is the base prompt only); older V4
+ *  requests may only carry them as v4_prompt captions. */
+function characterPrompts(image: GeneratedImage): string[] {
+  const params = image.parameters;
+  if (params?.characterPrompts?.length) return params.characterPrompts.map((c) => c.prompt);
+  return params?.v4_prompt?.caption.char_captions.map((c) => c.char_caption) ?? [];
+}
+
 /**
  * What a tag is matched against. The prompt as written — tidbits folded in,
  * wildcards rolled, but none of the quality tags every image shares — and
@@ -27,10 +36,9 @@ export function queryTerms(query: string): string[] {
  * Fields are joined with " , " so a tag can never match across two of them.
  */
 function haystack(image: GeneratedImage): string {
-  const characters = (image.parameters.characterPrompts ?? []).map((c) => c.prompt);
   return [
     image.source?.prompt ?? image.prompt,
-    ...characters,
+    ...characterPrompts(image),
     modelShortName(image.model),
     image.chain?.name,
     image.chain?.label,

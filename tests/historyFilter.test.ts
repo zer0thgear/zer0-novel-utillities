@@ -84,6 +84,31 @@ describe('imageMatches', () => {
     expect(imageMatches(scene, 'blue hair, red scarf')).toBe(true);
   });
 
+  it('leaves a character’s negative out: it isn’t what the image shows', () => {
+    const scene = image('2girls, park', { characters: ['girl, red umbrella'] });
+    scene.parameters.characterPrompts![0].uc = 'hat';
+    expect(imageMatches(scene, 'umbrella')).toBe(true);
+    expect(imageMatches(scene, 'park, umbrella')).toBe(true);
+    expect(imageMatches(scene, 'hat')).toBe(false);
+  });
+
+  it('falls back to v4 captions when there are no characterPrompts', () => {
+    const older = image('1girl', {
+      parameters: {
+        width: 832,
+        height: 1216,
+        steps: 23,
+        seed: 777,
+        v4_prompt: {
+          caption: { base_caption: '1girl', char_captions: [{ char_caption: 'girl, witch hat', centers: [{ x: 0.5, y: 0.5 }] }] },
+          use_coords: false,
+          use_order: true,
+        },
+      } as GeneratedImage['parameters'],
+    });
+    expect(imageMatches(older, 'witch hat')).toBe(true);
+  });
+
   it('never matches a tag across two fields', () => {
     const scene = image('scenery, park', { characters: ['smile'] });
     expect(imageMatches(scene, 'park smile')).toBe(false);

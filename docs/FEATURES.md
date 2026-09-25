@@ -11,7 +11,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 ## Writing prompts
 
 - **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
-- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). Each folds down to a one-line summary, there's an Add at both ends of the list, and **Use Coordinates** places them on a drag-and-drop position canvas.
+- **Characters** (V4 and later). Each character gets its own prompt and negative, and can be turned on or off (up to 32 at once on V5, 6 on V4/V4.5). Each folds down to a one-line summary, and **Fold all** folds the whole list; folds are remembered. There's an Add at both ends of the list. Once you have four or more, a filter narrows the list by name or prompt text, or to **Active only**. Characters you aren't using can go in the **Archive**: they're kept, but out of the list and never sent, until you restore them. **Use Coordinates** places them on a drag-and-drop position canvas, where clicking a marker jumps to that character.
 - **Negative prompt.** The main negative prompt, under Base Prompts. Each character also has its own. Both take tidbits, the same as a positive prompt does.
 - **Tidbits.** Small toggleable pieces attached to a prompt, a character or a negative prompt, appended when enabled. They're trimmed and joined with ", ", never producing double commas. An off one is dimmed and struck through, and the list folds away with a count of how many are on.
 - **Tidbit Library.** Reusable pieces, shared everywhere:

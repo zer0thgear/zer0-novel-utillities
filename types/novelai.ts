@@ -104,6 +104,12 @@ export interface CharacterPromptEntry extends CharacterPrompt {
   tidbits?: PromptTidbit[];
   /** The same, for this character's negative prompt. */
   ucTidbits?: PromptTidbit[];
+  /** Folded down to its header in the editor. UI-only. */
+  collapsed?: boolean;
+  /** Put away in the editor's Archive: kept, but out of the list and never
+   *  sent. An archived character is always disabled too, so everything that
+   *  filters on `enabled` leaves it out. */
+  archived?: boolean;
 }
 
 // ─── V4 prompt structures ─────────────────────────────────────────────────────
