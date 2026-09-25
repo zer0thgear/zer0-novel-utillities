@@ -27,8 +27,9 @@ import {
   UPSCALE_MAX_PIXELS,
   upscaleCost,
 } from '@/lib/anlasCost';
-import { InpaintModal } from './InpaintModal';
-import { EditModal } from './EditModal';
+import { CanvasEditor } from './CanvasEditor';
+import { eraseStealthMarks } from '@/lib/requestImage';
+import { applyEditorResult, baseFromImage, EditorMode } from '@/lib/editorResult';
 import { DirectorToolsModal } from './DirectorToolsModal';
 import { MetadataModal } from './MetadataModal';
 import { DEFAULT_IMPORT, ImportModal } from './ImportModal';
@@ -103,8 +104,10 @@ export function ImageViewer() {
   const [seedCopied, setSeedCopied] = useState(false);
   // True while the "view original" button is held down
   const [viewingOriginal, setViewingOriginal] = useState(false);
-  const [showInpaint, setShowInpaint] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
+  // The Edit / Inpaint canvas, open on a history image. Saving makes it the
+  // Image2Image base and comes back here, as novelai.net does: generating is
+  // done from the main screen, with the prompt and settings to hand.
+  const [canvas, setCanvas] = useState<{ mode: EditorMode; picture: Blob; image: GeneratedImage } | null>(null);
   const [showDirectorTools, setShowDirectorTools] = useState(false);
   const [baseImageSet, setBaseImageSet] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -220,8 +223,7 @@ export function ImageViewer() {
     setStateFor(focusedImageId);
     setViewingOriginal(false);
     setShowEnhance(false);
-    setShowInpaint(false);
-    setShowEdit(false);
+    setCanvas(null);
     setShowDirectorTools(false);
     setBaseImageSet(false);
     setShowMetadata(false);
@@ -234,6 +236,13 @@ export function ImageViewer() {
     setShowEnhance(false);
     if (enhanceScale === null) return;
     await enhance(focusedImage, enhanceLevel, enhanceScale);
+  };
+
+  /** Opens the canvas on this image, stealth metadata erased first, as
+   *  NovelAI's canvas does when it loads one. */
+  const openCanvas = async (mode: EditorMode) => {
+    if (!focusedImage) return;
+    setCanvas({ mode, picture: await eraseStealthMarks(focusedImage.blob), image: focusedImage });
   };
 
   const handleUseAsBase = async () => {
@@ -255,11 +264,20 @@ export function ImageViewer() {
 
   return (
     <div className="flex h-full flex-col bg-slate-950">
-      {showInpaint && focusedImage && (
-        <InpaintModal image={focusedImage} onClose={() => setShowInpaint(false)} />
-      )}
-      {showEdit && focusedImage && (
-        <EditModal image={focusedImage} onClose={() => setShowEdit(false)} />
+      {canvas && (
+        <CanvasEditor
+          mode={canvas.mode}
+          image={canvas.picture}
+          width={canvas.image.parameters.width}
+          height={canvas.image.parameters.height}
+          onSave={(result) => {
+            setImg2imgSource(applyEditorResult(baseFromImage(canvas.image, canvas.picture), canvas.mode, result));
+            setCanvas(null);
+            setBaseImageSet(true);
+            setTimeout(() => setBaseImageSet(false), 1200);
+          }}
+          onCancel={() => setCanvas(null)}
+        />
       )}
       {showDirectorTools && focusedImage && (
         <DirectorToolsModal image={focusedImage} onClose={() => setShowDirectorTools(false)} />
@@ -359,7 +377,7 @@ export function ImageViewer() {
           </div>
 
           {/* Scale + action row */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {enhanceOptions.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -437,14 +455,17 @@ export function ImageViewer() {
 
       {/* ── Bottom bar ── */}
       {focusedImage && !isLoading && (
-        <div className="flex flex-shrink-0 items-center gap-3 border-t border-slate-800/60 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm">
-          <span className="flex-shrink-0 text-xs text-slate-600">
-            {focusedImage.parameters.width}×{focusedImage.parameters.height}
-          </span>
-          <p className="min-w-0 flex-1 truncate text-xs text-slate-500" title={focusedImage.prompt}>
-            {focusedImage.prompt}
-          </p>
-          <div className="flex flex-shrink-0 items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-3 border-t border-slate-800/60 bg-slate-900/95 px-4 py-2.5 backdrop-blur-sm phone:flex-col phone:items-stretch phone:backdrop-blur-none phone:gap-2 phone:px-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 short:hidden">
+            <span className="flex-shrink-0 text-xs text-slate-600">
+              {focusedImage.parameters.width}×{focusedImage.parameters.height}
+            </span>
+            <p className="min-w-0 flex-1 truncate text-xs text-slate-500" title={focusedImage.prompt}>
+              {focusedImage.prompt}
+            </p>
+          </div>
+          {/* On a phone the actions are one row that scrolls sideways. */}
+          <div className="flex flex-shrink-0 items-center gap-2 phone:-mx-3 phone:overflow-x-auto phone:px-3 phone:pb-1 phone:*:flex-shrink-0 phone:*:whitespace-nowrap">
             {/* "Hold to view original" — only shown for enhanced images */}
             {focusedImage.sourceImageUrl && (
               <button
@@ -455,7 +476,10 @@ export function ImageViewer() {
                 onMouseLeave={() => setViewingOriginal(false)}
                 onTouchStart={() => setViewingOriginal(true)}
                 onTouchEnd={() => setViewingOriginal(false)}
-                className={`select-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                onTouchCancel={() => setViewingOriginal(false)}
+                // A long press would otherwise open the phone's menu.
+                onContextMenu={(e) => e.preventDefault()}
+                className={`select-none [-webkit-touch-callout:none] rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   viewingOriginal
                     ? 'bg-amber-600 text-white'
                     : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
@@ -466,7 +490,7 @@ export function ImageViewer() {
             )}
             <button
               type="button"
-              onClick={() => setShowEdit(true)}
+              onClick={() => openCanvas('paint')}
               disabled={chainBusy || !!renderTooLarge}
               title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -475,7 +499,7 @@ export function ImageViewer() {
             </button>
             <button
               type="button"
-              onClick={() => setShowInpaint(true)}
+              onClick={() => openCanvas('mask')}
               disabled={chainBusy || !!renderTooLarge}
               title={renderTooLarge ?? undefined}
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -572,7 +596,10 @@ export function ImageViewer() {
                 Chain
               </button>
               {showChains && (
-                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                // On a phone the row scrolls, which would clip it, so it's
+                // pinned above the bars instead (the bar above has no blur
+                // there, which would otherwise be what it's fixed to).
+                <div className="absolute bottom-full right-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 shadow-2xl phone:fixed phone:inset-x-3 phone:bottom-[calc(var(--bar-h)+6.5rem)] phone:mb-0 phone:w-auto phone:whitespace-normal">
                   {chains.map((chain) => (
                     <button
                       key={chain.id}

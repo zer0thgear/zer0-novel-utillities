@@ -156,6 +156,32 @@ Confirmed on 2026-09-19 by reading the client and by three of its own captured r
 
 While reading that table: V5's `maxCharacters` is now **32**, not the 22 it launched with.
 
+### The canvas and inpainting
+
+Read from novelai.net's client on 2026-09-24, then checked against a captured inpaint request from its page (logged in, the send stopped before it reached the server) on 2026-09-24 and 2026-09-25.
+
+**Flow.** Its canvas (Edit Image, Inpaint Image, Paint New Image) only has Save and Cancel. Saving puts the picture, and any mask, into the Image2Image panel on the main screen, which then offers Edit Image, Edit Inpainting Mask and Remove Inpainting Mask. Generating is the ordinary Generate, with the prompt and settings as they are.
+
+**Strokes.** The canvas stamps along each segment every quarter of the brush size, `ceil(distance / max(1, avgSize * 0.25))` stamps, easing the size between the ends for pen pressure (`size * pressure`, pens only). A stroke is drawn to its own layer and composited once, so a translucent stroke doesn't darken where it overlaps itself. Brush tips are Round, SoftRound (a `blur(0.15 * size px)` filter) and Square. Defaults: draw and erase size 20 (5–100 in steps of 5), fill tolerance 15, blur intensity 50.
+
+**Fill** is a scanline flood fill on the current layer, from the clicked pixel's RGBA, taking pixels within `tolerance` by straight-line distance over the four channels.
+
+**The mask** is its own layer at an **eighth of the picture's size** (`scaleFactor: 8`, opacity 0.5, smoothing off). Its brush size is in those cells (4 to 50, default 4) and is drawn pixel-perfect: a cell is in when the corner nearest the stamp's centre is within the radius (`max(0, |dx| - 0.5)`, `max(0, |dy| - 0.5)`, distance ≤ radius); a square brush takes cells whose centre is inside. The request's mask is that layer scaled up by nearest neighbour, so it's always aligned to the 8-pixel latent grid.
+
+**Inpainting strength.** The inpaint panel's Strength slider (0.01–1, default **1**, only on models whose table has `img2imgInpainting`: V4 and later) sets **`inpaintImg2ImgStrength`**, not `strength`. Its request prep then adds `img2img: { strength: inpaintImg2ImgStrength, color_correct: true }` when that's below 1, and deletes `img2img` otherwise. The price's strength factor is `mask ? inpaintImg2ImgStrength ?? 1 : image ? strength : 1`. The ordinary `strength` and `noise` (0.7 and 0 by default) still go along, from the Image2Image state. Before this, the app sent its inpaint slider as `strength` and a fixed `inpaintImg2ImgStrength: 0.69` with a matching `img2img` block.
+
+**Other fields.** `add_original_image` defaults to true in every model's parameters, but `generateInfill` sets it to **false** on every inpaint, whatever the panel says (the capture confirms it), because it does that job itself (below). The request prep sets `color_correct: false` on any `img2img` action, and gives an inpaint no top-level `color_correct`. `sm` and `sm_dyn` are set false on an image request only on V3; later models have no SMEA, and the capture has neither field. The mask is prepared on black, without smoothing.
+
+**Finishing the result** (`generateInfill`'s image callback; `lib/inpaintComposite.ts`). The server's picture isn't shown as it comes. The client makes a matte from the mask and pastes the result over the image it sent through it:
+1. The mask at an eighth of the size (nearest), alpha thresholded at 155, transparent replaced with opaque black.
+2. In its web worker (chunk 687): a square dilation of 4 cells, nearest-neighbour ×8, then its box blur (radius 20, 2 passes; a StackBlur-style multiply-and-shift per radius), then the red channel copied to alpha.
+3. If the result carries the stealth marker, its alpha 254 → 255 and 1 → 0. Its alpha is multiplied by the matte (rounded); the original's by 255 − matte; then the two are blended with those as weights (the blend's alpha is `round(255 × min(1, a + b))`).
+4. The result's alpha low bits (the stealth metadata) are copied back onto the composite, and its text chunks are written after the composite's IHDR (as iTXt; the app copies the chunks as they came, which reads the same).
+
+So outside the dilated mask the image is exactly the original, and the new content fades in over about 40 pixels. The port was run beside NovelAI's own functions in its page, on an 832×1216 picture with and without a stealth marker, and the matte and composite matched byte for byte; `tests/inpaintComposite.test.ts` pins values taken from that run.
+
+**Inpainting models' own capabilities** decide some fields, since they're what's sent: every inpainting model offers Variety+ except V5 Full's (V5 Curated inpaints with V4.5 Curated's, which does, so its request carries `skip_cfg_above_sigma: null`, the V5 toggle not existing); only V5 Full's has automatic text and transparency. Inpainting also gets the free Opus sample: its check is `!characterRef && width*height <= 1048576 && steps <= 28`.
+
 ### Tag autocomplete
 
 `GET /ai/generate-image/suggest-tags?model=<model>&prompt=<partial tag text>` (bearer auth, works with the persistent key). `prompt` is the *current partial tag being typed*, not the whole prompt. Response: `{ tags: [{ tag, count, confidence }] }` — exact prefix matches come first (capped `count: 10000`, `confidence: 0`), followed by semantically related tags with real scores. `model` genuinely changes the result set/order, not just a vocabulary filter on one shared list — double-check you're passing the exact model string the live UI is set to before comparing, a mismatch (e.g. `nai-diffusion-4-5-curated` vs `nai-diffusion-5-curated`) silently gives a different-looking but plausible result.

@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* Screens with no hover (phones, tablets): controls that otherwise appear on
+   hover are shown outright. */
+@custom-variant touch (@media (hover: none));
+
+/* The one-screen phone layout (image, bottom bar, sheets): narrow screens,
+   and short touch screens (a phone on its side). `wide` is everything else;
+   the two are exact opposites. Keep PHONE_QUERY in hooks/useMediaQuery.ts
+   the same. (No comma lists: this one-line form would read a comma as
+   separating selectors.) */
+@custom-variant phone (@media (max-width: 767.98px) or ((max-height: 500px) and (pointer: coarse)));
+@custom-variant wide (@media (min-width: 768px) and (not ((max-height: 500px) and (pointer: coarse))));
+
+/* A phone on its side (always `phone` too): little height, so the header and
+   the image's prompt line give their room to the image. Defined after
+   `phone` so it wins where both set something. */
+@custom-variant short (@media (max-height: 500px) and (pointer: coarse));
+
 :root {
   --background: #020617; /* slate-950 */
   --foreground: #f1f5f9; /* slate-100 */
@@ -37,4 +54,18 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #475569; /* slate-600 */
+}
+
+/* iOS Safari zooms the page in on focusing a text field under 16px, and
+   stays zoomed. Touch screens get 16px text fields instead. */
+@media (hover: none) and (pointer: coarse) {
+  textarea,
+  select,
+  input:not([type]),
+  input[type="text"],
+  input[type="search"],
+  input[type="number"],
+  input[type="password"] {
+    font-size: max(16px, 1em);
+  }
 }

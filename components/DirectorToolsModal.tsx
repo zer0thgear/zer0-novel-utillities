@@ -96,9 +96,10 @@ export function DirectorToolsModal({ image, onClose }: DirectorToolsModalProps) 
         </div>
 
         {/* Body */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* On a phone the tools go under the picture. */}
+        <div className="flex flex-1 min-h-0 overflow-hidden phone:flex-col-reverse">
           {/* Left toolbar */}
-          <div className="flex w-52 flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-slate-700 bg-slate-900/90 p-4">
+          <div className="flex w-52 flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-slate-700 bg-slate-900/90 p-4 phone:max-h-[60%] phone:w-full phone:border-r-0 phone:border-t phone:pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Tool</span>
               {TOOLS.map((t) => (
@@ -266,12 +267,12 @@ export function DirectorToolsModal({ image, onClose }: DirectorToolsModalProps) 
           </div>
 
           {/* Preview area */}
-          <div className="flex flex-1 items-center justify-center overflow-hidden bg-slate-950 p-4">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-950 p-4 phone:p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
               alt={image.prompt}
-              className="max-h-[calc(100vh-80px)] max-w-full object-contain"
+              className="max-h-[calc(100dvh-80px)] max-w-full object-contain phone:max-h-full"
             />
           </div>
         </div>

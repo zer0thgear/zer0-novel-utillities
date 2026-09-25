@@ -34,7 +34,8 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Generation settings:** size presets or a custom size, steps, CFG (prompt guidance), sampler, noise schedule, CFG rescale, seed, and SMEA on V3.
 - **Variety+** (under Advanced settings) holds guidance back until the shapes have formed, for more varied and more saturated images, at some cost to how closely they follow the prompt. It's offered on the models NovelAI offers it on — V4, V4.5 and V3, but not V5 — and the strength it sends scales with the image size exactly as NovelAI's does.
 - **Copies:** 2–4 images from one prompt, as one **Batch** request or **Queued** one after another. Queued copies can each use the free Opus allowance and roll wildcards separately.
-- **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders.
+- **Img2Img:** use any history image, or a dropped or pasted one, as the base, with strength and noise sliders. The base panel has **Edit Image** and **Inpaint** buttons that open the canvas on it.
+- **Inpainting:** once a mask is set the base panel says so, and Generate inpaints with the sidebar's prompt on the model's inpainting model (V5 Curated uses V4.5 Curated's, as NovelAI does). **Strength** is NovelAI's inpainting strength (1 repaints the masked area from scratch; V3 has none). The result is pasted over the original through a feathered edge, exactly as novelai.net finishes an inpaint, so nothing outside the mask changes and there's no hard seam; it keeps the result's metadata. The mask stays set, so you can generate again or tweak it with **Edit Mask**. A base from a history image replays that image's wildcard rolls, and its results can be compared with it using Hold: Original.
 - **Streaming mode** shows live preview frames while the image renders.
 - **Inspect request** (under Advanced settings) shows the exact JSON the next Generate would POST, after every step that shapes it — quality tags, wildcards, V5's text section, the size rounding — with the image data shortened and a button to copy it. Handy for comparing against what novelai.net sends.
 - **Tab title:** like NovelAI's, it spins (◰◳◲◱) while images generate and shows ✓ when a run finishes while you're on another tab.
@@ -61,17 +62,27 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## Working with an image
 
 From the viewer:
-- **Enhance**: levels 1–5, at the scales NovelAI offers for the image's size (1×, 1.5×, 2×, or Max on V5, which lets NovelAI upscale it to about 3 MP). Enhance, Inpaint and Edit render with the sidebar's prompt, as NovelAI does; in Batch mode they use the prompt the image was made from.
+- **Enhance**: levels 1–5, at the scales NovelAI offers for the image's size (1×, 1.5×, 2×, or Max on V5, which lets NovelAI upscale it to about 3 MP). It renders with the sidebar's prompt, as NovelAI does; in Batch mode it uses the prompt the image was made from.
 - **Variations**: three variants in one batch.
 - **Upscale**: 2× (images up to 1 MP).
 - **Director Tools**: Remove background, Line art, Sketch, Colorize, Emotion, Declutter, and Pixel Snap (runs locally, free).
-- **Inpaint** (paint a mask) and **Edit** (paint over the image).
+- **Inpaint** and **Edit**: open the canvas (below). Saving brings you back here with the image set as the Image2Image base, as on novelai.net, so you can adjust the prompt and settings and generate with the usual Generate button.
 - **Chain**: run a saved chain (see below).
 - **Reuse**: load the image's prompt and settings back into the sidebar, exactly as written, without doubling up quality tags.
 - **Use as Base**, **Use this seed**, **Metadata** (read the image's embedded generation data), **Download**.
 - **Hold: Original**: compare an edited image with its source.
 
 Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, are disabled with the reason shown.
+
+## The canvas
+
+**Edit Image** paints over the picture; **Inpaint** marks what to regenerate. Both save back to the Image2Image base in the sidebar rather than generating from the canvas.
+
+- **Smooth strokes at any speed.** Every position the pointer passed through is used, and stamps are laid every quarter of the brush size between them, as NovelAI's canvas does, so a fast flick draws a solid line instead of dots. A translucent stroke stays even where it crosses itself.
+- **Edit tools:** Draw (round, soft or square tip, with opacity), Erase (takes paint off, back to the picture underneath), Fill (a patch of similar colour, with a tolerance), Smudge (drags colour like wet paint), Blur, and a colour Pick (or hold Alt). Pen pressure changes the size on a pen.
+- **The inpainting mask** is drawn on the 8-pixel latent grid with NovelAI's own pixel-perfect brush (default 4 cells, circle or square), so the mask sent is the same shape its canvas would make. Draw Mask, Erase Mask, and Fill to fill an area you've outlined. The mask's opacity is adjustable.
+- **Your work is kept.** Paint stays on its own layer, so reopening Edit Image lets you carry on or erase it; Edit Mask reopens the mask.
+- **Keys:** B draw, E erase, G fill, S smudge, R blur, I pick, [ and ] size, Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc cancel.
 
 ## Chained actions
 
@@ -94,7 +105,17 @@ Save the current settings and modifiers under a name, and load them back in one 
 
 ## History
 
-The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Filter** narrows it by anything the images carry — prompt (as sent or as written), model, seed, or the chain or sweep they came from — and every word has to match, in any order. **Select** turns the thumbnails into tick boxes, so a chosen set (or everything the filter left) can be downloaded as a ZIP or removed together. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc**, **← Batch of N**, or clicking the image itself goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Pin** an image (📌 on its thumbnail, or in a batch grid on hover) and **Clear Session** keeps it; the confirmation says how many will stay, and offers nothing to clear when everything is pinned. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+The session history groups batches, sweeps and chains, and **Download ZIP** saves the whole session. **Filter** takes tags the way a prompt is written: comma-separated, each one a phrase, all of them required. `blue hair, smile` finds images with both tags — not ones with "blue eyes" and "black hair". It looks in the prompt as written (so not the quality tags every image shares) and in each character's prompt, plus the model and the chain or sweep an image came from. A number matches a seed exactly. **Select** turns the thumbnails into tick boxes, so a chosen set (or everything the filter left) can be downloaded as a ZIP or removed together. Clicking a group's header shows the whole group on the canvas as a grid, as NovelAI does, and a new multi-image batch (or Variations) opens that way. Click an image in the grid to open it with all its actions. **Esc**, **← Batch of N**, or clicking the image itself goes back to the grid, and hovering an image gives quick Download, Copy and Use seed buttons. **Pin** an image (📌 on its thumbnail, or in a batch grid on hover) and **Clear Session** keeps it; the confirmation says how many will stay, and offers nothing to clear when everything is pinned. **Clear Session** asks first. Like NovelAI's own site, history lives in memory only. The page warns before you close or refresh it with images unsaved.
+
+## On a phone
+
+On a narrow screen, or a phone turned on its side, the page becomes one screen, as novelai.net's own phone layout does. The image fills it, and a bar along the bottom holds **Prompt**, **Generate** (with Sweep) and **History**.
+
+- **Prompt** opens the whole sidebar as a sheet over the image. Close it and it keeps everything as it was, scroll position included. Generate is on the bar either way, and starting a generation closes the sheet so you see the image arrive.
+- **History** opens the history as a sheet of thumbnails, three across (a batch of four two by two); picking one shows it and closes the sheet. With no hover on a touch screen, pins show on every thumbnail, and removing goes through **Select**.
+- The image's actions are one row that scrolls sideways. The canvas and Director Tools put their tools under the picture, with Undo and Redo first. Drawing, the Hold: Original button and dragging character positions all work by touch.
+- Text fields are 16px on touch screens, so iPhone Safari doesn't zoom in when you tap one.
+- On its side, the header and the image's prompt line are left out, so the image has what height there is, and the sheets open to the top of the screen.
 
 ## Settings that persist
 

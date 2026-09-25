@@ -24,6 +24,15 @@ const BASE_SIGMA: Partial<Record<NovelAIModel, number>> = {
   'nai-diffusion-4-curated-preview': 19,
   'nai-diffusion-3': 19,
   'nai-diffusion-furry-3': 19,
+  // The inpainting models, which decide whether an inpaint carries the field.
+  // V5 Curated inpaints with V4.5 Curated's, which has it: its request sends
+  // null, since the toggle it would come from doesn't exist on V5.
+  'nai-diffusion-4-5-full-inpainting': 58,
+  'nai-diffusion-4-5-curated-inpainting': 58,
+  'nai-diffusion-4-full-inpainting': 19,
+  'nai-diffusion-4-curated-inpainting': 19,
+  'nai-diffusion-3-inpainting': 19,
+  'nai-diffusion-furry-3-inpainting': 19,
 };
 
 /** The latent area of 832×1216, the size the scaling is relative to. */

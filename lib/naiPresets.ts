@@ -141,7 +141,7 @@ export const UC_LEVEL_LABELS: Record<UcLevel, string> = {
 
 // ─── Composition helpers ──────────────────────────────────────────────────────
 // Centralized since every request-building site (PromptForm, useEnhance,
-// useInpaint, useEdit) needs the same logic.
+// useVariations) needs the same logic.
 
 /** V4 and later: base + character captions (and the `text:` feature). */
 const hasCharacterPrompts = (model: NovelAIModel) =>

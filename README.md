@@ -65,7 +65,7 @@ This app calls `https://image.novelai.net` **directly from the browser** — the
 
 ```
 app/
-  page.tsx                  # Main layout (sidebar + viewer + history)
+  page.tsx                  # Main layout (sidebar + viewer + history; one screen with a bottom bar on a phone)
   layout.tsx
 components/
   PromptForm.tsx             # Prompt editor, generation settings, Generate button
@@ -76,7 +76,8 @@ components/
   ImageViewer.tsx             # Focused image + Edit/Inpaint/Tools/Variations/Upscale/Enhance/Metadata
   ImageGrid.tsx                # Session history strip, groups batch/queue runs visually
   ImageCard.tsx
-  InpaintModal.tsx / EditModal.tsx / DirectorToolsModal.tsx
+  CanvasEditor.tsx            # Edit Image / Inpaint canvas; saves back to the Image2Image base
+  DirectorToolsModal.tsx
   MetadataModal.tsx           # Reads a NovelAI image's embedded generation metadata
   SweepModal.tsx / SweepGridModal.tsx  # X/Y sweep setup, and the labelled results grid
   PresetsSection.tsx          # Save/load named setting presets
@@ -89,14 +90,16 @@ components/
   DropZone.tsx                 # Drag-and-drop: import metadata, or use as img2img base
   AccountStatusBar.tsx        # Live Anlas balance + Opus usage meter
   ApiKeyModal.tsx
+  PhoneLayout.tsx             # Where the phone layout's bottom bar puts the Generate button
 hooks/
   useGenerate.ts               # Generation (standard + SSE streaming)
-  useEnhance.ts / useInpaint.ts / useEdit.ts / useVariations.ts / useUpscale.ts / useAugment.ts
+  useEnhance.ts / useVariations.ts / useUpscale.ts / useAugment.ts
   usePixelSnap.ts               # Client-side only — see docs/REVERSE_ENGINEERING.md
   useSubscription.ts            # Account/Anlas/Opus usage
   useTagSuggestions.ts          # Live tag autocomplete
   useTokenCounts.ts             # Live prompt token counts for the editor
   useChainLauncher.ts           # Prices a chain for some images and queues it
+  useMediaQuery.ts              # Live media-query match (the phone layout's query)
 store/
   settingsStore.ts              # Persisted generation settings (Zustand + localStorage)
   sessionStore.ts               # In-memory session state (images, loading, API key)
@@ -117,6 +120,10 @@ lib/
   transfer.ts                   # Import/export file format, validation, re-linking
   emphasis.ts                   # {}/[]/w::text:: emphasis parsing and stepping
   imageRequest.ts               # Builds every /ai/generate-image request
+  inpaint.ts                    # Inpainting model mapping and its strength rules
+  inpaintComposite.ts           # Pastes an inpaint over the original through a feathered matte, as NovelAI does
+  brush.ts                      # Canvas stamping, NovelAI's pixel-perfect mask brush, flood fill
+  editorResult.ts               # Turns what the canvas saved into the Image2Image base
   tokenCount.ts                 # Per-model tokenizer + limit, NovelAI's counting rules
   tokenizers/                   # T5 Unigram and Qwen 3.5 BPE token counters
   pixelSnap.ts                  # Client-side pixel-art filter

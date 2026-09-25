@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { extractImagesFromZip, getImageDimensions } from '@/lib/imageUtils';
 import { finalizeRequest } from '@/lib/requestImage';
+import { inpaintFinisher } from '@/lib/inpaintComposite';
 import { fetchWithRetry, NovelAIError, novelAIError } from '@/lib/apiRetry';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -37,6 +38,10 @@ interface UseGenerateReturn {
   lastErrorWasFatal: () => boolean;
 }
 
+/** What's done to each image before it's shown: an inpaint's is pasted over
+ *  the original, as NovelAI's client does. */
+type Finish = (blob: Blob) => Promise<Blob>;
+
 // Decode a base64 string to a Uint8Array, tolerating whitespace in the input
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64.replace(/\s/g, ''));
@@ -68,7 +73,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Standard (non-streaming) generation ────────────────────────────────────
 
-  const generateStandard = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
+  const generateStandard = async (request: NovelAIGenerateRequest, finish: Finish | undefined, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     fatalRef.current = false;
     try {
@@ -86,7 +91,8 @@ export function useGenerate(): UseGenerateReturn {
       if (!response.ok) throw await novelAIError(response);
 
       const buffer = await response.arrayBuffer();
-      const blobs = await extractImagesFromZip(buffer);
+      const raw = await extractImagesFromZip(buffer);
+      const blobs = finish ? await Promise.all(raw.map(finish)) : raw;
 
       const now = Date.now();
       const images: GeneratedImage[] = blobs.map((blob, i) => ({
@@ -116,7 +122,7 @@ export function useGenerate(): UseGenerateReturn {
 
   // ── Streaming (SSE) generation ─────────────────────────────────────────────
 
-  const generateStreaming = async (request: NovelAIGenerateRequest, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
+  const generateStreaming = async (request: NovelAIGenerateRequest, finish: Finish | undefined, opts?: GenerateOptions): Promise<GeneratedImage[] | null> => {
     setError(null);
     fatalRef.current = false;
     try {
@@ -201,6 +207,7 @@ export function useGenerate(): UseGenerateReturn {
               bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
             imageBlob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
           }
+          if (finish) imageBlob = await finish(imageBlob);
 
           finalImage = {
             id: crypto.randomUUID(),
@@ -277,9 +284,11 @@ export function useGenerate(): UseGenerateReturn {
     }
     // Prepare images and defaults exactly as NovelAI's client does.
     const sent = await finalizeRequest(request);
+    const { image, mask } = sent.parameters;
+    const finish = sent.action === 'infill' && image && mask ? inpaintFinisher(image, mask) : undefined;
     const images = await (streamingMode && !opts?.forceStandard
-      ? generateStreaming(sent, opts)
-      : generateStandard(sent, opts));
+      ? generateStreaming(sent, finish, opts)
+      : generateStandard(sent, finish, opts));
     // A Max enhance comes back larger than the size it asked for; record the
     // real size, which later actions and size checks go by.
     if (images && sent.parameters.upscaled_enhance) {

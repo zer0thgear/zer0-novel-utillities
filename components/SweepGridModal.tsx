@@ -49,7 +49,7 @@ export function SweepGridModal({ sweepId, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 phone:p-2"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="flex max-h-full max-w-full flex-col gap-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">

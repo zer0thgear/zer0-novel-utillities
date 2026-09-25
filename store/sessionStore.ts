@@ -1,8 +1,27 @@
 import { create } from 'zustand';
-import { GeneratedImage } from '@/types/novelai';
+import { GeneratedImage, WildcardPicks } from '@/types/novelai';
 
 // API key lives in localStorage so it survives a full browser close/reopen
 const API_KEY_KEY = 'novelai_api_key';
+
+/** The Image2Image base, and what the canvas editors need to reopen it. */
+export interface Img2ImgSource {
+  /** What gets sent: the picture, with any paint from Edit Image on it. */
+  blob: Blob;
+  url: string;
+  width: number;
+  height: number;
+  /** Edit Image keeps the picture and its paint apart, so reopening it
+   *  carries on with the paint still editable. */
+  original?: Blob;
+  paint?: Blob;
+  /** Inpainting: the mask as its editor keeps it (an eighth the size), the
+   *  full-size black and white one sent, and a preview of it. */
+  mask?: { layer: Blob; full: Blob; url: string };
+  /** The history image this started from: its result can then be compared
+   *  with it ("Hold: Original"), and its wildcard rolls are replayed. */
+  from?: { imageId: string; picks?: WildcardPicks };
+}
 
 interface SessionState {
   apiKey: string;
@@ -46,10 +65,10 @@ interface SessionState {
   /** From one of the group's images back to its grid. */
   backToGroup: () => void;
 
-  // A past result loaded as the base image for the next img2img generation
-  // ("Use as Base Image"). Cleared after use or on explicit removal.
-  img2imgSource: { blob: Blob; url: string; width: number; height: number } | null;
-  setImg2imgSource: (source: { blob: Blob; url: string; width: number; height: number } | null) => void;
+  // The Image2Image base for the next generation: a past result ("Use as
+  // Base"), a dropped image, or what the Edit / Inpaint canvas saved.
+  img2imgSource: Img2ImgSource | null;
+  setImg2imgSource: (source: Img2ImgSource | null) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -161,7 +180,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   img2imgSource: null,
   setImg2imgSource: (source) =>
     set((state) => {
-      if (state.img2imgSource) URL.revokeObjectURL(state.img2imgSource.url);
+      const old = state.img2imgSource;
+      if (old) {
+        if (old.url !== source?.url) URL.revokeObjectURL(old.url);
+        if (old.mask && old.mask.url !== source?.mask?.url) URL.revokeObjectURL(old.mask.url);
+      }
       return { img2imgSource: source };
     }),
 }));

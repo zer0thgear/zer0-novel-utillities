@@ -37,7 +37,11 @@ export function CharacterPositionCanvas({ characters, onChange, onClose, onSelec
 
   const handlePointerDown = (id: string) => (e: React.PointerEvent) => {
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // No such pointer any more (it was lifted already); drag without it.
+    }
     setDraggingId(id);
     pressRef.current = { x: e.clientX, y: e.clientY, moved: false };
   };
@@ -61,8 +65,12 @@ export function CharacterPositionCanvas({ characters, onChange, onClose, onSelec
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6 phone:p-3">
+      {/* Up to CANVAS_WIDTH of canvas, narrower on a phone. */}
+      <div
+        className="flex w-full flex-col gap-3 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-2xl phone:p-4"
+        style={{ maxWidth: CANVAS_WIDTH + 40 }}
+      >
         <div className="flex items-center justify-between gap-6">
           <div>
             <h3 className="text-sm font-semibold text-slate-200">Character Positions</h3>
@@ -86,8 +94,8 @@ export function CharacterPositionCanvas({ characters, onChange, onClose, onSelec
           onPointerCancel={stopDragging}
           className="relative touch-none overflow-hidden rounded-lg border border-slate-700 bg-slate-900/60"
           style={{
-            width: CANVAS_WIDTH,
-            height: CANVAS_WIDTH / aspectRatio,
+            width: '100%',
+            aspectRatio,
             backgroundImage:
               'linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px)',
             backgroundSize: '10% 10%',
