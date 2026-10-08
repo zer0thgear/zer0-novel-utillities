@@ -4,6 +4,7 @@ import {
   BasePrompt,
   Chain,
   CharacterPromptEntry,
+  Effort,
   LibraryTidbit,
   NovelAIModel,
   NovelAISampler,
@@ -29,6 +30,10 @@ export interface FormSettings {
   /** Tidbits appended to the negative prompt, like a base prompt's. */
   negativeTidbits: PromptTidbit[];
   model: NovelAIModel;
+  /** V5 Full's Effort toggle; the request's model follows it (see
+   *  withEffort). Ignored by other models. Absent from older saves, which
+   *  get the default. */
+  effort: Effort;
   width: number;
   height: number;
   steps: number;
@@ -79,6 +84,7 @@ const DEFAULTS: FormSettings = {
   negativePrompt: DEFAULT_NEGATIVE,
   negativeTidbits: [],
   model: 'nai-diffusion-4-5-full',
+  effort: 'high',
   width: 832,
   height: 1216,
   steps: 28,

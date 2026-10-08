@@ -7,6 +7,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   BasePrompt,
+  Effort,
   GeneratedImage,
   NovelAIGenerateRequest,
   NovelAIModel,
@@ -29,9 +30,9 @@ import { useChainBusy } from '@/store/chainStore';
 import { TransferSection } from './TransferSection';
 import { TagAutocompleteField } from './TagAutocompleteField';
 import { analyzeWildcards, resolveRequestPrompts, ResolvedRequestPrompts } from '@/lib/wildcards';
-import { axisInfo, SweepAxis, sweepCells } from '@/lib/sweeps';
+import { axisInfo, EFFORT_LABELS, SweepAxis, sweepCells } from '@/lib/sweeps';
 import { SAMPLERS } from '@/lib/samplers';
-import { MODELS, maxCharacters, modelShortName } from '@/lib/models';
+import { hasEffort, isMediumEffort, MEDIUM_EFFORT, MODELS, maxCharacters, modelShortName, withEffort } from '@/lib/models';
 import { SweepModal } from './SweepModal';
 import { buildImageRequest, composeFinalPrompts, formSampling, isV3Model, promptSource, randomSeed } from '@/lib/imageRequest';
 import { hasVariety, varietySigma } from '@/lib/variety';
@@ -80,6 +81,10 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider te
 
 /** The form's id, for the Generate button when it's outside it (on a phone). */
 const FORM_ID = 'prompt-form';
+
+/** Medium effort sends no Undesired Content; NovelAI suggests this instead. */
+const MEDIUM_UC_NOTE =
+  'Not used at Medium effort. To keep something out, use negative emphasis in the prompt, like -3::hat::.';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -155,6 +160,10 @@ export function PromptForm() {
   const [runNotice, setRunNotice] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  // What a generation runs on: V5 Full's effort picks Medium's own model,
+  // which fixes some settings (shown greyed out below).
+  const effortModel = withEffort(form.model, form.effort);
+  const mediumEffort = isMediumEffort(effortModel);
   const { generateSlot } = usePhoneLayout();
 
   // Ctrl/Cmd+Enter generates from anywhere, including mid-prompt, the way
@@ -243,12 +252,14 @@ export function PromptForm() {
     base?: { image: string; mask?: string },
     nSamples = 1,
     // A sweep cell's values, replacing the form's for this one request.
-    overrides: { scale?: number; cfgRescale?: number; steps?: number; sampler?: NovelAISampler } = {},
+    overrides: { scale?: number; cfgRescale?: number; steps?: number; sampler?: NovelAISampler; effort?: Effort } = {},
   ): NovelAIGenerateRequest {
     // With a mask it's an inpaint, on the model's inpainting model — whose
-    // presets are the ones that apply (V5 Curated's is V4.5 Curated's).
+    // presets are the ones that apply (V5 Curated's is V4.5 Curated's). V5
+    // Full's effort picks the model first; Medium has its own inpainting model.
     const inpainting = !!base?.mask;
-    const model = inpainting ? toInpaintingModel(form.model) : form.model;
+    const effortModel = withEffort(form.model, overrides.effort ?? form.effort);
+    const model = inpainting ? toInpaintingModel(effortModel) : effortModel;
     const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
     // A base image keeps its own size rather than the form's.
     const size = base && img2imgSource ? { width: img2imgSource.width, height: img2imgSource.height } : null;
@@ -466,6 +477,7 @@ export function PromptForm() {
           cfgRescale: cell.cfgRescale,
           steps: cell.steps,
           sampler: cell.sampler,
+          effort: cell.effort,
         }),
         {
           batchId: sweepId,
@@ -489,8 +501,11 @@ export function PromptForm() {
   // An inpaint is priced on the inpainting model, by its own strength, as
   // NovelAI's price does (mask ? inpaintImg2ImgStrength : image ? strength : 1).
   const inpainting = !!img2imgSource?.mask;
-  const costInput = (steps: number, nSamples: number) => ({
-    model: inpainting ? toInpaintingModel(form.model) : form.model,
+  const costInput = (steps: number, nSamples: number, effort: Effort = form.effort) => {
+    const effortModel = withEffort(form.model, effort);
+    const model = inpainting ? toInpaintingModel(effortModel) : effortModel;
+    return {
+    model,
     width: img2imgSource ? img2imgSource.width : form.width,
     height: img2imgSource ? img2imgSource.height : form.height,
     steps,
@@ -503,11 +518,12 @@ export function PromptForm() {
         ? hasInpaintStrength(form.model) ? inpaintStrength : 1
         : img2imgStrength,
     ...opusStatus(subscription),
-  });
+    };
+  };
 
-  function sweepCostFor(steps: number): number | null {
+  function sweepCostFor(cell: { steps?: number; effort?: Effort }): number | null {
     if (!subscription) return null;
-    return calculateAnlasCost(costInput(steps, 1));
+    return calculateAnlasCost(costInput(cell.steps ?? form.steps, 1, cell.effort));
   }
 
   // ── Derived button state ───────────────────────────────────────────────
@@ -847,9 +863,11 @@ export function PromptForm() {
                 <p className="text-xs text-slate-600">NovelAI&apos;s own hidden undesired-content preset</p>
               </div>
               <select
-                value={form.ucPreset}
+                value={mediumEffort ? MEDIUM_EFFORT.ucPreset : form.ucPreset}
                 onChange={(e) => form.set('ucPreset', e.target.value as UcLevel)}
-                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500"
+                disabled={mediumEffort}
+                title={mediumEffort ? 'Fixed at Medium effort' : undefined}
+                className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 outline-none focus:border-violet-500 disabled:opacity-40"
               >
                 {getAvailableUcLevels(form.model).map((level) => (
                   <option key={level} value={level}>
@@ -922,6 +940,7 @@ export function PromptForm() {
               model={form.model}
               tokens={tokens}
               jumpTo={characterJump}
+              ucNote={mediumEffort ? MEDIUM_UC_NOTE : undefined}
             />
             {liveCharacterCount > 0 && (
               <>
@@ -1037,7 +1056,7 @@ export function PromptForm() {
             </span>
             {!showNegativePrompt && (
               <span className="min-w-0 flex-1 truncate text-xs normal-case font-normal text-slate-600">
-                {form.negativePrompt || 'None'}
+                {mediumEffort ? 'Not used at Medium effort' : form.negativePrompt || 'None'}
               </span>
             )}
             <span className="flex-shrink-0 text-xs text-slate-500">{showNegativePrompt ? '▾' : '▸'}</span>
@@ -1045,6 +1064,7 @@ export function PromptForm() {
 
           {showNegativePrompt && (
             <div className="border-t border-slate-700/40 p-3">
+              {mediumEffort && <p className="mb-2 text-xs text-amber-400/90">{MEDIUM_UC_NOTE}</p>}
               <TagAutocompleteField
                 as="textarea"
                 rows={3}
@@ -1100,10 +1120,10 @@ export function PromptForm() {
             Generation Settings
             {!showGenSettings && (
               <span className="ml-1.5 normal-case font-normal text-violet-400">
-                {modelShortName(form.model)}
+                {modelShortName(effortModel)}
                 {' · '}
                 {img2imgSource ? img2imgSource.width : form.width}×{img2imgSource ? img2imgSource.height : form.height}
-                {' · '}{form.steps} steps
+                {' · '}{mediumEffort ? MEDIUM_EFFORT.steps : form.steps} steps
               </span>
             )}
           </span>
@@ -1127,6 +1147,34 @@ export function PromptForm() {
           ))}
         </select>
       </div>
+
+      {/* Effort — V5 Full only. Medium is a cheaper, distilled model that
+          fixes some settings; High is V5 Full as before. */}
+      {hasEffort(form.model) && (
+        <div>
+          <label className={labelCls}>Effort</label>
+          <div className="flex overflow-hidden rounded-lg border border-slate-700">
+            {(['medium', 'high'] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => form.set('effort', level)}
+                aria-pressed={form.effort === level}
+                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${
+                  form.effort === level ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {EFFORT_LABELS[level]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
+            {mediumEffort
+              ? `Medium costs fewer Anlas and less of the Opus allowance. It always runs ${MEDIUM_EFFORT.steps} steps of Euler Ancestral, with no Undesired Content or CFG Rescale; your own settings come back on High.`
+              : 'Medium effort costs fewer Anlas and less of the Opus allowance, with some settings fixed.'}
+          </p>
+        </div>
+      )}
 
       {/* Size presets + manual inputs — locked to the base image's size when one is set */}
       <div>
@@ -1188,15 +1236,19 @@ export function PromptForm() {
         <div>
           <label className="mb-1.5 flex justify-between text-xs font-semibold uppercase tracking-wider text-slate-400">
             <span>Steps</span>
-            <span className="text-violet-400 normal-case font-normal">{form.steps}</span>
+            <span className="text-violet-400 normal-case font-normal">
+              {mediumEffort ? `${MEDIUM_EFFORT.steps} (Medium)` : form.steps}
+            </span>
           </label>
           <input
             type="range"
             min={1}
             max={50}
-            value={form.steps}
+            value={mediumEffort ? MEDIUM_EFFORT.steps : form.steps}
             onChange={(e) => form.set('steps', Number(e.target.value))}
-            className="w-full accent-violet-500"
+            disabled={mediumEffort}
+            title={mediumEffort ? 'Fixed at Medium effort' : undefined}
+            className="w-full accent-violet-500 disabled:opacity-40"
           />
         </div>
         <div>
@@ -1221,9 +1273,11 @@ export function PromptForm() {
         <div>
           <label className={labelCls}>Sampler</label>
           <select
-            value={form.sampler}
+            value={mediumEffort ? MEDIUM_EFFORT.sampler : form.sampler}
             onChange={(e) => form.set('sampler', e.target.value as NovelAISampler)}
-            className={inputCls}
+            disabled={mediumEffort}
+            title={mediumEffort ? 'Fixed at Medium effort' : undefined}
+            className={`${inputCls} disabled:opacity-40`}
           >
             {SAMPLERS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -1324,16 +1378,20 @@ export function PromptForm() {
           <div>
             <div className="mb-1 flex justify-between text-xs text-slate-400">
               <span>CFG Rescale</span>
-              <span className="text-violet-400">{form.cfgRescale.toFixed(2)}</span>
+              <span className="text-violet-400">
+                {mediumEffort ? 'Off (Medium)' : form.cfgRescale.toFixed(2)}
+              </span>
             </div>
             <input
               type="range"
               min={0}
               max={1}
               step={0.02}
-              value={form.cfgRescale}
+              value={mediumEffort ? MEDIUM_EFFORT.cfgRescale : form.cfgRescale}
               onChange={(e) => form.set('cfgRescale', Number(e.target.value))}
-              className="w-full accent-violet-500"
+              disabled={mediumEffort}
+              title={mediumEffort ? 'Not available at Medium effort' : undefined}
+              className="w-full accent-violet-500 disabled:opacity-40"
             />
           </div>
 
@@ -1404,6 +1462,8 @@ export function PromptForm() {
           randomEntries={wildcards.randomEntries}
           unknownRefs={wildcards.unknown}
           costFor={sweepCostFor}
+          effortAvailable={hasEffort(form.model)}
+          effort={form.effort}
           onRun={runSweep}
           onClose={() => setShowSweep(false)}
         />

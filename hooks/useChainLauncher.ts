@@ -5,12 +5,14 @@ import { useChainStore } from '@/store/chainStore';
 import { useSubscription } from '@/hooks/useSubscription';
 import { opusStatus } from '@/lib/anlasCost';
 import { planChain } from '@/lib/chains';
+import { withEffort } from '@/lib/models';
 import { Chain, GeneratedImage } from '@/types/novelai';
 
 /** Prices a chain for some images and hands it to the runner: free runs
  *  start straight away, anything else asks for confirmation first. */
 export function useChainLauncher() {
-  const formModel = useSettingsStore((s) => s.model);
+  // Enhance steps run on the sidebar's model at its effort.
+  const formModel = useSettingsStore((s) => withEffort(s.model, s.effort));
   const formSteps = useSettingsStore((s) => s.steps);
   const { subscription } = useSubscription();
   const request = useChainStore((s) => s.request);

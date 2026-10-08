@@ -114,7 +114,7 @@ lib/
   wildcards.ts                  # __Label__ references + random wildcards, resolved once per request
   sweeps.ts                     # X/Y sweep axes → per-image cells
   sweepGridImage.ts             # Renders a sweep grid as one labelled PNG
-  samplers.ts / models.ts       # Sampler and model lists shared across the UI
+  samplers.ts / models.ts       # Sampler and model lists shared across the UI; V5 Full's Effort (Medium/High)
   presets.ts                    # Saved presets: which settings they capture
   chains.ts                     # Chain steps, validation, per-step price plan, import parsing
   transfer.ts                   # Import/export file format, validation, re-linking

@@ -4,15 +4,22 @@ import { LibraryTidbit } from '@/types/novelai';
 import { SAMPLERS } from '@/lib/samplers';
 import { randomOptions } from '@/lib/wildcards';
 import { randomSeed } from '@/lib/imageRequest';
-import { AXIS_NAMES, draftFor, parseTagList, SweepAxisDraft, SweepDefaults } from '@/lib/sweeps';
+import { AXIS_NAMES, draftFor, EFFORT_LABELS, parseTagList, SweepAxisDraft, SweepDefaults } from '@/lib/sweeps';
 
-/** The axis kinds offered, plus the random library entries in use. */
-export function axisKinds(randomEntries: LibraryTidbit[]): { key: string; label: string }[] {
+/** The axis kinds offered, plus the random library entries in use. Effort
+ *  is listed either way, but only usable where the model has the toggle. */
+export function axisKinds(
+  randomEntries: LibraryTidbit[],
+  effortAvailable = true,
+): { key: string; label: string; disabled?: boolean }[] {
   return [
     { key: 'cfg', label: 'CFG scale' },
     { key: 'cfgRescale', label: AXIS_NAMES.cfgRescale },
     { key: 'steps', label: AXIS_NAMES.steps },
     { key: 'sampler', label: AXIS_NAMES.sampler },
+    effortAvailable
+      ? { key: 'effort', label: AXIS_NAMES.effort }
+      : { key: 'effort', label: `${AXIS_NAMES.effort} (V5 Full only)`, disabled: true },
     { key: 'seed', label: AXIS_NAMES.seed },
     { key: 'tags', label: AXIS_NAMES.tags },
     ...randomEntries.map((e) => ({ key: `wildcard:${e.id}`, label: `⚄ ${e.label.trim() || 'Untitled'}` })),
@@ -30,14 +37,28 @@ interface Props {
   optional?: boolean;
   defaults: SweepDefaults;
   randomEntries: LibraryTidbit[];
+  /** Whether the model being swept has the Effort toggle (V5 Full). */
+  effortAvailable?: boolean;
 }
 
 /** One sweep axis: its kind, then its values. Used by the Sweep dialog and by
  *  a chain's Sweep step. */
-export function SweepAxisEditor({ title, draft, onChange, other, problem, optional, defaults, randomEntries }: Props) {
+export function SweepAxisEditor({
+  title,
+  draft,
+  onChange,
+  other,
+  problem,
+  optional,
+  defaults,
+  randomEntries,
+  effortAvailable = true,
+}: Props) {
   const chips =
     draft.key === 'sampler'
       ? SAMPLERS.map((s) => ({ value: s.value as string, label: s.label }))
+      : draft.key === 'effort'
+        ? Object.entries(EFFORT_LABELS).map(([value, label]) => ({ value, label }))
       : draft.key.startsWith('wildcard:')
         ? (() => {
             const entry = randomEntries.find((e) => `wildcard:${e.id}` === draft.key);
@@ -57,8 +78,8 @@ export function SweepAxisEditor({ title, draft, onChange, other, problem, option
           className="min-w-0 rounded bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none border border-slate-700 focus:border-violet-500"
         >
           {optional && <option value="none">None</option>}
-          {axisKinds(randomEntries).map((k) => (
-            <option key={k.key} value={k.key} disabled={k.key === other.key && k.key !== 'tags'}>
+          {axisKinds(randomEntries, effortAvailable).map((k) => (
+            <option key={k.key} value={k.key} disabled={k.disabled || (k.key === other.key && k.key !== 'tags')}>
               {k.label}
             </option>
           ))}
