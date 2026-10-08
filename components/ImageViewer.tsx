@@ -18,6 +18,7 @@ import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useV
 import { useChainLauncher } from '@/hooks/useChainLauncher';
 import { useChainBusy } from '@/store/chainStore';
 import { chainSummary } from '@/lib/chains';
+import { withEffort } from '@/lib/models';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
@@ -177,7 +178,7 @@ export function ImageViewer() {
   const enhancePrice = enhanceScale !== null ? enhancePriceSize(imgW, imgH, enhanceScale) : null;
   const enhanceCost = enhancePrice
     ? calculateAnlasCost({
-        model: form.model,
+        model: withEffort(form.model, form.effort),
         width: enhancePrice.width,
         height: enhancePrice.height,
         steps: form.steps,

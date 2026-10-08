@@ -5,6 +5,7 @@ import { CharacterPromptEntry, GeneratedImage, NovelAIModel } from '@/types/nove
 import { buildImageRequest, composeFinalPrompts, isV3Model } from '@/lib/imageRequest';
 import { insertTags } from '@/lib/naiPresets';
 import { joinPromptParts } from '@/lib/promptText';
+import { withEffort } from '@/lib/models';
 import { axisInfo, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
 
 // A chain's Sweep step: "what if this image had X instead?". Each cell is a
@@ -45,7 +46,7 @@ export function useSweepAround() {
     const xInfo = axisInfo(x, []);
     const yInfo = y ? axisInfo(y, []) : undefined;
     const sweepId = crypto.randomUUID();
-    const model = textModel(image.model);
+    const imageModel = textModel(image.model);
     const p = image.parameters;
     const characters: CharacterPromptEntry[] = (p.characterPrompts ?? []).map((c) => ({
       ...c,
@@ -61,6 +62,8 @@ export function useSweepAround() {
         onCell?.(i + 1, cells.length);
         const cell = cells[i];
         const tags = joinPromptParts(extraTags, cell.tags);
+        // An Effort axis picks V5 Full's model per cell (others ignore it).
+        const model = cell.effort ? withEffort(imageModel, cell.effort) : imageModel;
 
         // Re-compose from the prompt as written when this app made the image,
         // so an Enhance result's additions don't carry over; otherwise the

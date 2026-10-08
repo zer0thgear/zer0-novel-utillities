@@ -8,6 +8,7 @@ import {
 } from '@/lib/anlasCost';
 import { normalizePromptPart } from '@/lib/promptText';
 import { roundToSizeStep } from '@/lib/requestImage';
+import { withEffort } from '@/lib/models';
 import { AXIS_NAMES, MAX_SWEEP_CELLS, NO_AXIS, parseAxisDraft, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
 import {
   ENHANCE_LEVELS,
@@ -233,7 +234,8 @@ export function planChain(
           (sum, cell) =>
             sum +
             calculateAnlasCost({
-              model: sweepModel,
+              // An Effort axis picks V5 Full's model per cell.
+              model: cell.effort ? withEffort(sweepModel, cell.effort) : sweepModel,
               width: roundToSizeStep(width),
               height: roundToSizeStep(height),
               steps: cell.steps ?? steps,

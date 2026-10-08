@@ -13,6 +13,7 @@ import { opusStatus } from '@/lib/anlasCost';
 import { defaultStep, DIRECTOR_TOOLS, EMOTIONS, planChain, STEP_KINDS } from '@/lib/chains';
 import { EnhanceScale, scaleLabel } from '@/lib/enhance';
 import { moveItem } from '@/lib/promptText';
+import { withEffort } from '@/lib/models';
 import { Chain, ChainStep, NovelAIModel } from '@/types/novelai';
 
 interface Props {
@@ -42,8 +43,8 @@ export function ChainEditorModal({ chain, onClose }: Props) {
   // Priced for an image from the sidebar's current size and model.
   const plan = planChain(
     draft,
-    { width: form.width, height: form.height, model: form.model, steps: form.steps },
-    { formModel: form.model, formSteps: form.steps, ...opusStatus(subscription) },
+    { width: form.width, height: form.height, model: withEffort(form.model, form.effort), steps: form.steps },
+    { formModel: withEffort(form.model, form.effort), formSteps: form.steps, ...opusStatus(subscription) },
   );
   const trimmed = name.trim();
   const nameTaken = form.chains.some((c) => c.id !== chain?.id && c.name.trim().toLowerCase() === trimmed.toLowerCase());

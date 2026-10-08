@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { splitEffort } from '@/lib/models';
 import { useSettingsStore } from '@/store/settingsStore';
 import { NOT_REPRODUCIBLE_TEXT, ParsedNaiMetadata } from '@/lib/naiMetadata';
 import { CharacterPromptEntry, NovelAINoiseSchedule, NovelAISampler } from '@/types/novelai';
@@ -98,17 +99,25 @@ export function ImportModal({
       form.set('characters', options.appendCharacters ? [...form.characters, ...imported] : imported);
     }
     if (options.settings) {
-      form.set('steps', meta.steps);
+      // A Medium effort image comes back as V5 Full at Medium. Medium fixes
+      // its steps, sampler and CFG Rescale, so those are left as they are:
+      // they're what High uses.
+      const picked = meta.guessedModel ? splitEffort(meta.guessedModel) : undefined;
+      const medium = picked?.effort === 'medium';
+      if (!medium) form.set('steps', meta.steps);
       form.set('scale', meta.scale);
       form.set('width', meta.width);
       form.set('height', meta.height);
       form.set('smea', meta.smea);
       form.set('smeaDyn', meta.smeaDyn);
-      form.set('cfgRescale', meta.cfgRescale);
+      if (!medium) form.set('cfgRescale', meta.cfgRescale);
       form.set('variety', meta.variety);
-      if (meta.sampler) form.set('sampler', meta.sampler as NovelAISampler);
+      if (meta.sampler && !medium) form.set('sampler', meta.sampler as NovelAISampler);
       if (meta.noiseSchedule) form.set('noiseSchedule', meta.noiseSchedule as NovelAINoiseSchedule);
-      if (meta.guessedModel) form.set('model', meta.guessedModel);
+      if (picked) {
+        form.set('model', picked.model);
+        if (picked.effort) form.set('effort', picked.effort);
+      }
       // Only this app's own images know these; a dropped PNG leaves them alone.
       if (meta.modifiers) useSettingsStore.setState(meta.modifiers);
     }

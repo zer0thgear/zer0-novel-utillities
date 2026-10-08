@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LibraryTidbit } from '@/types/novelai';
+import { Effort, LibraryTidbit } from '@/types/novelai';
 import {
+  AXIS_NAMES,
   draftFor,
   MAX_SWEEP_CELLS,
+  MEDIUM_FIXED_AXES,
   NO_AXIS,
   SweepAxis,
   SweepAxisDraft,
+  SweepAxisKind,
+  SweepCell,
   sweepCells,
   SweepDefaults,
   toAxis,
@@ -20,14 +24,17 @@ interface Props {
   /** Random library entries the current prompts actually use. */
   randomEntries: LibraryTidbit[];
   unknownRefs: string[];
-  /** Anlas for one single-image request at a given step count, or null if
-   *  the subscription (and so the Opus discount) isn't known yet. */
-  costFor: (steps: number) => number | null;
+  /** Anlas for one cell's single-image request, or null if the
+   *  subscription (and so the Opus discount) isn't known yet. */
+  costFor: (cell: SweepCell) => number | null;
+  /** Whether the model has the Effort toggle (V5 Full), and where it's set. */
+  effortAvailable: boolean;
+  effort: Effort;
   onRun: (x: SweepAxis, y?: SweepAxis) => void;
   onClose: () => void;
 }
 
-export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRun, onClose }: Props) {
+export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, effortAvailable, effort, onRun, onClose }: Props) {
   const [x, setX] = useState<SweepAxisDraft>(() => draftFor('cfg', defaults, randomEntries));
   const [y, setY] = useState<SweepAxisDraft>(NO_AXIS);
 
@@ -37,11 +44,30 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const xr = toAxis(x);
-  const yr = toAxis(y);
+  // A saved setup can bring an Effort axis to a model without the toggle.
+  const usable = (d: SweepAxisDraft) =>
+    d.key === 'effort' && !effortAvailable ? { problem: 'Effort is only on V5 Full' } : toAxis(d);
+  const xr = usable(x);
+  const yr = usable(y);
   const cells = xr.axis && !yr.problem ? sweepCells(xr.axis, yr.axis) : [];
   const tooMany = cells.length > MAX_SWEEP_CELLS;
-  const costs = cells.map((c) => costFor(c.steps ?? defaults.steps));
+  const costs = cells.map((c) => costFor(c));
+  // Medium effort fixes steps, sampler and CFG Rescale, so sweeping one of
+  // those does nothing to its images.
+  const fixedSwept = [xr.axis, yr.axis].find((a) => a && MEDIUM_FIXED_AXES.includes(a.kind))?.kind as
+    | Exclude<SweepAxisKind, 'wildcard'>
+    | undefined;
+  const effortAxis = [xr.axis, yr.axis].find((a) => a?.kind === 'effort');
+  const mediumNote =
+    !effortAvailable || !fixedSwept
+      ? null
+      : effortAxis
+        ? effortAxis.values.includes('medium')
+          ? `Medium effort fixes ${AXIS_NAMES[fixedSwept]}, so the Medium images won't change along it.`
+          : null
+        : effort === 'medium'
+          ? `Medium effort fixes ${AXIS_NAMES[fixedSwept]}, so these images would all be the same. Switch Effort to High, or sweep Effort too.`
+          : null;
   const totalCost = costs.every((c) => c !== null) ? costs.reduce<number>((n, c) => n + (c ?? 0), 0) : null;
   const canRun = !!xr.axis && !yr.problem && cells.length > 0 && !tooMany;
   const seedIsAxis = x.key === 'seed' || y.key === 'seed';
@@ -88,6 +114,7 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
           problem={xr.problem}
           defaults={defaults}
           randomEntries={randomEntries}
+          effortAvailable={effortAvailable}
         />
         <SweepAxisEditor
           title="Y axis"
@@ -98,6 +125,7 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
           optional
           defaults={defaults}
           randomEntries={randomEntries}
+          effortAvailable={effortAvailable}
         />
 
         <div className="flex flex-col gap-1 rounded-lg bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
@@ -118,6 +146,7 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, onRu
           {randomEntries.length > sweptEntries && (
             <p>Other wildcards are rolled once and held the same across the grid.</p>
           )}
+          {mediumNote && <p className="text-amber-400">{mediumNote}</p>}
           {tooMany && (
             <p className="text-amber-400">That&apos;s more than {MAX_SWEEP_CELLS} images — narrow it down.</p>
           )}

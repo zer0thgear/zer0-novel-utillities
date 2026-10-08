@@ -10,6 +10,7 @@ import { modelShortName } from '@/lib/models';
  *  and UI preferences like streaming mode. */
 export const PRESET_SETTINGS_KEYS = [
   'model',
+  'effort',
   'width',
   'height',
   'steps',

@@ -148,6 +148,7 @@ function parseLibraryEntry(v: unknown): LibraryTidbit | null {
 
 const SETTING_CHECKS: Record<(typeof PRESET_SETTINGS_KEYS)[number], (v: unknown) => boolean> = {
   model: (v) => MODELS.some((m) => m.value === v),
+  effort: (v) => v === 'medium' || v === 'high',
   width: (v) => num(v) && v >= 64 && v <= 4096,
   height: (v) => num(v) && v >= 64 && v <= 4096,
   steps: (v) => num(v) && v >= 1 && v <= 50,

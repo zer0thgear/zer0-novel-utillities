@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { withEffort } from '@/lib/models';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { varietySigma } from '@/lib/variety';
@@ -69,7 +70,8 @@ export function useEnhance(): UseEnhanceReturn {
       const request = buildImageRequest({
         input,
         negativePrompt,
-        model: form.model,
+        // The sidebar's model, at its effort, as NovelAI's Enhance does.
+        model: withEffort(form.model, form.effort),
         action: 'img2img',
         characters: resolved.characters,
         useCoords: form.useCoords,

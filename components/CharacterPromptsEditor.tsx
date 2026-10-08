@@ -21,6 +21,9 @@ interface Props {
    *  marker on the position canvas). A fresh object each time, so asking for
    *  the same character twice still jumps. */
   jumpTo?: { id: string } | null;
+  /** Shown on each character's Negative tab when the model won't send it
+   *  (Medium effort). */
+  ucNote?: string;
 }
 
 type ActiveTab = 'prompt' | 'uc';
@@ -31,7 +34,7 @@ const FILTER_MIN_CHARACTERS = 4;
 const matchesQuery = (c: CharacterPromptEntry, q: string) =>
   [c.label, c.prompt, c.uc].some((f) => f?.toLowerCase().includes(q));
 
-export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model, tokens, jumpTo }: Props) {
+export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, model, tokens, jumpTo, ucNote }: Props) {
   const apiKey = useSessionStore((s) => s.apiKey);
   const [activeTabs, setActiveTabs] = useState<Record<string, ActiveTab>>({});
   const [query, setQuery] = useState('');
@@ -346,6 +349,7 @@ export function CharacterPromptsEditor({ characters, onChange, maxEnabled = 6, m
 
               {/* Tab content */}
               <div className="flex flex-col gap-2.5 p-3">
+                {tab === 'uc' && ucNote && <p className="text-xs text-amber-400/90">{ucNote}</p>}
                 <TagAutocompleteField
                   as="textarea"
                   rows={3}

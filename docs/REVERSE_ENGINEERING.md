@@ -121,11 +121,31 @@ free       = Opus && pixels <= 1048576 && steps <= 28 && !(V5 && usage.isNegativ
 cost       = perSample * (n_samples - (free ? 1 : 0))
 ```
 
+- **Medium effort** (`nai-diffusion-5-full-medium` and its inpainting model) multiplies the per-step term by `1 / 1.06521739` inside the `ceil`, before the V5 ×1.5. Its requests always carry 14 steps, so 832×1216 is 17 against High's 26 at 23 steps. Checked against NovelAI's own price function in its page, at six sizes and for a Medium inpaint.
 - **V3, V4, V4.5 and V5 share the curve, and V5 costs 1.5× more.** An earlier empirical fit used one curve for every model. It happened to match V5 but overstated V3/V4/V4.5 by about 1.5×.
 - **img2img strength scales the price.** An earlier "confirmed live" note said it didn't. That check almost certainly happened at a size where the Opus allowance made everything read 0.
 - **Only V5 has an Opus usage limit** (`usage.isNegative` on `/user/subscription`). Once it's used up, V5 stops being free; other models don't.
 - **Upscale** (`/ai/upscale`) is a flat price by input size, with no Opus discount: ≤1 MP 1, ≤1.75 MP 2, ≤2.45 MP 3, ≤3.1 MP 4. NovelAI's own UI doesn't offer Upscale above 1 MP.
 - **Director Tools** are priced as a 28-step V3 generation at the image's size clamped to 1–3.1 MP, so Opus gets them free at ≤1 MP. Background removal is 3× that plus 5, and never discounted. Pixel Snap is free.
+
+### V5 Full's Effort toggle
+
+Announced 2026-10-08 (journal.novelai.net, "NovelAI Diffusion V5 Full now has a Medium and High Effort Toggle") and read from novelai.net's client the same day.
+
+- **Medium is a model, not a parameter.** It's `nai-diffusion-5-full-medium`, with `nai-diffusion-5-full-medium-inpainting` for inpainting. The toggle switches the selected model between it and V5 Full. Each keeps its own `steps`, `sampler`, `noise_schedule`, `ucPresetId` and `cfg_rescale`, and the rest is carried across.
+- **Capabilities:** its model table entry is V5 Full's with `cfgRescale: false` and `fixedSettings: { steps: 14, sampler: "k_euler_ancestral", ucPresetId: "heavy" }`. The UI hides Steps, Sampler and CFG Rescale for it, and it shares V5 Full's presets, tokenizer and size limits.
+- **Request prep with fixed settings:** steps and sampler are forced, and `ucPresetId` is `heavy`. `uc` is the Heavy preset's text composed onto an empty UC, so the user's own UC isn't sent. Every character's `uc` is blanked, and `tag_hint_uc_preset` is always sent (2). `cfg_rescale` isn't sent at all: the request class drops it for models without the `cfgRescale` capability. High still sends it, and both send `noise_schedule`.
+- **Don't trust the capability table alone.** The request class deletes `noise_schedule` for models whose table says `noiseSchedule: false`, and every V5 model says that. Yet both captured V5 requests (Medium and High) carried `noise_schedule: "karras"`, so something later puts it back. The same deletion is what really removes Medium's `cfg_rescale`. When the table and a capture disagree, the capture wins.
+- **Price vs the announcement:** the announcement says Medium uses "about 42% less" than High at 23 steps. NovelAI's own price function gives about 35% less at default settings (17 against 26 Anlas at 832×1216), so the 42% is presumably about Opus usage, which is counted separately.
+- **Images:** V5 images name their model by a hash in "Source". `657484A5` and `0ADF9AB7` are V5 Full, `93F4BD30` and `70AB5786` are Medium, and `DB276663` (or any other) is V5 Curated. (The app had read every V5 image as Full before this.)
+- **Checked live (2026-10-08):** novelai.net's own Medium request was captured and matched ours field for field, apart from its streaming-only `stream` and `image_format`. With the same seed, our Medium image was identical to novelai.net's: all 288 values of the 8×12 block-mean grid matched. A Medium inpaint was accepted by the server. All three were free on Opus.
+- **Where to find it in the client:** module numbers change with each build, so search the bundle's module sources (`self.webpackChunk_N_E`) for strings:
+  - `naiDiffusionV5FullMedium` finds the model ids, the base/inpainting mappings, the "Source" hash switch and the price factor.
+  - `fixedSettings` finds the model table entry, the request prep that applies it, and the UI rows it hides.
+  - `effortTooltip` finds the toggle and the list of settings each effort keeps (`["steps","sampler","noise_schedule","ucPresetId","cfg_rescale"]`).
+  - `cfgRescale||delete` finds the request class's capability deletions.
+- **novelai.net keeps its settings in localStorage:** `imagegen-params-<model>` per model (created the first time a model is used), plus `imagegen-model` and `imagegen-prompt`. Switching effort in its UI creates the Medium entry. Back these up before driving its UI in a test, and restore them afterwards.
+- **In this app** it's a separate `effort` setting rather than a model, resolved to the request's model by `withEffort` (`lib/models.ts`). `buildImageRequest` enforces Medium's fixed settings for every flow, so the user's own High settings stay untouched in the form.
 
 ### V5's automatic text section
 
@@ -221,4 +241,10 @@ This app bundles the open Apache-2.0 equivalents: the T5 vocab from `google-t5/t
 1. **Live-test against a real account, sparingly and with explicit budget tracking.** Every fact above that involved real Anlas cost was verified with the smallest, cheapest possible generation that could answer the question (low resolution, low step count), and cross-checked against what the account's own balance actually showed afterward, not just what a UI displayed (dashboard balances can be stale/cached client-side — fetch the account endpoint fresh if you need to confirm an actual charge).
 2. **Prefer reading official docs and live UI behavior over guessing at request shapes.** Several of the wrong assumptions listed above were "reasonable-looking" values that nobody had actually checked against current behavior.
 3. **A value being present in a widely-used community library is not the same as it being correct today.** These projects are valuable for *shape* (what fields exist, roughly how they nest) and often stale for *content* (specific numbers, specific strings) since NovelAI's actual service evolves without a public changelog for third-party integrators.
-4. **When request interception fails, it's not necessarily a dead end.** The generation request itself resisted every attempt at page-level `fetch`/`XHR` patching in this project — but the same information (exact preset tag text) turned out to be published, just not where a first search would find it (NovelAI's own end-user docs, not developer docs).
+4. **When request interception fails, it's not necessarily a dead end.** Early on, the generation request resisted every attempt at page-level `fetch`/`XHR` patching in this project, but the same information (exact preset tag text) turned out to be published, just not where a first search would find it (NovelAI's own end-user docs, not developer docs).
+5. **Interception does work now (since 2026-09-18), and it's the best evidence there is.** novelai.net calls `window.fetch` for `/ai/generate-image-stream` with a `FormData` body whose `request` entry is the JSON (images go in their own entries). Wrap `window.fetch` in its tab and read `await body.get('request').text()`. There are two ways to use it:
+   - **Blocking:** answer the generate URL with a fake 500, which captures the request without generating or spending anything.
+   - **Pass-through:** record the request, then call the real fetch, which captures a request that does generate and gives a reference image for a same-seed comparison.
+
+   Captures settled things reading the code couldn't, such as Medium's missing `cfg_rescale` (see the Effort section).
+6. **Compare images by a block-mean grid, not bytes.** Draw the result to an 8×12 canvas with `imageSmoothingQuality = 'high'` and compare the 288 RGB values. File bytes always differ, because novelai.net re-encodes its streamed image client-side. Exact pixel hashes can differ too, even between two of our own runs of the same request. The grid is stable across runs, and identical between this app and novelai.net when the request matches. Output can also drift over hours, so take a fresh novelai.net reference right before comparing.

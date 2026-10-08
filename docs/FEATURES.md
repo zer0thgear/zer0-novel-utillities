@@ -8,6 +8,13 @@ The app talks to NovelAI directly from your browser with your own API key. Its r
 
 V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime and Furry). The sidebar only offers the options a model actually supports: presets, character prompts, transparency, SMEA and so on.
 
+**Effort (V5 Full).** Under the model, V5 Full has NovelAI's Effort toggle:
+- **High** is V5 Full as it's always been.
+- **Medium** runs a cheaper, distilled version: about two-thirds of High's price at default settings (832×1216: 17 Anlas against 26), and less of the Opus allowance.
+- **What Medium fixes:** 14 steps, Euler Ancestral, and the Heavy UC preset. It sends no Undesired Content of yours (the negative prompt or characters' negatives) and has no CFG Rescale. Those fields show greyed out, with a note suggesting negative emphasis in the prompt (`-3::hat::`) instead.
+- **Your settings are kept:** switching back to High brings back your own steps, sampler, rescale and negatives.
+- **Everywhere else:** Enhance and inpainting follow the toggle too (Medium inpaints with its own model). Reusing a Medium image switches the form to V5 Full at Medium without overwriting High's settings.
+
 ## Writing prompts
 
 - **Base prompts.** Keep several prompts side by side and pick one (**Single**), or tick several to generate one image each (**Batch**), grouped together in history. Reorder them with the arrows.
@@ -45,7 +52,7 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 ## X/Y sweeps
 
 **Sweep** generates a grid that varies one or two things:
-- **What can vary:** CFG, CFG rescale, steps, sampler, seed, tags, or the options of a random wildcard.
+- **What can vary:** CFG, CFG rescale, steps, sampler, effort (V5 Full: Medium vs High, side by side), seed, tags, or the options of a random wildcard. Medium fixes steps, sampler and CFG rescale, so the dialog says when an axis won't change the Medium images.
 - **Tags:** a comma-separated list of tags to try, each added where quality tags go. A weighted group stays one value: `{open mouth, teeth}`, `[blush]` or `1.3::looking at viewer, wink::`. A "(none)" baseline (on by default) keeps the prompt as-is for comparison.
 - **What stays fixed:** the seed and every other wildcard roll, so only the swept values differ.
 - **Before it runs:** it shows how many images and how much Anlas the grid will take.

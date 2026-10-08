@@ -1,4 +1,4 @@
-import { LibraryTidbit, NovelAISampler, SweepAxisInfo } from '@/types/novelai';
+import { Effort, LibraryTidbit, NovelAISampler, SweepAxisInfo } from '@/types/novelai';
 import { SAMPLERS } from '@/lib/samplers';
 import { joinPromptParts } from '@/lib/promptText';
 import { randomSeed } from '@/lib/imageRequest';
@@ -8,10 +8,11 @@ import { randomOptions } from '@/lib/wildcards';
 // held constant (including the seed, unless it's an axis), so differences in
 // the grid come from the swept parameter.
 
-export type SweepAxisKind = 'cfg' | 'cfgRescale' | 'steps' | 'sampler' | 'seed' | 'tags' | 'wildcard';
+export type SweepAxisKind = 'cfg' | 'cfgRescale' | 'steps' | 'sampler' | 'effort' | 'seed' | 'tags' | 'wildcard';
 
 /** One axis. `values` are raw strings for every kind: numbers as typed,
- *  sampler ids, tags to add ('' for none), or a wildcard entry's options. */
+ *  sampler ids, efforts, tags to add ('' for none), or a wildcard entry's
+ *  options. */
 export interface SweepAxis {
   kind: SweepAxisKind;
   values: string[];
@@ -27,12 +28,17 @@ export interface SweepCell {
   cfgRescale?: number;
   steps?: number;
   sampler?: NovelAISampler;
+  /** V5 Full's effort for this cell (other models ignore it). */
+  effort?: Effort;
   seed?: number;
   /** Tags added to the base prompt for this cell. */
   tags?: string;
   /** Random library entries pinned to one option (see resolveRequestPrompts). */
   force: Record<string, string>;
 }
+
+/** Axes whose values Medium effort ignores, since it fixes them. */
+export const MEDIUM_FIXED_AXES: readonly SweepAxisKind[] = ['steps', 'sampler', 'cfgRescale'];
 
 /** Sweeps queue one request per cell, so this caps a run at a size that's
  *  still sensible to confirm and wait for. */
@@ -53,6 +59,7 @@ export const AXIS_NAMES: Record<Exclude<SweepAxisKind, 'wildcard'>, string> = {
   cfgRescale: 'CFG Rescale',
   steps: 'Steps',
   sampler: 'Sampler',
+  effort: 'Effort',
   seed: 'Seed',
   tags: 'Tags',
 };
@@ -65,11 +72,16 @@ export function axisInfo(axis: SweepAxis, library: LibraryTidbit[]): SweepAxisIn
   const label = (v: string) =>
     axis.kind === 'sampler'
       ? SAMPLERS.find((s) => s.value === v)?.label ?? v
+      : axis.kind === 'effort'
+        ? EFFORT_LABELS[v as Effort] ?? v
       : axis.kind === 'tags' && v === ''
         ? '(none)'
         : v;
   return { name, values: axis.values.map(label) };
 }
+
+/** The Effort toggle's two levels, as NovelAI labels them. */
+export const EFFORT_LABELS: Record<Effort, string> = { medium: 'Medium', high: 'High' };
 
 function apply(cell: SweepCell, axis: SweepAxis, value: string) {
   switch (axis.kind) {
@@ -77,6 +89,7 @@ function apply(cell: SweepCell, axis: SweepAxis, value: string) {
     case 'cfgRescale': cell.cfgRescale = Number(value); break;
     case 'steps': cell.steps = Number(value); break;
     case 'sampler': cell.sampler = value as NovelAISampler; break;
+    case 'effort': cell.effort = value as Effort; break;
     case 'seed': cell.seed = Number(value); break;
     // Both axes may add tags; they're combined.
     case 'tags': cell.tags = joinPromptParts(cell.tags, value) || undefined; break;
@@ -201,6 +214,7 @@ export function draftFor(key: string, d: SweepDefaults, randomEntries: LibraryTi
     const others = SAMPLERS.map((s) => s.value).filter((v) => v !== d.sampler);
     return { key, text: '', picked: [d.sampler, ...others.slice(0, 2)] };
   }
+  if (key === 'effort') return { key, text: '', picked: ['medium', 'high'] };
   if (key.startsWith('wildcard:')) {
     const entry = randomEntries.find((e) => `wildcard:${e.id}` === key);
     return { key, text: '', picked: entry ? randomOptions(entry) : [] };
@@ -235,5 +249,6 @@ export function toAxis(draft: SweepAxisDraft): { axis?: SweepAxis; problem?: str
   }
   if (!draft.picked.length) return { problem: 'Pick at least one' };
   if (draft.key === 'sampler') return { axis: { kind: 'sampler', values: draft.picked } };
+  if (draft.key === 'effort') return { axis: { kind: 'effort', values: draft.picked } };
   return { axis: { kind: 'wildcard', entryId: draft.key.slice('wildcard:'.length), values: draft.picked } };
 }
