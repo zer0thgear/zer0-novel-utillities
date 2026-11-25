@@ -1,5 +1,6 @@
 import { NovelAIModel, NovelAISubscription } from '@/types/novelai';
 import { isMediumEffort, MEDIUM_EFFORT } from '@/lib/models';
+import { referenceCost } from '@/lib/preciseReference';
 
 // NovelAI's own Anlas price formulas, as its web client computes them (read
 // from novelai.net's bundle on 2026-09-18 and checked against the prices its
@@ -12,9 +13,11 @@ import { isMediumEffort, MEDIUM_EFFORT } from '@/lib/models';
 const PER_PIXEL = 2951823174884865e-21;
 const PER_PIXEL_STEP = 5753298233447344e-22;
 const SMEA_FACTOR = 1.2;
-/** Medium effort scales the per-step part of the price by this (NovelAI's
- *  client, 2026-10-08), on top of its fixed 14 steps. */
-const MEDIUM_EFFORT_STEP_FACTOR = 1 / 1.06521739;
+/** Medium effort is priced as a 23-step image divided by this, whatever
+ *  its steps, with no rounding before the V5 factor (NovelAI's client,
+ *  2026-11-24; it replaced a per-step factor of 1 / 1.06521739). */
+const MEDIUM_EFFORT_STEPS = 23;
+const MEDIUM_EFFORT_DIVISOR = 1.75;
 const SMEA_DYN_FACTOR = 1.4;
 /** The free Opus allowance covers images up to this size at ≤ 28 steps. */
 const OPUS_FREE_PIXELS = 1048576;
@@ -36,6 +39,10 @@ export interface AnlasCostInput {
   opusExhausted?: boolean;
   /** Background removal never gets the Opus discount. */
   noOpusDiscount?: boolean;
+  /** Precise References sent (after referencesFor): 5 Anlas each, per
+   *  image, on top. NovelAI's price leaves the Opus discount on the image
+   *  itself as it is. */
+  references?: number;
 }
 
 export function calculateAnlasCost({
@@ -50,6 +57,7 @@ export function calculateAnlasCost({
   isOpus,
   opusExhausted = false,
   noOpusDiscount = false,
+  references = 0,
 }: AnlasCostInput): number {
   const pixels = width * height;
   const isV5 = model.startsWith('nai-diffusion-5');
@@ -57,8 +65,10 @@ export function calculateAnlasCost({
   // Medium effort always runs its own fixed step count, whatever's asked.
   const medium = isMediumEffort(model);
   if (medium) steps = MEDIUM_EFFORT.steps;
-  const stepFactor = medium ? MEDIUM_EFFORT_STEP_FACTOR : 1;
-  let perSample = Math.ceil(PER_PIXEL * pixels + PER_PIXEL_STEP * pixels * steps * stepFactor) * smeaFactor;
+  let perSample =
+    (medium
+      ? (PER_PIXEL * pixels + PER_PIXEL_STEP * pixels * MEDIUM_EFFORT_STEPS) / MEDIUM_EFFORT_DIVISOR
+      : Math.ceil(PER_PIXEL * pixels + PER_PIXEL_STEP * pixels * steps)) * smeaFactor;
   if (isV5) perSample *= 1.5;
   perSample = Math.max(Math.ceil(perSample * strength), 2);
 
@@ -68,7 +78,7 @@ export function calculateAnlasCost({
     steps <= OPUS_FREE_STEPS &&
     !(isV5 && opusExhausted) &&
     !noOpusDiscount;
-  return perSample * (Math.max(1, nSamples) - (free ? 1 : 0));
+  return perSample * (Math.max(1, nSamples) - (free ? 1 : 0)) + referenceCost(references, nSamples);
 }
 
 /** The Opus inputs to calculateAnlasCost for an account (or none if unknown). */

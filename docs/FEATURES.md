@@ -10,7 +10,7 @@ V5 Full and Curated, V4.5 Full and Curated, V4 Full and Curated, and V3 (Anime a
 
 **Effort (V5 Full).** Under the model, V5 Full has NovelAI's Effort toggle:
 - **High** is V5 Full as it's always been.
-- **Medium** runs a cheaper, distilled version: about two-thirds of High's price at default settings (832×1216: 17 Anlas against 26), and less of the Opus allowance.
+- **Medium** runs a cheaper, distilled version: about 42% less than High at default settings (832×1216: 15 Anlas against 26), and less of the Opus allowance. It takes no Precise Reference: with any reference set, generations run High instead, and the toggle says so.
 - **What Medium fixes:** 14 steps, Euler Ancestral, and the Heavy UC preset. It sends no Undesired Content of yours (the negative prompt or characters' negatives) and has no CFG Rescale. Those fields show greyed out, with a note suggesting negative emphasis in the prompt (`-3::hat::`) instead.
 - **Your settings are kept:** switching back to High brings back your own steps, sampler, rescale and negatives.
 - **Everywhere else:** Enhance and inpainting follow the toggle too (Medium inpaints with its own model). Reusing a Medium image switches the form to V5 Full at Medium without overwriting High's settings.
@@ -66,6 +66,17 @@ Fur mode, NSFW, Transparent background (V5), **Quality Tags** and **UC presets**
 - **Esc** goes from one of a batch's images back to its grid.
 - **Ctrl+↑ / Ctrl+↓** in any prompt field adds or removes emphasis around the tag under the cursor.
 
+## Precise Reference
+
+Reference images that guide a generation, as on novelai.net, on V5 (Full and Curated) and V4.5. Add them from the **Precise Reference** panel in the sidebar, or drop or paste an image and pick **Precise Reference**, or use **Use as Reference** on any image in the viewer.
+- **Type:** Character & Style, Character, Style, or Outfit (V5). On V5, Character and Character & Style have **Prefer same outfit**, which follows the reference's outfit more closely.
+- **Strength:** how closely the result follows the reference. It goes up to 5 on V5 (NovelAI suggests fairly high for Style) and up to 1 on V4.5. V4.5 also has **Fidelity**.
+- **Several at once:** up to 16, mixed freely, each with its own type and strength, turned off and on, and reordered.
+- **Cost:** 5 Anlas per reference for each image made, shown on the Generate button.
+- **Where they apply:** generations, sweeps, Enhance and Variations (and chains that run those), as on novelai.net. V5 can't use them while inpainting, and V4.5 can. The panel warns when references won't be sent: on V4 or V3, while inpainting on V5, or an Outfit reference on V4.5.
+- **Medium effort** doesn't take references, so with any set, V5 Full runs at High.
+- **Sending:** each image is resized for the model the way novelai.net does it before it's sent. References last until the page is refreshed, like the Image2Image base.
+
 ## Working with an image
 
 From the viewer:
@@ -76,7 +87,7 @@ From the viewer:
 - **Inpaint** and **Edit**: open the canvas (below). Saving brings you back here with the image set as the Image2Image base, as on novelai.net, so you can adjust the prompt and settings and generate with the usual Generate button.
 - **Chain**: run a saved chain (see below).
 - **Reuse**: load the image's prompt and settings back into the sidebar, exactly as written, without doubling up quality tags.
-- **Use as Base**, **Use this seed**, **Metadata** (read the image's embedded generation data), **Download**.
+- **Use as Base**, **Use as Reference** (add it as a Precise Reference), **Use this seed**, **Metadata** (read the image's embedded generation data), **Download**.
 - **Hold: Original**: compare an edited image with its source.
 
 Actions NovelAI can't perform on an image, such as renders past about 3.1 MP, are disabled with the reason shown.

@@ -8,7 +8,8 @@ import {
 } from '@/lib/anlasCost';
 import { normalizePromptPart } from '@/lib/promptText';
 import { roundToSizeStep } from '@/lib/requestImage';
-import { withEffort } from '@/lib/models';
+import { isMediumEffort, withEffort } from '@/lib/models';
+import { PreciseReference, referencesFor } from '@/lib/preciseReference';
 import { AXIS_NAMES, MAX_SWEEP_CELLS, NO_AXIS, parseAxisDraft, SweepAxisDraft, sweepCells, toAxis } from '@/lib/sweeps';
 import {
   ENHANCE_LEVELS,
@@ -112,6 +113,9 @@ export interface ChainContext {
   formSteps: number;
   isOpus: boolean;
   opusExhausted: boolean;
+  /** The sidebar's Precise References, which Enhance and Variations send
+   *  (and which make a Medium effort model run High). */
+  references?: readonly PreciseReference[];
 }
 
 export interface PlannedStep {
@@ -144,6 +148,10 @@ export function planChain(
 ): ChainPlan {
   let { width, height, model, steps } = image;
   const opus = { isOpus: ctx.isOpus, opusExhausted: ctx.opusExhausted };
+  const references = ctx.references ?? [];
+  // Medium effort takes no references; with any set, NovelAI runs High.
+  const withRefs = (m: NovelAIModel) => (references.length > 0 && isMediumEffort(m) ? withEffort(m, 'high') : m);
+  const refCount = (m: NovelAIModel) => referencesFor(references, m).length;
   const planned: PlannedStep[] = [];
   const problems: string[] = [];
   if (chain.steps.length === 0) problems.push('This chain has no steps.');
@@ -162,7 +170,8 @@ export function planChain(
         }
         const price = enhancePriceSize(width, height, step.scale);
         cost = calculateAnlasCost({
-          model: ctx.formModel,
+          model: withRefs(ctx.formModel),
+          references: refCount(withRefs(ctx.formModel)),
           width: price.width,
           height: price.height,
           steps: ctx.formSteps,
@@ -191,7 +200,8 @@ export function planChain(
             ? `Variations makes ${VARIATION_COUNT} images, so it can only be the last step.`
             : tooLarge(width, height);
         cost = calculateAnlasCost({
-          model,
+          model: withRefs(model),
+          references: refCount(withRefs(model)),
           width,
           height,
           steps,

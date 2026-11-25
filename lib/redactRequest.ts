@@ -6,7 +6,7 @@
  *  runs past this on its own, so length alone isn't enough to go on. */
 const LONG_STRING = 256;
 /** The fields that carry an image. */
-const IMAGE_KEYS = new Set(['image', 'mask', 'reference_image', 'reference_image_multiple']);
+const IMAGE_KEYS = new Set(['image', 'mask', 'reference_image', 'reference_image_multiple', 'director_reference_images']);
 /** Base64 and nothing else — a prompt has commas, braces and colons in it. */
 const BASE64ISH = /^[A-Za-z0-9+/\s]+={0,2}$/;
 

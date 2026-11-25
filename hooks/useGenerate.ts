@@ -42,6 +42,16 @@ interface UseGenerateReturn {
  *  the original, as NovelAI's client does. */
 type Finish = (blob: Blob) => Promise<Blob>;
 
+/** What a history image keeps of its request: everything but the Precise
+ *  Reference images, which could be up to 16 of a megabyte or so each, on
+ *  every image of a batch. The references' types and strengths stay. */
+function storedParameters(p: NovelAIGenerateRequest['parameters']): NovelAIGenerateRequest['parameters'] {
+  if (!p.director_reference_images) return p;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { director_reference_images, ...rest } = p;
+  return rest;
+}
+
 // Decode a base64 string to a Uint8Array, tolerating whitespace in the input
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64.replace(/\s/g, ''));
@@ -102,7 +112,7 @@ export function useGenerate(): UseGenerateReturn {
         prompt: request.input,
         negativePrompt: request.parameters.negative_prompt,
         model: request.model,
-        parameters: request.parameters,
+        parameters: storedParameters(request.parameters),
         timestamp: now + i,
         seed: request.parameters.seed + i,
         sourceImageId: opts?.sourceImageId,
@@ -216,7 +226,7 @@ export function useGenerate(): UseGenerateReturn {
             prompt: request.input,
             negativePrompt: request.parameters.negative_prompt,
             model: request.model,
-            parameters: request.parameters,
+            parameters: storedParameters(request.parameters),
             timestamp: Date.now(),
             seed: request.parameters.seed,
             sourceImageId: opts?.sourceImageId,

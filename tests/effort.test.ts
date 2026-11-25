@@ -92,7 +92,9 @@ describe('a Medium effort request', () => {
   it('keeps what Medium still lets you set', () => {
     const p = build('nai-diffusion-5-full-medium').parameters;
     expect(p.scale).toBe(6);
-    expect(p.noise_schedule).toBe('exponential');
+    // Every V5 request runs Karras, whatever was picked (NovelAI's request
+    // class forces it).
+    expect(p.noise_schedule).toBe('karras');
   });
 
   it('sends the Heavy UC preset’s text alone, and no character negatives', () => {
@@ -126,15 +128,16 @@ describe('a Medium effort request', () => {
 });
 
 describe('Medium effort price', () => {
-  // NovelAI's own price function in its page, at Medium's 14 steps, against
-  // High at its default 23 (non-Opus, one image).
+  // NovelAI's own price function, run on 2026-11-24 (Medium is now priced
+  // as a 23-step image ÷ 1.75), against High at its default 23 steps
+  // (non-Opus, one image). Before that change Medium was 17 at 832×1216.
   const cases: [number, number, number, number][] = [
-    [832, 1216, 17, 26],
-    [1216, 832, 17, 26],
-    [1024, 1024, 18, 26],
-    [512, 768, 8, 11],
-    [640, 640, 8, 11],
-    [1472, 1472, 35, 54],
+    [832, 1216, 15, 26],
+    [1216, 832, 15, 26],
+    [1024, 1024, 15, 26],
+    [512, 768, 6, 11],
+    [640, 640, 6, 11],
+    [1472, 1472, 31, 54],
   ];
   const cost = (model: NovelAIModel, width: number, height: number, steps: number, strength?: number) =>
     calculateAnlasCost({ model, width, height, steps, smea: false, smeaDyn: false, strength, isOpus: false });
@@ -145,11 +148,11 @@ describe('Medium effort price', () => {
   });
 
   it('always prices Medium at its own step count', () => {
-    expect(cost('nai-diffusion-5-full-medium', 832, 1216, 50)).toBe(17);
+    expect(cost('nai-diffusion-5-full-medium', 832, 1216, 50)).toBe(15);
   });
 
   it('prices a Medium inpaint by its strength', () => {
-    expect(cost('nai-diffusion-5-full-medium-inpainting', 832, 1216, 14, 0.5)).toBe(9);
+    expect(cost('nai-diffusion-5-full-medium-inpainting', 832, 1216, 14, 0.5)).toBe(8);
   });
 
   it('is free for Opus at Medium', () => {

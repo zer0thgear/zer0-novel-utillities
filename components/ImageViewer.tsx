@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { downloadImage, getImageDimensions } from '@/lib/imageUtils';
+import { createReference, downloadImage, getImageDimensions } from '@/lib/imageUtils';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnhance } from '@/hooks/useEnhance';
@@ -18,7 +18,8 @@ import { useVariations, VARIATION_COUNT, VARIATION_STRENGTH } from '@/hooks/useV
 import { useChainLauncher } from '@/hooks/useChainLauncher';
 import { useChainBusy } from '@/store/chainStore';
 import { chainSummary } from '@/lib/chains';
-import { withEffort } from '@/lib/models';
+import { isMediumEffort, withEffort } from '@/lib/models';
+import { effortWithReferences, MAX_REFERENCES, referencesFor } from '@/lib/preciseReference';
 import { useUpscale } from '@/hooks/useUpscale';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
@@ -157,6 +158,7 @@ export function ImageViewer() {
     return () => window.removeEventListener('keydown', onKey);
   }, [inGroup, backToGroup]);
 
+  const references = useSessionStore((s) => s.references);
   const { enhance, isEnhancing, error: enhanceError, clearError: clearEnhanceError } = useEnhance();
   const { generateVariations, isGeneratingVariations, error: variationsError, clearError: clearVariationsError } = useVariations();
   const { upscale, isUpscaling, error: upscaleError, clearError: clearUpscaleError } = useUpscale();
@@ -176,9 +178,17 @@ export function ImageViewer() {
     rememberScale(imgW * imgH, scale);
   };
   const enhancePrice = enhanceScale !== null ? enhancePriceSize(imgW, imgH, enhanceScale) : null;
+  // Both carry the sidebar's Precise References (5 Anlas each per image),
+  // which also make Medium effort run High.
+  const enhanceModel = withEffort(form.model, effortWithReferences(form.effort, references.length));
+  const variationsModel =
+    focusedImage && references.length > 0 && isMediumEffort(focusedImage.model)
+      ? withEffort(focusedImage.model, 'high')
+      : focusedImage?.model;
   const enhanceCost = enhancePrice
     ? calculateAnlasCost({
-        model: withEffort(form.model, form.effort),
+        model: enhanceModel,
+        references: referencesFor(references, enhanceModel).length,
         width: enhancePrice.width,
         height: enhancePrice.height,
         steps: form.steps,
@@ -188,9 +198,10 @@ export function ImageViewer() {
         ...opus,
       })
     : 0;
-  const variationsCost = focusedImage
+  const variationsCost = focusedImage && variationsModel
     ? calculateAnlasCost({
-        model: focusedImage.model,
+        model: variationsModel,
+        references: referencesFor(references, variationsModel).length,
         width: focusedImage.parameters.width,
         height: focusedImage.parameters.height,
         steps: focusedImage.parameters.steps,
@@ -255,6 +266,14 @@ export function ImageViewer() {
     setImg2imgSource({ blob: focusedImage.blob, url, width, height });
     setBaseImageSet(true);
     setTimeout(() => setBaseImageSet(false), 1200);
+  };
+
+  const [referenceAdded, setReferenceAdded] = useState(false);
+  const handleUseAsReference = async () => {
+    if (!focusedImage) return;
+    useSessionStore.getState().addReferences([await createReference(focusedImage.blob, `Image ${focusedImage.seed}`)]);
+    setReferenceAdded(true);
+    setTimeout(() => setReferenceAdded(false), 1200);
   };
 
   // The URL to display — switches to source while "view original" is held
@@ -560,6 +579,19 @@ export function ImageViewer() {
               className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600"
             >
               {baseImageSet ? 'Base set!' : 'Use as Base'}
+            </button>
+            <button
+              type="button"
+              title={
+                references.length >= MAX_REFERENCES
+                  ? `NovelAI takes up to ${MAX_REFERENCES} Precise References`
+                  : 'Add this image as a Precise Reference'
+              }
+              onClick={handleUseAsReference}
+              disabled={references.length >= MAX_REFERENCES}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {referenceAdded ? 'Reference added!' : 'Use as Reference'}
             </button>
             <button
               type="button"

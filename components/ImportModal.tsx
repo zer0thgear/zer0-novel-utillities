@@ -35,6 +35,8 @@ interface Props {
   metadata: ParsedNaiMetadata | null;
   defaults?: ImportOptions;
   onUseAsBase?: () => void;
+  /** Adds the image as a Precise Reference. */
+  onUseAsReference?: () => void;
   onViewMetadata?: () => void;
   /** Suppresses Escape while something is stacked on top (e.g. metadata view). */
   escapeDisabled?: boolean;
@@ -50,6 +52,7 @@ export function ImportModal({
   metadata,
   defaults = DEFAULT_IMPORT,
   onUseAsBase,
+  onUseAsReference,
   onViewMetadata,
   escapeDisabled = false,
   onClose,
@@ -164,7 +167,7 @@ export function ImportModal({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={previewUrl} alt="" className="max-h-48 w-full rounded-lg bg-slate-950 object-contain" />
 
-        {(onUseAsBase || (metadata && onViewMetadata)) && (
+        {(onUseAsBase || onUseAsReference || (metadata && onViewMetadata)) && (
           <div className="flex gap-2">
             {onUseAsBase && (
               <button
@@ -173,6 +176,15 @@ export function ImportModal({
                 className="flex-1 rounded-lg bg-slate-700 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600"
               >
                 Use as Img2Img Base
+              </button>
+            )}
+            {onUseAsReference && (
+              <button
+                type="button"
+                onClick={onUseAsReference}
+                className="flex-1 rounded-lg bg-slate-700 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-600"
+              >
+                Precise Reference
               </button>
             )}
             {metadata && onViewMetadata && (

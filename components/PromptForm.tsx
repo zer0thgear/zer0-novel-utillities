@@ -39,11 +39,13 @@ import { hasVariety, varietySigma } from '@/lib/variety';
 import { hasInpaintStrength, toInpaintingModel } from '@/lib/inpaint';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { eraseStealthMarks, finalizeRequest } from '@/lib/requestImage';
+import { EFFORT_FORCED_NOTE, effortWithReferences, referencesFor } from '@/lib/preciseReference';
 import { calculateAnlasCost, opusStatus } from '@/lib/anlasCost';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useTokenCounts } from '@/hooks/useTokenCounts';
 import { TokenMeter } from './TokenMeter';
 import { usePhoneLayout } from './PhoneLayout';
+import { PreciseReferenceSection } from './PreciseReferenceSection';
 import {
   getAvailableQualityLevels,
   getAvailableUcLevels,
@@ -162,8 +164,14 @@ export function PromptForm() {
   const formRef = useRef<HTMLFormElement>(null);
   // What a generation runs on: V5 Full's effort picks Medium's own model,
   // which fixes some settings (shown greyed out below).
-  const effortModel = withEffort(form.model, form.effort);
+  // Precise References need High effort (NovelAI switches Medium to High
+  // while any is set, except on an inpaint).
+  const references = useSessionStore((s) => s.references);
+  const hasMask = useSessionStore((s) => !!s.img2imgSource?.mask);
+  const effortForced = effortWithReferences(form.effort, references.length, { inpainting: hasMask }) !== form.effort;
+  const effortModel = withEffort(form.model, effortForced ? 'high' : form.effort);
   const mediumEffort = isMediumEffort(effortModel);
+  const isV5 = form.model.startsWith('nai-diffusion-5');
   const { generateSlot } = usePhoneLayout();
 
   // Ctrl/Cmd+Enter generates from anywhere, including mid-prompt, the way
@@ -257,8 +265,10 @@ export function PromptForm() {
     // With a mask it's an inpaint, on the model's inpainting model — whose
     // presets are the ones that apply (V5 Curated's is V4.5 Curated's). V5
     // Full's effort picks the model first; Medium has its own inpainting model.
+    // Any Precise Reference makes Medium run High (except on an inpaint).
     const inpainting = !!base?.mask;
-    const effortModel = withEffort(form.model, overrides.effort ?? form.effort);
+    const effort = effortWithReferences(overrides.effort ?? form.effort, references.length, { inpainting });
+    const effortModel = withEffort(form.model, effort);
     const model = inpainting ? toInpaintingModel(effortModel) : effortModel;
     const { input, negativePrompt } = composeFinalPrompts({ ...form, model }, resolved);
     // A base image keeps its own size rather than the form's.
@@ -271,6 +281,7 @@ export function PromptForm() {
       characters: resolved.characters,
       useCoords: form.useCoords,
       presets: { quality: form.qualityPreset, uc: form.ucPreset },
+      references,
       parameters: {
         ...formSampling(form, overrides),
         // NovelAI sends this on V4+ only: 1 unless an inpaint sets it.
@@ -502,10 +513,11 @@ export function PromptForm() {
   // NovelAI's price does (mask ? inpaintImg2ImgStrength : image ? strength : 1).
   const inpainting = !!img2imgSource?.mask;
   const costInput = (steps: number, nSamples: number, effort: Effort = form.effort) => {
-    const effortModel = withEffort(form.model, effort);
+    const effortModel = withEffort(form.model, effortWithReferences(effort, references.length, { inpainting }));
     const model = inpainting ? toInpaintingModel(effortModel) : effortModel;
     return {
     model,
+    references: referencesFor(references, model, { inpainting }).length,
     width: img2imgSource ? img2imgSource.width : form.width,
     height: img2imgSource ? img2imgSource.height : form.height,
     steps,
@@ -1041,6 +1053,10 @@ export function PromptForm() {
         />
       )}
 
+      {/* Precise Reference — on either tab, since references guide both the
+          scene and its characters. */}
+      <PreciseReferenceSection model={withEffort(form.model, effortForced ? 'high' : form.effort)} inpainting={hasMask} />
+
       {/* Negative Prompt — collapsible, shows a one-line preview when closed.
           Base Prompts tab only: characters carry their own per-character
           negatives in each card's "Negative" sub-tab. */}
@@ -1168,8 +1184,10 @@ export function PromptForm() {
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
-            {mediumEffort
+          <p className={`mt-1.5 text-[11px] leading-snug ${effortForced ? 'text-amber-400/90' : 'text-slate-500'}`}>
+            {effortForced
+              ? `Running High: ${EFFORT_FORCED_NOTE}`
+              : mediumEffort
               ? `Medium costs fewer Anlas and less of the Opus allowance. It always runs ${MEDIUM_EFFORT.steps} steps of Euler Ancestral, with no Undesired Content or CFG Rescale; your own settings come back on High.`
               : 'Medium effort costs fewer Anlas and less of the Opus allowance, with some settings fixed.'}
           </p>
@@ -1288,10 +1306,13 @@ export function PromptForm() {
         </div>
         <div>
           <label className={labelCls}>Schedule</label>
+          {/* V5 always runs Karras (NovelAI's request class forces it). */}
           <select
-            value={form.noiseSchedule}
+            value={isV5 ? 'karras' : form.noiseSchedule}
             onChange={(e) => form.set('noiseSchedule', e.target.value as NovelAINoiseSchedule)}
-            className={inputCls}
+            disabled={isV5}
+            title={isV5 ? 'V5 always uses Karras' : undefined}
+            className={`${inputCls} disabled:opacity-40`}
           >
             {NOISE_SCHEDULES.map((n) => (
               <option key={n.value} value={n.value}>
@@ -1464,6 +1485,7 @@ export function PromptForm() {
           costFor={sweepCostFor}
           effortAvailable={hasEffort(form.model)}
           effort={form.effort}
+          hasReferences={references.length > 0}
           onRun={runSweep}
           onClose={() => setShowSweep(false)}
         />

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { GeneratedImage, WildcardPicks } from '@/types/novelai';
+import type { PreciseReference } from '@/lib/preciseReference';
 
 // API key lives in localStorage so it survives a full browser close/reopen
 const API_KEY_KEY = 'novelai_api_key';
@@ -69,6 +70,13 @@ interface SessionState {
   // Base"), a dropped image, or what the Edit / Inpaint canvas saved.
   img2imgSource: Img2ImgSource | null;
   setImg2imgSource: (source: Img2ImgSource | null) => void;
+
+  // Precise References for the next generations (in memory, like the base).
+  references: PreciseReference[];
+  addReferences: (references: PreciseReference[]) => void;
+  updateReference: (id: string, patch: Partial<PreciseReference>) => void;
+  removeReference: (id: string) => void;
+  moveReference: (id: string, by: -1 | 1) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -186,5 +194,25 @@ export const useSessionStore = create<SessionState>((set) => ({
         if (old.mask && old.mask.url !== source?.mask?.url) URL.revokeObjectURL(old.mask.url);
       }
       return { img2imgSource: source };
+    }),
+
+  references: [],
+  addReferences: (added) => set((state) => ({ references: [...state.references, ...added] })),
+  updateReference: (id, patch) =>
+    set((state) => ({ references: state.references.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
+  removeReference: (id) =>
+    set((state) => {
+      const gone = state.references.find((r) => r.id === id);
+      if (gone) URL.revokeObjectURL(gone.url);
+      return { references: state.references.filter((r) => r.id !== id) };
+    }),
+  moveReference: (id, by) =>
+    set((state) => {
+      const i = state.references.findIndex((r) => r.id === id);
+      const j = i + by;
+      if (i < 0 || j < 0 || j >= state.references.length) return {};
+      const references = [...state.references];
+      [references[i], references[j]] = [references[j], references[i]];
+      return { references };
     }),
 }));

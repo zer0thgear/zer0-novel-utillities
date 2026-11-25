@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/sessionStore';
 import { ParsedNaiMetadata, readNaiMetadata } from '@/lib/naiMetadata';
-import { getImageDimensions } from '@/lib/imageUtils';
+import { createReference, getImageDimensions } from '@/lib/imageUtils';
+import { MAX_REFERENCES } from '@/lib/preciseReference';
 import { MetadataModal } from './MetadataModal';
 import { ImportModal } from './ImportModal';
 
@@ -24,7 +25,8 @@ export function DropZone() {
   const [dragDepth, setDragDepth] = useState(0);
   const [pending, setPending] = useState<PendingImage | null>(null);
   const [showFullMetadata, setShowFullMetadata] = useState(false);
-  const { setImg2imgSource } = useSessionStore();
+  const { setImg2imgSource, addReferences } = useSessionStore();
+  const referenceCount = useSessionStore((s) => s.references.length);
 
   useEffect(() => {
     async function receive(file: File) {
@@ -98,6 +100,11 @@ export function DropZone() {
     close();
   }
 
+  async function applyAsReference(file: File) {
+    addReferences([await createReference(file, file.name || 'Pasted image')]);
+    close();
+  }
+
   return (
     <>
       {dragDepth > 0 && (
@@ -117,6 +124,7 @@ export function DropZone() {
           previewUrl={pending.previewUrl}
           metadata={pending.metadata}
           onUseAsBase={() => applyAsBase(pending.file)}
+          onUseAsReference={referenceCount < MAX_REFERENCES ? () => applyAsReference(pending.file) : undefined}
           onViewMetadata={() => setShowFullMetadata(true)}
           escapeDisabled={showFullMetadata}
           onClose={close}

@@ -7,6 +7,7 @@ import { resolveRequestPrompts } from '@/lib/wildcards';
 import { buildImageRequest, EDIT_REQUEST_FLAGS, randomSeed } from '@/lib/imageRequest';
 import { blobToBase64 } from '@/lib/imageUtils';
 import { addMissingTags } from '@/lib/naiPresets';
+import { isMediumEffort, withEffort } from '@/lib/models';
 
 // Matches NovelAI's own "Generate Variations" request: img2img at strength 0.8 /
 // noise 0.1 with a fresh seed, producing several samples in one batch.
@@ -48,10 +49,16 @@ export function useVariations(): UseVariationsReturn {
         extraTags && image.source
           ? { ...image.source, prompt: addMissingTags(image.source.prompt, image.model, extraTags) }
           : image.source;
+      // The sidebar's Precise References go along, as on novelai.net; with
+      // any set, a Medium effort image's variations run on V5 Full (High).
+      const { references } = useSessionStore.getState();
+      const model =
+        references.length > 0 && isMediumEffort(image.model) ? withEffort(image.model, 'high') : image.model;
       const request = buildImageRequest({
         input,
         negativePrompt: image.negativePrompt,
-        model: image.model,
+        model,
+        references,
         action: 'img2img',
         characters: resolved.characters,
         useCoords: form.useCoords,
