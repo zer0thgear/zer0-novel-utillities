@@ -188,6 +188,13 @@ export interface NovelAIParameters {
   reference_image_multiple?: string[];
   reference_information_extracted_multiple?: number[];
   reference_strength_multiple?: number[];
+  /** Precise Reference (see lib/preciseReference.ts); omitted when there
+   *  are none, as NovelAI does. Parallel arrays, one entry per reference. */
+  director_reference_images?: string[];
+  director_reference_descriptions?: { caption: { base_caption: string; char_captions: [] }; legacy_uc: false }[];
+  director_reference_information_extracted?: number[];
+  director_reference_strength_values?: number[];
+  director_reference_secondary_strength_values?: number[];
   // V4 fields — only included when using character prompts or v4 models
   params_version?: number;
   use_coords?: boolean;

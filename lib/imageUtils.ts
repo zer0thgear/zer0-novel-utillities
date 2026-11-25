@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { GeneratedImage } from '@/types/novelai';
+import { NEW_REFERENCE, PreciseReference } from '@/lib/preciseReference';
 
 /** Raw base64 (no data: prefix), as NovelAI's image fields expect. */
 export function blobToBase64(blob: Blob): Promise<string> {
@@ -76,4 +77,11 @@ export async function downloadSessionAsZip(images: GeneratedImage[]) {
   const zipBlob = await zip.generateAsync({ type: 'blob' });
   const sessionDate = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   saveAs(zipBlob, `novelai_session_${sessionDate}.zip`);
+}
+
+/** A Precise Reference from an image, with NovelAI's defaults for a new
+ *  one (Character & Style, strength 1). */
+export async function createReference(blob: Blob, name: string): Promise<PreciseReference> {
+  const [data, { width, height }] = await Promise.all([blobToBase64(blob), getImageDimensions(blob)]);
+  return { id: crypto.randomUUID(), data, url: URL.createObjectURL(blob), name, width, height, ...NEW_REFERENCE };
 }

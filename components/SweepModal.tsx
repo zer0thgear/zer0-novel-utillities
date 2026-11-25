@@ -30,11 +30,23 @@ interface Props {
   /** Whether the model has the Effort toggle (V5 Full), and where it's set. */
   effortAvailable: boolean;
   effort: Effort;
+  /** Precise References are set, so Medium effort runs High. */
+  hasReferences?: boolean;
   onRun: (x: SweepAxis, y?: SweepAxis) => void;
   onClose: () => void;
 }
 
-export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, effortAvailable, effort, onRun, onClose }: Props) {
+export function SweepModal({
+  defaults,
+  randomEntries,
+  unknownRefs,
+  costFor,
+  effortAvailable,
+  effort,
+  hasReferences = false,
+  onRun,
+  onClose,
+}: Props) {
   const [x, setX] = useState<SweepAxisDraft>(() => draftFor('cfg', defaults, randomEntries));
   const [y, setY] = useState<SweepAxisDraft>(NO_AXIS);
 
@@ -147,6 +159,11 @@ export function SweepModal({ defaults, randomEntries, unknownRefs, costFor, effo
             <p>Other wildcards are rolled once and held the same across the grid.</p>
           )}
           {mediumNote && <p className="text-amber-400">{mediumNote}</p>}
+          {hasReferences && effortAxis?.values.includes('medium') && (
+            <p className="text-amber-400">
+              Precise Reference needs High effort, so the Medium images will run at High. Remove the references to compare.
+            </p>
+          )}
           {tooMany && (
             <p className="text-amber-400">That&apos;s more than {MAX_SWEEP_CELLS} images — narrow it down.</p>
           )}

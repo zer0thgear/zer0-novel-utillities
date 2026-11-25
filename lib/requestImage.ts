@@ -1,6 +1,7 @@
 import { MAX_STEALTH_PIXELS, STEALTH_MAGIC } from '@/lib/naiMetadata';
 import { NovelAIGenerateRequest, NovelAIModel } from '@/types/novelai';
 import { inpaintImg2Img } from '@/lib/inpaint';
+import { bucketFit, letterboxFit, referenceCaps } from '@/lib/preciseReference';
 import { isV3Model } from '@/lib/imageRequest';
 
 // NovelAI's client sends every request image through one preparation step
@@ -149,13 +150,26 @@ async function decodePngExactly(bytes: Uint8Array): Promise<Pixels | undefined> 
   return { width, height, data };
 }
 
-/** Other formats go through a canvas, which can nudge the colour of
- *  semi-transparent pixels (browsers premultiply alpha). */
+/**
+ * Other formats (WebP, JPEG): the browser decodes them, and the pixels are
+ * read back through WebGL, which keeps them as decoded. A 2D canvas stores
+ * colours premultiplied by alpha, so a semi-transparent pixel can come back
+ * ±1 off. That matters for NovelAI's own WebPs, whose hidden metadata makes
+ * many pixels alpha 254: read through a 2D canvas, a Precise Reference made
+ * from one gave a visibly different image than novelai.net's (its own
+ * decoders are exact). Read through WebGL, it matched pixel for pixel
+ * (checked live, 2026-11-24). A 2D canvas is the fallback.
+ */
 async function decodeViaCanvas(bytes: Uint8Array): Promise<Pixels> {
   const bitmap = await createImageBitmap(new Blob([bytes as BlobPart]), {
     premultiplyAlpha: 'none',
     colorSpaceConversion: 'none',
   });
+  const exact = readUnpremultiplied(bitmap);
+  if (exact) {
+    bitmap.close();
+    return exact;
+  }
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
@@ -165,6 +179,37 @@ async function decodeViaCanvas(bytes: Uint8Array): Promise<Pixels> {
   bitmap.close();
   const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
   return { width, height, data };
+}
+
+/** A decoded bitmap's pixels as they are, through a WebGL texture; null if
+ *  WebGL isn't available or the image is bigger than a texture can be. */
+function readUnpremultiplied(bitmap: ImageBitmap): Pixels | null {
+  if (typeof OffscreenCanvas === 'undefined') return null;
+  const { width, height } = bitmap;
+  const gl = new OffscreenCanvas(width, height).getContext('webgl2', { premultipliedAlpha: false });
+  if (!gl) return null;
+  try {
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    if (width > max || height > max) return null;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
+    // Row 0 of the texture is the image's top row, so no flip is needed.
+    const data = new Uint8ClampedArray(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    return gl.getError() === gl.NO_ERROR ? { width, height, data } : null;
+  } catch {
+    return null;
+  } finally {
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  }
 }
 
 export async function decodeImage(bytes: Uint8Array): Promise<Pixels> {
@@ -364,6 +409,72 @@ export async function eraseStealthMarks(blob: Blob): Promise<Blob> {
   }
 }
 
+/**
+ * A Precise Reference image, prepared as NovelAI's client prepares it: its
+ * stealth metadata erased, then fitted to what the model takes. V5 covers
+ * and centre-crops it to the nearest of its sizes (and sends it untouched if
+ * it's already one); V4.5 fits it whole onto one of three canvases, padded
+ * black. Falls back to the image as added if it can't be decoded.
+ */
+export async function prepareReferenceImage(b64: string, model: NovelAIModel): Promise<string> {
+  const caps = referenceCaps(model);
+  if (!caps) return b64;
+  try {
+    const bytes = fromBase64(b64);
+    let image = await decodeImage(bytes);
+    let cleared = false;
+    if (!isJpeg(bytes) && image.width * image.height <= MAX_STEALTH_PIXELS && hasStealthMarker(image)) {
+      clearStealthAlpha(image);
+      cleared = true;
+    }
+    if (caps.fit === 'bucket') {
+      const fit = bucketFit(image.width, image.height);
+      if (fit.unchanged) return cleared ? toBase64(await encodePng(image)) : b64;
+      const scaled = await resizeSmooth(image, fit.resizeWidth, fit.resizeHeight);
+      return toBase64(await encodePng(crop(scaled, fit.left, fit.top, fit.width, fit.height)));
+    }
+    const fit = letterboxFit(image.width, image.height);
+    if (image.width !== fit.width || image.height !== fit.height) image = await resizeSmooth(image, fit.width, fit.height);
+    const canvas: Pixels = {
+      width: fit.canvasWidth,
+      height: fit.canvasHeight,
+      data: new Uint8ClampedArray(fit.canvasWidth * fit.canvasHeight * 4),
+    };
+    paste(canvas, image, fit.left, fit.top);
+    fillBackground(canvas, BACKGROUNDS.black);
+    return toBase64(await encodePng(canvas));
+  } catch (err) {
+    console.error('Could not prepare reference image:', err);
+    return b64;
+  }
+}
+
+/** A width × height piece of the image, from (left, top). */
+function crop(image: Pixels, left: number, top: number, width: number, height: number): Pixels {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const from = ((top + y) * image.width + left) * 4;
+    data.set(image.data.subarray(from, from + width * 4), y * width * 4);
+  }
+  return { width, height, data };
+}
+
+/** Pastes `src` onto a transparent canvas at (left, top), as NovelAI's
+ *  alpha-over does there: each pixel keeps its colour and alpha. */
+function paste(canvas: Pixels, src: Pixels, left: number, top: number) {
+  for (let y = 0; y < src.height; y++) {
+    const cy = top + y;
+    if (cy < 0 || cy >= canvas.height) continue;
+    for (let x = 0; x < src.width; x++) {
+      const cx = left + x;
+      if (cx < 0 || cx >= canvas.width) continue;
+      const s = (y * src.width + x) * 4;
+      if (src.data[s + 3] === 0) continue;
+      canvas.data.set(src.data.subarray(s, s + 4), (cy * canvas.width + cx) * 4);
+    }
+  }
+}
+
 // Every model's size step.
 const SIZE_STEP = 64;
 
@@ -382,7 +493,8 @@ const keepsTransparency = (model: NovelAIModel) => model.startsWith('nai-diffusi
  * The last step before sending, as NovelAI's client does it: for a request
  * with an image, prepares the image and mask, turns SMEA off (V3; later
  * models have none, so it's dropped) and gives extra_noise_seed its default
- * of seed − 1; then, for any request, rounds the size to multiples of 64.
+ * of seed − 1; prepares any Precise Reference images for the model; then,
+ * for any request, rounds the size to multiples of 64.
  */
 export async function finalizeRequest(request: NovelAIGenerateRequest): Promise<NovelAIGenerateRequest> {
   const p = request.parameters;
@@ -414,6 +526,11 @@ export async function finalizeRequest(request: NovelAIGenerateRequest): Promise<
   const img2img = p.mask ? inpaintImg2Img(request.model, p.inpaintImg2ImgStrength ?? 1) : undefined;
   if (img2img) parameters.img2img = img2img;
   else delete parameters.img2img;
+  if (p.director_reference_images?.length) {
+    parameters.director_reference_images = await Promise.all(
+      p.director_reference_images.map((b64) => prepareReferenceImage(b64, request.model)),
+    );
+  }
   if (p.width % SIZE_STEP !== 0) parameters.width = roundToSizeStep(p.width);
   if (p.height % SIZE_STEP !== 0) parameters.height = roundToSizeStep(p.height);
   return { ...request, parameters };

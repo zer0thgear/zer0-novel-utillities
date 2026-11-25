@@ -119,9 +119,10 @@ if V5:       perSample *= 1.5
 perSample  = max(ceil(perSample * strength), 2)      // strength = img2img/enhance strength, else 1
 free       = Opus && pixels <= 1048576 && steps <= 28 && !(V5 && usage.isNegative)
 cost       = perSample * (n_samples - (free ? 1 : 0))
+           + 5 * precise_references * n_samples   // added on top; see Precise Reference
 ```
 
-- **Medium effort** (`nai-diffusion-5-full-medium` and its inpainting model) multiplies the per-step term by `1 / 1.06521739` inside the `ceil`, before the V5 ×1.5. Its requests always carry 14 steps, so 832×1216 is 17 against High's 26 at 23 steps. Checked against NovelAI's own price function in its page, at six sizes and for a Medium inpaint.
+- **Medium effort** (`nai-diffusion-5-full-medium` and its inpainting model) is priced as a 23-step image divided by 1.75, whatever its steps, with no `ceil` before the V5 ×1.5: `perSample = (2.95e-6 * pixels + 5.75e-7 * pixels * 23) / 1.75`. So 832×1216 is 15 against High's 26 at 23 steps, which is the announced "about 42% less". This changed by 2026-11-24. At launch (2026-10-08) the per-step term was multiplied by `1 / 1.06521739` inside the `ceil`, which gave 17. The current values were checked by running NovelAI's own price function, extracted from its client, in Node (see methodology note 7).
 - **V3, V4, V4.5 and V5 share the curve, and V5 costs 1.5× more.** An earlier empirical fit used one curve for every model. It happened to match V5 but overstated V3/V4/V4.5 by about 1.5×.
 - **img2img strength scales the price.** An earlier "confirmed live" note said it didn't. That check almost certainly happened at a size where the Opus allowance made everything read 0.
 - **Only V5 has an Opus usage limit** (`usage.isNegative` on `/user/subscription`). Once it's used up, V5 stops being free; other models don't.
@@ -135,17 +136,88 @@ Announced 2026-10-08 (journal.novelai.net, "NovelAI Diffusion V5 Full now has a 
 - **Medium is a model, not a parameter.** It's `nai-diffusion-5-full-medium`, with `nai-diffusion-5-full-medium-inpainting` for inpainting. The toggle switches the selected model between it and V5 Full. Each keeps its own `steps`, `sampler`, `noise_schedule`, `ucPresetId` and `cfg_rescale`, and the rest is carried across.
 - **Capabilities:** its model table entry is V5 Full's with `cfgRescale: false` and `fixedSettings: { steps: 14, sampler: "k_euler_ancestral", ucPresetId: "heavy" }`. The UI hides Steps, Sampler and CFG Rescale for it, and it shares V5 Full's presets, tokenizer and size limits.
 - **Request prep with fixed settings:** steps and sampler are forced, and `ucPresetId` is `heavy`. `uc` is the Heavy preset's text composed onto an empty UC, so the user's own UC isn't sent. Every character's `uc` is blanked, and `tag_hint_uc_preset` is always sent (2). `cfg_rescale` isn't sent at all: the request class drops it for models without the `cfgRescale` capability. High still sends it, and both send `noise_schedule`.
-- **Don't trust the capability table alone.** The request class deletes `noise_schedule` for models whose table says `noiseSchedule: false`, and every V5 model says that. Yet both captured V5 requests (Medium and High) carried `noise_schedule: "karras"`, so something later puts it back. The same deletion is what really removes Medium's `cfg_rescale`. When the table and a capture disagree, the capture wins.
-- **Price vs the announcement:** the announcement says Medium uses "about 42% less" than High at 23 steps. NovelAI's own price function gives about 35% less at default settings (17 against 26 Anlas at 832×1216), so the 42% is presumably about Opus usage, which is counted separately.
+- **Don't trust the capability table alone.** The request class deletes `noise_schedule` for models whose table says `noiseSchedule: false`, and every V5 model says that. Yet both captured V5 requests (Medium and High) carried `noise_schedule: "karras"`. The reason turned up later (2026-11-24): further down, the same request class sets `noise_schedule = "karras"` for every V5 model. So V5 always runs Karras, whatever the user picked, and this app now does the same and greys out the Schedule picker on V5. The same deletion is what really removes Medium's `cfg_rescale`. When the table and a capture disagree, the capture wins.
+- **Price vs the announcement:** the announcement says Medium uses "about 42% less" than High at 23 steps. At launch the price function gave only about 35% less (17 against 26 Anlas at 832×1216). By 2026-11-24 the formula had changed to give exactly the announced figure (15 against 26); see Anlas pricing.
+- **Medium takes no Precise Reference.** Its model table entry inherits V5 Full's reference capabilities, but the settings code doesn't use Medium when any reference is set. It sends V5 Full (High) instead, and the effort toggle's tooltip says "Precise Reference needs High effort". See the Precise Reference section.
 - **Images:** V5 images name their model by a hash in "Source". `657484A5` and `0ADF9AB7` are V5 Full, `93F4BD30` and `70AB5786` are Medium, and `DB276663` (or any other) is V5 Curated. (The app had read every V5 image as Full before this.)
 - **Checked live (2026-10-08):** novelai.net's own Medium request was captured and matched ours field for field, apart from its streaming-only `stream` and `image_format`. With the same seed, our Medium image was identical to novelai.net's: all 288 values of the 8×12 block-mean grid matched. A Medium inpaint was accepted by the server. All three were free on Opus.
-- **Where to find it in the client:** module numbers change with each build, so search the bundle's module sources (`self.webpackChunk_N_E`) for strings:
+- **Where to find it in the client:** module numbers change with each build, so search the client's scripts for strings (see methodology note 7 for how, now that the site uses Turbopack):
   - `naiDiffusionV5FullMedium` finds the model ids, the base/inpainting mappings, the "Source" hash switch and the price factor.
   - `fixedSettings` finds the model table entry, the request prep that applies it, and the UI rows it hides.
   - `effortTooltip` finds the toggle and the list of settings each effort keeps (`["steps","sampler","noise_schedule","ucPresetId","cfg_rescale"]`).
   - `cfgRescale||delete` finds the request class's capability deletions.
 - **novelai.net keeps its settings in localStorage:** `imagegen-params-<model>` per model (created the first time a model is used), plus `imagegen-model` and `imagegen-prompt`. Switching effort in its UI creates the Medium entry. Back these up before driving its UI in a test, and restore them afterwards.
 - **In this app** it's a separate `effort` setting rather than a model, resolved to the request's model by `withEffort` (`lib/models.ts`). `buildImageRequest` enforces Medium's fixed settings for every flow, so the user's own High settings stay untouched in the form.
+
+### Precise Reference (V5 and V4.5)
+
+Announced for V5 on 2026-11-24 (journal.novelai.net, "Precise Reference for NovelAI Diffusion V5"). Read from novelai.net's client the same day. In the client it's "character references" and in the API "director references"; the UI calls it Precise Reference.
+
+**Request fields.** Each reference adds one entry to five parallel arrays, built just before the request is sent:
+
+```
+director_reference_images                    base64, prepared for the model (below)
+director_reference_descriptions              { caption: { base_caption: <type>, char_captions: [] }, legacy_uc: false }
+director_reference_information_extracted     1 (a new reference's default; the panel has no control for it)
+director_reference_strength_values           Strength
+director_reference_secondary_strength_values 1 - Fidelity
+```
+
+Without references, none of the fields are sent. NovelAI's own request class can swap `director_reference_images` for `director_reference_images_cached` (hashes as `cache_secret_key`, data sent only the first time, retried with data on a 400 `INVALID_CACHE_KEYS`). That's an upload saving, not a requirement, and its plain-JSON path (`debugLegacyImageGenRequest`) sends the images inline, as this app does; the server accepted inline images in every live test. The cache was seen working live: after a blocked test capture had registered a key the server never received, the real send got `INVALID_CACHE_KEYS` and NovelAI retried with the data (two requests, one charge).
+
+**Types** (`base_caption`): `character`, `style`, `costume` (Outfit, V5 only), `character&style`, plus V5's "Prefer same outfit" variants `character_mainoutfit` and `character&style_anyoutfit`. (`delta` also exists in the enum but isn't offered.) The panel lists Character & Style, Character, Style and, on V5, Outfit. Picking a type sets the plain value, so:
+- **Character** starts with Prefer same outfit off. Turning it on gives `character_mainoutfit`.
+- **Character & Style** starts with it on. Turning it off gives `character&style_anyoutfit`.
+
+A new reference is `{ description: "character&style", strength: 1, fidelity: 1, information_extracted: 1, enabled: true }`.
+
+**Per model** (its model table's flags):
+
+| | V5 Full / Curated | V4.5 Full / Curated | V4, V3 |
+|---|---|---|---|
+| References (`characterReferences`) | yes | yes | no |
+| Outfit + Prefer same outfit (`outfitReferences`) | yes | no | |
+| Fidelity slider (`characterReferenceFidelity`) | no | yes | |
+| Strength range (`characterReferenceStrengthMax`) | 0 to 5 | 0 to 1 | |
+| While inpainting (`charRefInpainting`) | no | yes | |
+| Image fitting | `bucketCharacterReferences` | `resizeCharacterReferences` | |
+
+Medium effort's table entry inherits V5 Full's. But Medium never runs with references (see below). Strength moves in steps of 0.05.
+
+**Filtering before sending** (the request prep's first step):
+- Disabled references are dropped.
+- Without outfit support, `costume` references are dropped (the panel warns "Outfit references aren't supported by this model and will be skipped."), and the variants fall back: `character_mainoutfit` to `character`, `character&style_anyoutfit` to `character&style`.
+- Without the Fidelity flag, Fidelity is sent as 1, so the secondary strength is 0.
+- No references go on a model without them, or on an inpaint where `charRefInpainting` is off. The panel warns "Inpainting is not supported while using a precise reference. The precise reference image will be ignored."
+- More than 16 enabled references stops the generation with an error.
+- On a V4.5 inpaint, the panel warns when the enabled Style and Character & Style strengths add up to more than 0.8.
+
+**Image preparation:**
+1. The stored image first has its stealth metadata erased, the same step as for Image2Image. NovelAI decodes with its own WASM decoders, one per format (PNG, WebP, JPEG), so pixels come out exactly as encoded. **Decoding matters here.** NovelAI's own WebPs (its gallery images, its WebP outputs) carry the metadata in the alpha low bit, so many pixels are alpha 254. Decoded through a browser 2D canvas, which stores colour premultiplied by alpha, those pixels' RGB came back ±1 off. That alone made a same-seed V5 image visibly different from novelai.net's (288-value grid: 258 differ, mean 4.6, max 47). This app now reads non-PNG images back through a WebGL texture with premultiplication off (`decodeViaCanvas` in `lib/requestImage.ts`), which matched NovelAI's pixels exactly, and the image then matched too. Where the reference came from also matters: novelai.net's paste dialog stores the decoded pixels as a PNG, while its file-upload button keeps the original bytes. The server takes either.
+2. **V5 (bucket):** the image goes to the nearest of 97 sizes, by the smallest difference in log aspect ratio, ties to the earlier. The sizes are multiples of 64 between about 0.85 and 1 MP (`lib/preciseReference.ts` has the table). The image is scaled to cover the bucket, `scale = max(bw/w, bh/h)`, then `max(floor(w*scale + 0.5), bw)` × likewise for the height, using Pica lanczos3. Then it's centre-cropped (`floor` offsets). An image already at a bucket size is sent as it is, so even a JPEG goes unchanged.
+3. **V4.5 (letterbox):** the image goes on the nearest of three canvases, 1024×1536, 1536×1024 or 1472×1472, by plain aspect difference. It's fitted whole inside (`round` on the short side), resized with lanczos3 unless the size already matches, and pasted centred (`round` offsets) onto a transparent canvas. The canvas is then filled black underneath (transparent instead on a transparency model, which V4.5 isn't), and the result is PNG.
+
+**Which flows carry them:**
+- **Generate, Enhance, Variations and Inpaint** pass the sidebar's references to the shared request prep, which drops them on a V5 inpaint.
+- **Upscale, Director Tools and rerolls** don't.
+- **Variations of a Medium effort image**, with any reference set, run on V5 Full.
+
+**Medium effort and references.** The settings code computes the effective model as follows. If the selected model is Medium and the reference list isn't empty, it uses V5 Full instead. That's any reference, even a disabled one. The exception is an Image2Image with a mask, where V5 sends no references and Medium stays. The toggle stays on Medium, with the tooltip "Precise Reference needs High effort. Remove your Precise Reference images to use Medium effort.", and a one-time notice says so.
+
+**Price:** `5 × references sent × n_samples` Anlas, added to the image's own price. The displayed price (`ev.y` plus that) doesn't pass `characterRef`, so the image itself keeps its Opus discount, and an Opus 832×1216 image with two references shows 10. The generate path does compute the free check with `characterRef: references > 0`, but uses it only for a flag, not the price. The announcement says V4.5 Precise Reference "now correctly charges the amount shown in the UI", and that V5 Opus weekly image counts apply "when you're not using Vibe Transfer or Precise Reference". **Checked live (2026-11-24, Opus):** every generation was charged exactly the displayed price (5 for one reference, 15 for three, 10 for two on V4.5), so the image itself stays free. A batch of two with three references is shown as 56 on both sides (26 for the second image, plus 30). Whether reference generations draw on V5's weekly usage limit couldn't be told: `/user/subscription` reports `usage.percent` in whole percents only, and it stayed at 100.
+
+**Checked live, request and image (2026-11-24).** novelai.net's request was captured with a blocking fetch wrapper and compared with this app's, field by field and with the prepared reference pixels hashed. The only differences were its streaming-only `stream` and `image_format`. Same-seed images (288-value block-mean grid) were identical in four comparisons:
+- V5 Curated, one Character & Style reference, as PNG and as WebP
+- V5 Full, three references (Character, Style at strength 2, Outfit)
+- V4.5 Full, letterboxed, with Fidelity 0.5 and an Outfit reference skipped
+
+Also confirmed live:
+- Medium with references sends V5 Full at High's 23 steps.
+- The outfit switch gives `character_mainoutfit`.
+- V4.5 sends a strength above its slider maximum unclamped (2).
+- V4.5 shows the same "Outfit references aren't supported" warning.
+
+**In this app:** references live in the session store (in memory, like the Image2Image base). The panel is `components/PreciseReferenceSection.tsx`, and the rules are in `lib/preciseReference.ts`. `buildImageRequest` filters and adds the fields for every flow, and `finalizeRequest` prepares the images. History images don't keep the reference images, only their types and strengths.
 
 ### V5's automatic text section
 
@@ -247,4 +319,8 @@ This app bundles the open Apache-2.0 equivalents: the T5 vocab from `google-t5/t
    - **Pass-through:** record the request, then call the real fetch, which captures a request that does generate and gives a reference image for a same-seed comparison.
 
    Captures settled things reading the code couldn't, such as Medium's missing `cfg_rescale` (see the Effort section).
-6. **Compare images by a block-mean grid, not bytes.** Draw the result to an 8×12 canvas with `imageSmoothingQuality = 'high'` and compare the 288 RGB values. File bytes always differ, because novelai.net re-encodes its streamed image client-side. Exact pixel hashes can differ too, even between two of our own runs of the same request. The grid is stable across runs, and identical between this app and novelai.net when the request matches. Output can also drift over hours, so take a fresh novelai.net reference right before comparing.
+6. **Compare images by a block-mean grid, not bytes.** Draw the result to an 8×12 canvas with `imageSmoothingQuality = 'high'` and compare the 288 RGB values. File bytes always differ, because novelai.net re-encodes its streamed image client-side. Exact pixel hashes can differ too, even between two of our own runs of the same request. The grid is stable across runs, and identical between this app and novelai.net when the request matches. Output can also drift over hours, so take a fresh novelai.net reference right before comparing. To compare two *input* images (such as prepared references) across tabs without moving megabytes, decode each exactly (inflate the PNG's IDAT yourself, not through a canvas), hash the pixels, then compare per-row hashes and per-segment checksums to find where they differ.
+7. **novelai.net moved to Turbopack (seen 2026-11-24), so `self.webpackChunk_N_E` is gone.** Read the client from its scripts instead:
+   - **List them:** `performance.getEntriesByType('resource')` in its tab lists every `/_next/static/chunks/*.js` it loaded.
+   - **Search them:** download them (they're public, no login needed) and grep. Modules are `<id>,e=>{"use strict";...}` with exports as `e.s(["name",0,value,...],<id>)`; imports are `e.i(<id>)`.
+   - **Run them:** to check a port, extract a pure function's source text and run it in Node, stubbing only the lookups it makes. That's how the Medium price (module 643656 `y`) and the V5 reference buckets (589161 `f`) were checked. Strings to search for: `director_reference`, `characterReferences`, `characterAndStyleAnyOutfit`, `bucketCharacterReferences`, `preciseReferenceSwitchedToHighEffort`.

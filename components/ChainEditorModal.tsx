@@ -39,12 +39,13 @@ export function ChainEditorModal({ chain, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const references = useSessionStore((s) => s.references);
   const draft: Chain = { id: chain?.id ?? '', name, steps };
   // Priced for an image from the sidebar's current size and model.
   const plan = planChain(
     draft,
     { width: form.width, height: form.height, model: withEffort(form.model, form.effort), steps: form.steps },
-    { formModel: withEffort(form.model, form.effort), formSteps: form.steps, ...opusStatus(subscription) },
+    { formModel: withEffort(form.model, form.effort), formSteps: form.steps, references, ...opusStatus(subscription) },
   );
   const trimmed = name.trim();
   const nameTaken = form.chains.some((c) => c.id !== chain?.id && c.name.trim().toLowerCase() === trimmed.toLowerCase());

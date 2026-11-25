@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { withEffort } from '@/lib/models';
+import { effortWithReferences } from '@/lib/preciseReference';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useSessionStore } from '@/store/sessionStore';
 import { varietySigma } from '@/lib/variety';
@@ -66,12 +67,16 @@ export function useEnhance(): UseEnhanceReturn {
       const input = addEnhancePrompt(composed.input, form.model, scale);
       const { negativePrompt } = composed;
       const seed = randomSeed();
+      // The sidebar's Precise References go along, as on novelai.net (and
+      // make Medium effort run High).
+      const { references } = useSessionStore.getState();
 
       const request = buildImageRequest({
         input,
         negativePrompt,
         // The sidebar's model, at its effort, as NovelAI's Enhance does.
-        model: withEffort(form.model, form.effort),
+        model: withEffort(form.model, effortWithReferences(form.effort, references.length)),
+        references,
         action: 'img2img',
         characters: resolved.characters,
         useCoords: form.useCoords,

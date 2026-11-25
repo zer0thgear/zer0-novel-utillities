@@ -2,6 +2,7 @@
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChainStore } from '@/store/chainStore';
+import { useSessionStore } from '@/store/sessionStore';
 import { useSubscription } from '@/hooks/useSubscription';
 import { opusStatus } from '@/lib/anlasCost';
 import { planChain } from '@/lib/chains';
@@ -19,7 +20,7 @@ export function useChainLauncher() {
 
   return (chain: Chain, images: GeneratedImage[], auto = false) => {
     if (images.length === 0) return;
-    const ctx = { formModel, formSteps, ...opusStatus(subscription) };
+    const ctx = { formModel, formSteps, references: useSessionStore.getState().references, ...opusStatus(subscription) };
     const plans = images.map((img) =>
       planChain(
         chain,

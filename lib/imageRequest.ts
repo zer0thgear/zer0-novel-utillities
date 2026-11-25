@@ -14,6 +14,7 @@ import { joinPromptParts } from '@/lib/promptText';
 import { addAutoText, hasAutoText } from '@/lib/autoText';
 import { hasVariety, varietySigma } from '@/lib/variety';
 import { isMediumEffort, MEDIUM_EFFORT } from '@/lib/models';
+import { PreciseReference, referenceParameters, referencesFor } from '@/lib/preciseReference';
 import {
   composeNegativeWithUc,
   composeWithQuality,
@@ -206,6 +207,9 @@ export function buildImageRequest(args: {
   /** The preset levels the text was composed with, for NovelAI's preset
    *  fields. Omitted when unknown (e.g. Variations of an imported image). */
   presets?: { quality: QualityLevel; uc: UcLevel };
+  /** The sidebar's Precise References. Which are sent depends on the model,
+   *  and on whether it's an inpaint (see referencesFor). */
+  references?: readonly PreciseReference[];
   parameters: Omit<NovelAIParameters, SharedKey>;
 }): NovelAIGenerateRequest {
   const { model, action, useCoords, parameters } = args;
@@ -221,6 +225,7 @@ export function buildImageRequest(args: {
   // against a capture), and the Heavy UC preset's text with no custom
   // Undesired Content (characters' too). Its UC preset fields say Heavy.
   const medium = isMediumEffort(model);
+  const references = referencesFor(args.references ?? [], model, { inpainting: action === 'infill' });
   if (medium) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { cfg_rescale, ...kept } = rest;
@@ -244,9 +249,13 @@ export function buildImageRequest(args: {
       ...(presets ? presetFields(model, presets) : {}),
       ...(medium ? { ucPresetId: MEDIUM_EFFORT.ucPreset, tag_hint_uc_preset: PRESET_HINT[MEDIUM_EFFORT.ucPreset] } : {}),
       ...rest,
+      // NovelAI's request class always sends Karras on V5, whatever schedule
+      // was picked (its panel doesn't offer one there).
+      ...(model.startsWith('nai-diffusion-5') ? { noise_schedule: 'karras' as const } : {}),
       // As NovelAI does: models that don't offer Variety+ don't carry the
       // field at all, and the ones that do send null when it's off.
       ...(hasVariety(model) ? { skip_cfg_above_sigma: variety ?? null } : {}),
+      ...(references.length ? referenceParameters(references) : {}),
       dynamic_thresholding: false,
       controlnet_strength: 1,
       legacy: false,
